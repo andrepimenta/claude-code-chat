@@ -1966,7 +1966,36 @@ const html = `<!DOCTYPE html>
 		}
 
 		updateStatus('Initializing...', 'disconnected');
-		
+
+		function formatUnixTimestamp(timestamp) {
+			try {
+				// Convert to number if it's a string
+				const ts = typeof timestamp === 'string' ? parseInt(timestamp) : timestamp;
+
+				// Check if it's a valid Unix timestamp (between 1970 and 2100)
+				if (ts < 0 || ts > 4102444800) return null;
+
+				// Convert to milliseconds for JavaScript Date
+				const date = new Date(ts * 1000);
+
+				// Format like Linux date command: "Wed Jun 25 11:10:23 PM MST 2025"
+				const options = {
+					weekday: 'short',
+					month: 'short',
+					day: 'numeric',
+					hour: 'numeric',
+					minute: '2-digit',
+					second: '2-digit',
+					hour12: true,
+					timeZoneName: 'short',
+					year: 'numeric'
+				};
+
+				return date.toLocaleString('en-US', options);
+			} catch (e) {
+				return null;
+			}
+		}
 
 		function parseSimpleMarkdown(markdown) {
 			const lines = markdown.split('\\n');
@@ -1976,6 +2005,14 @@ const html = `<!DOCTYPE html>
 
 			for (let line of lines) {
 				line = line.trim();
+				// Format Unix timestamps before other processing
+				line = line.replace(/\\b(\\d{10})\\b/g, (match, timestamp) => {
+					const formatted = formatUnixTimestamp(timestamp);
+					if (formatted) {
+						return \`<span class="timestamp" title="Unix timestamp: \${timestamp}">\${formatted}</span>\`;
+					}
+					return match;
+				});
 
 				// Bold
 				line = line.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');

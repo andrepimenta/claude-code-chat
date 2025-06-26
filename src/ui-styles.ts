@@ -1128,7 +1128,7 @@ const styles = `
         margin: 0 -12px;
     }
 
-    .tool-item input[type="checkbox"], 
+    .tool-item input[type="checkbox"],
     .tool-item input[type="radio"] {
         margin: 0;
         margin-top: 2px;
@@ -1514,6 +1514,27 @@ const styles = `
         color: var(--vscode-terminal-ansiGreen);
         background-color: rgba(0, 210, 106, 0.1);
         border-color: var(--vscode-terminal-ansiGreen);
+    }
+
+    /* Timestamp formatting */
+    .timestamp {
+        display: inline-block;
+        background: linear-gradient(135deg, rgba(100, 149, 237, 0.15) 0%, rgba(100, 149, 237, 0.1) 100%);
+        border: 1px solid rgba(100, 149, 237, 0.3);
+        color: #6495ed;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 0.9em;
+        font-weight: 500;
+        cursor: help;
+        transition: all 0.2s ease;
+    }
+
+    .timestamp:hover {
+        background: linear-gradient(135deg, rgba(100, 149, 237, 0.25) 0%, rgba(100, 149, 237, 0.15) 100%);
+        border-color: rgba(100, 149, 237, 0.5);
+        transform: translateY(-1px);
     }
 
     /* Markdown content styles */
