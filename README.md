@@ -296,7 +296,7 @@ See the [LICENSE](LICENSE) file for details.
 
 Need help? We've got you covered:
 
-- 🐛 **Issues**: [GitHub Issues](https://github.com/your-repo/claude-code-chat/issues)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/andrepimenta/claude-code-chat/issues)
 
 ---
 
