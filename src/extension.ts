@@ -448,6 +448,9 @@ class ClaudeChatProvider {
 		// Get configuration
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const yoloMode = config.get<boolean>('permissions.yoloMode', false);
+		const proxyEnabled = config.get<boolean>('proxy.enabled', false);
+		const proxyUrl = config.get<string>('proxy.url', '');
+		const noProxy = config.get<string>('proxy.noProxy', '');
 		
 		if (yoloMode) {
 			// Yolo mode: skip all permissions regardless of MCP config
@@ -483,6 +486,27 @@ class ClaudeChatProvider {
 
 		let claudeProcess: cp.ChildProcess;
 
+		// Prepare environment with proxy settings if enabled
+		const baseEnv: Record<string, string> = {
+			...process.env,
+			FORCE_COLOR: '0',
+			NO_COLOR: '1'
+		};
+
+		if (proxyEnabled && proxyUrl) {
+			baseEnv.HTTP_PROXY = proxyUrl;
+			baseEnv.HTTPS_PROXY = proxyUrl;
+			baseEnv.http_proxy = proxyUrl;  // Some tools check lowercase
+			baseEnv.https_proxy = proxyUrl;
+			
+			if (noProxy) {
+				baseEnv.NO_PROXY = noProxy;
+				baseEnv.no_proxy = noProxy;
+			}
+			
+			console.log('Proxy configuration enabled:', { proxyUrl, noProxy: noProxy || 'none' });
+		}
+
 		if (wslEnabled) {
 			// Use WSL with bash -ic for proper environment loading
 			console.log('Using WSL configuration:', { wslDistro, nodePath, claudePath });
@@ -491,11 +515,7 @@ class ClaudeChatProvider {
 			claudeProcess = cp.spawn('wsl', ['-d', wslDistro, 'bash', '-ic', wslCommand], {
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-					FORCE_COLOR: '0',
-					NO_COLOR: '1'
-				}
+				env: baseEnv
 			});
 		} else {
 			// Use native claude command
@@ -504,11 +524,7 @@ class ClaudeChatProvider {
 				shell: process.platform === 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-					FORCE_COLOR: '0',
-					NO_COLOR: '1'
-				}
+				env: baseEnv
 			});
 		}
 
@@ -854,13 +870,30 @@ class ClaudeChatProvider {
 		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
 		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
 		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+		const proxyEnabled = config.get<boolean>('proxy.enabled', false);
+		const proxyUrl = config.get<string>('proxy.url', '');
+		const noProxy = config.get<string>('proxy.noProxy', '');
+
+		// Build proxy export commands if needed
+		let proxyExports = '';
+		if (proxyEnabled && proxyUrl) {
+			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
+			if (noProxy) {
+				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
+			}
+			proxyExports += ' && ';
+		}
 
 		// Open terminal and run claude login
 		const terminal = vscode.window.createTerminal('Claude Login');
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath}`);
+			terminal.sendText(`wsl -d ${wslDistro} bash -c "${proxyExports}${nodePath} --no-warnings --enable-source-maps ${claudePath}"`);
 		} else {
-			terminal.sendText('claude');
+			if (proxyExports) {
+				terminal.sendText(`${proxyExports}claude`);
+			} else {
+				terminal.sendText('claude');
+			}
 		}
 		terminal.show();
 
@@ -2033,7 +2066,10 @@ class ClaudeChatProvider {
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
 			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
 			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
-			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false)
+			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
+			'proxy.enabled': config.get<boolean>('proxy.enabled', false),
+			'proxy.url': config.get<string>('proxy.url', ''),
+			'proxy.noProxy': config.get<string>('proxy.noProxy', '')
 		};
 
 		this._postMessage({
@@ -2117,6 +2153,9 @@ class ClaudeChatProvider {
 		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
 		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
 		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+		const proxyEnabled = config.get<boolean>('proxy.enabled', false);
+		const proxyUrl = config.get<string>('proxy.url', '');
+		const noProxy = config.get<string>('proxy.noProxy', '');
 
 		// Build command arguments
 		const args = ['/model'];
@@ -2126,12 +2165,27 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
+		// Build proxy export commands if needed
+		let proxyExports = '';
+		if (proxyEnabled && proxyUrl) {
+			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
+			if (noProxy) {
+				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
+			}
+			proxyExports += ' && ';
+		}
+
 		// Create terminal with the claude /model command
 		const terminal = vscode.window.createTerminal('Claude Model Selection');
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
+			terminal.sendText(`wsl -d ${wslDistro} bash -c "${proxyExports}${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}"`);
 		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
+			if (proxyExports) {
+				// For native, we need to set env vars before running claude
+				terminal.sendText(`${proxyExports}claude ${args.join(' ')}`);
+			} else {
+				terminal.sendText(`claude ${args.join(' ')}`);
+			}
 		}
 		terminal.show();
 
@@ -2154,6 +2208,9 @@ class ClaudeChatProvider {
 		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
 		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
 		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+		const proxyEnabled = config.get<boolean>('proxy.enabled', false);
+		const proxyUrl = config.get<string>('proxy.url', '');
+		const noProxy = config.get<string>('proxy.noProxy', '');
 
 		// Build command arguments
 		const args = [`/${command}`];
@@ -2163,12 +2220,27 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
+		// Build proxy export commands if needed
+		let proxyExports = '';
+		if (proxyEnabled && proxyUrl) {
+			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
+			if (noProxy) {
+				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
+			}
+			proxyExports += ' && ';
+		}
+
 		// Create terminal with the claude command
 		const terminal = vscode.window.createTerminal(`Claude /${command}`);
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
+			terminal.sendText(`wsl -d ${wslDistro} bash -c "${proxyExports}${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}"`);
 		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
+			if (proxyExports) {
+				// For native, we need to set env vars before running claude
+				terminal.sendText(`${proxyExports}claude ${args.join(' ')}`);
+			} else {
+				terminal.sendText(`claude ${args.join(' ')}`);
+			}
 		}
 		terminal.show();
 
