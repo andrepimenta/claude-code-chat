@@ -380,7 +380,10 @@ class ClaudeChatProvider {
 
 	private _escapeShellArg(arg: string): string {
 		// Escape shell metacharacters to prevent injection
-		return arg.replace(/([`$"\\])/g, '\\$1');
+		// Includes: backtick, dollar, quotes, backslash, semicolon, pipe, ampersand, 
+		// redirects, parentheses, braces, brackets, single quote, exclamation,
+		// hash, tilde, asterisk, question mark, whitespace (space, tab, newline)
+		return arg.replace(/([`$"\\;|&><(){}\[\]'!#~*?\s])/g, '\\$1');
 	}
 
 	private _buildProxyExports(proxyEnabled: boolean, proxyUrl: string, noProxy: string): string {
