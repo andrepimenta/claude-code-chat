@@ -2,7 +2,7 @@
   "name": "claude-code-chat",
   "displayName": "Claude Code Chat",
   "description": "Beautiful Claude Code Chat Interface for VS Code",
-  "version": "1.0.5",
+  "version": "1.0.4",
   "publisher": "AndrePimenta",
   "author": "Andre Pimenta",
   "repository": {

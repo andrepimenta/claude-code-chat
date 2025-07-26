@@ -378,6 +378,27 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private _escapeShellArg(arg: string): string {
+		// Escape shell metacharacters to prevent injection
+		return arg.replace(/([`$"\\])/g, '\\$1');
+	}
+
+	private _buildProxyExports(proxyEnabled: boolean, proxyUrl: string, noProxy: string): string {
+		if (!proxyEnabled || !proxyUrl) {
+			return '';
+		}
+
+		const escapedProxyUrl = this._escapeShellArg(proxyUrl);
+		let proxyExports = `export HTTP_PROXY="${escapedProxyUrl}" && export HTTPS_PROXY="${escapedProxyUrl}" && export http_proxy="${escapedProxyUrl}" && export https_proxy="${escapedProxyUrl}"`;
+		
+		if (noProxy) {
+			const escapedNoProxy = this._escapeShellArg(noProxy);
+			proxyExports += ` && export NO_PROXY="${escapedNoProxy}" && export no_proxy="${escapedNoProxy}"`;
+		}
+		
+		return proxyExports + ' && ';
+	}
+
 	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
@@ -393,7 +414,7 @@ class ClaudeChatProvider {
 		}
 		if (thinkingMode) {
 			let thinkingPrompt = '';
-			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n'
+			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n';
 			switch (thinkingIntensity) {
 				case 'think':
 					thinkingPrompt = 'THINK';
@@ -504,7 +525,7 @@ class ClaudeChatProvider {
 				baseEnv.no_proxy = noProxy;
 			}
 			
-			console.log('Proxy configuration enabled:', { proxyUrl, noProxy: noProxy || 'none' });
+			console.log('Proxy configuration enabled');
 		}
 
 		if (wslEnabled) {
@@ -707,7 +728,7 @@ class ClaudeChatProvider {
 							const isError = content.is_error || false;
 
 							// Find the last tool use to get the tool name
-							const lastToolUse = this._currentConversation[this._currentConversation.length-1]
+							const lastToolUse = this._currentConversation[this._currentConversation.length-1];
 
 							const toolName = lastToolUse?.data?.toolName;
 
@@ -875,14 +896,7 @@ class ClaudeChatProvider {
 		const noProxy = config.get<string>('proxy.noProxy', '');
 
 		// Build proxy export commands if needed
-		let proxyExports = '';
-		if (proxyEnabled && proxyUrl) {
-			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
-			if (noProxy) {
-				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
-			}
-			proxyExports += ' && ';
-		}
+		const proxyExports = this._buildProxyExports(proxyEnabled, proxyUrl, noProxy);
 
 		// Open terminal and run claude login
 		const terminal = vscode.window.createTerminal('Claude Login');
@@ -1148,7 +1162,7 @@ class ClaudeChatProvider {
 				console.log(`Created permission requests directory at: ${this._permissionRequestsPath}`);
 			}
 
-			console.log("DIRECTORY-----", this._permissionRequestsPath)
+			console.log("DIRECTORY-----", this._permissionRequestsPath);
 
 			// Set up file watcher for *.request files
 			this._permissionWatcher = vscode.workspace.createFileSystemWatcher(
@@ -1156,7 +1170,7 @@ class ClaudeChatProvider {
 			);
 
 			this._permissionWatcher.onDidCreate(async (uri) => {
-				console.log("----file", uri)
+				console.log("----file", uri);
 				// Only handle file scheme URIs, ignore vscode-userdata scheme
 				if (uri.scheme === 'file') {
 					await this._handlePermissionRequest(uri);
@@ -1245,7 +1259,7 @@ class ClaudeChatProvider {
 		try {
 			// Read the original request to get tool name and input
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const requestFileUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', `${requestId}.request`));
 			
@@ -1308,7 +1322,7 @@ class ClaudeChatProvider {
 
 	private getCommandPattern(command: string): string {
 		const parts = command.trim().split(/\s+/);
-		if (parts.length === 0) return command;
+		if (parts.length === 0) {return command;}
 		
 		const baseCmd = parts[0];
 		const subCmd = parts.length > 1 ? parts[1] : '';
@@ -1437,7 +1451,7 @@ class ClaudeChatProvider {
 	private async _removePermission(toolName: string, command: string | null): Promise<void> {
 		try {
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const permissionsUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', 'permissions.json'));
 			let permissions: any = { alwaysAllow: {} };
@@ -1483,7 +1497,7 @@ class ClaudeChatProvider {
 	private async _addPermission(toolName: string, command: string | null): Promise<void> {
 		try {
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const permissionsUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', 'permissions.json'));
 			let permissions: any = { alwaysAllow: {} };
@@ -2166,14 +2180,7 @@ class ClaudeChatProvider {
 		}
 
 		// Build proxy export commands if needed
-		let proxyExports = '';
-		if (proxyEnabled && proxyUrl) {
-			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
-			if (noProxy) {
-				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
-			}
-			proxyExports += ' && ';
-		}
+		const proxyExports = this._buildProxyExports(proxyEnabled, proxyUrl, noProxy);
 
 		// Create terminal with the claude /model command
 		const terminal = vscode.window.createTerminal('Claude Model Selection');
@@ -2221,14 +2228,7 @@ class ClaudeChatProvider {
 		}
 
 		// Build proxy export commands if needed
-		let proxyExports = '';
-		if (proxyEnabled && proxyUrl) {
-			proxyExports = `export HTTP_PROXY="${proxyUrl}" && export HTTPS_PROXY="${proxyUrl}" && export http_proxy="${proxyUrl}" && export https_proxy="${proxyUrl}"`;
-			if (noProxy) {
-				proxyExports += ` && export NO_PROXY="${noProxy}" && export no_proxy="${noProxy}"`;
-			}
-			proxyExports += ' && ';
-		}
+		const proxyExports = this._buildProxyExports(proxyEnabled, proxyUrl, noProxy);
 
 		// Create terminal with the claude command
 		const terminal = vscode.window.createTerminal(`Claude /${command}`);
