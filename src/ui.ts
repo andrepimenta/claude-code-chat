@@ -1,4 +1,4 @@
-import styles from './ui-styles'
+import styles from './ui-styles';
 const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
