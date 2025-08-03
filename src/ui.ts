@@ -1,5 +1,22 @@
-import styles from './ui-styles'
-const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
+import styles from './ui-styles';
+const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
+	// Helper function for translations
+	const t = (key: string, params?: Record<string, string | number>): string => {
+		if (!translations) return key;
+		
+		const value = key.split('.').reduce((obj, k) => obj && obj[k], translations);
+		if (!value) return key;
+		
+		if (params) {
+			return value.replace(/\{(\w+)\}/g, (match: string, paramKey: string) => {
+				return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+			});
+		}
+		
+		return value;
+	};
+
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
@@ -10,7 +27,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 <body>
 	<div class="header">
 		<div style="display: flex; align-items: center;">
-			<h2>Claude Code Chat</h2>
+			<h2>${t('ui.header.title')}</h2>
 			<!-- <div id="sessionInfo" class="session-badge" style="display: none;">
 				<span class="session-icon">💬</span>
 				<span id="sessionId">-</span>
@@ -19,16 +36,16 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 		<div style="display: flex; gap: 8px; align-items: center;">
 			<div id="sessionStatus" class="session-status" style="display: none;">No session</div>
-			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
-			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 History</button>
-			<button class="btn primary" id="newSessionBtn" onclick="newSession()">New Chat</button>
+			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="${t('ui.header.settings')}">⚙️</button>
+			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 ${t('ui.header.history')}</button>
+			<button class="btn primary" id="newSessionBtn" onclick="newSession()">${t('ui.header.newChat')}</button>
 		</div>
 	</div>
 	
 	<div id="conversationHistory" class="conversation-history" style="display: none;">
 		<div class="conversation-header">
-			<h3>Conversation History</h3>
-			<button class="btn" onclick="toggleConversationHistory()">✕ Close</button>
+			<h3>${t('ui.conversationHistory.title')}</h3>
+			<button class="btn" onclick="toggleConversationHistory()">${t('ui.conversationHistory.close')}</button>
 		</div>
 		<div id="conversationList" class="conversation-list">
 			<!-- Conversations will be loaded here -->
@@ -256,34 +273,48 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="settingsModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>Claude Code Chat Settings</span>
+				<span>${t('ui.settings.title')}</span>
 				<button class="tools-close-btn" onclick="hideSettingsModal()">✕</button>
 			</div>
 			<div class="tools-list">
-				<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 14px; font-weight: 600;">WSL Configuration</h3>
+				<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.language.title')}</h3>
 				<div>
 					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
-						WSL integration allows you to run Claude Code from within Windows Subsystem for Linux.
-						This is useful if you have Claude installed in WSL instead of Windows.
+						${t('ui.settings.language.description')}
+					</p>
+				</div>
+				<div class="settings-group">
+					<div style="margin-bottom: 12px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.language.title')}</label>
+						<select id="language-select" class="file-search-input" style="width: 100%;" onchange="updateLanguage()">
+							<!-- Language options will be populated by JavaScript -->
+						</select>
+					</div>
+				</div>
+
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.wsl.title')}</h3>
+				<div>
+					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
+						${t('ui.settings.wsl.description')}
 					</p>
 				</div>
 				<div class="settings-group">
 					<div class="tool-item">
 						<input type="checkbox" id="wsl-enabled" onchange="updateSettings()">
-						<label for="wsl-enabled">Enable WSL Integration</label>
+						<label for="wsl-enabled">${t('ui.settings.wsl.enabled')}</label>
 					</div>
 					
 					<div id="wslOptions" style="margin-left: 24px; margin-top: 12px;">
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">WSL Distribution</label>
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.distro')}</label>
 							<input type="text" id="wsl-distro" class="file-search-input" style="width: 100%;" placeholder="Ubuntu" onchange="updateSettings()">
 						</div>
 						
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Node.js Path in WSL</label>
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.nodePath')}</label>
 							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
-								Find your node installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
+								${t('ui.settings.wsl.nodePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
 							</p>
 						</div>
 						
@@ -3397,6 +3428,10 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				vscode.postMessage({
 					type: 'getPermissions'
 				});
+				// Request current language data
+				vscode.postMessage({
+					type: 'getLanguage'
+				});
 				settingsModal.style.display = 'flex';
 			} else {
 				hideSettingsModal();
@@ -3431,6 +3466,41 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				}
 			});
 		}
+
+		// Language functions
+		let currentLanguageData = null;
+
+		function updateLanguage() {
+			const languageSelect = document.getElementById('language-select');
+			const selectedLanguage = languageSelect.value;
+			
+			vscode.postMessage({
+				type: 'setLanguage',
+				languageCode: selectedLanguage
+			});
+		}
+
+		function populateLanguageOptions(languageData) {
+			const languageSelect = document.getElementById('language-select');
+			if (!languageSelect || !languageData) return;
+			
+			languageSelect.innerHTML = '';
+			
+			for (const lang of languageData.supportedLanguages) {
+				const option = document.createElement('option');
+				option.value = lang.code;
+				option.textContent = lang.nativeName;
+				if (lang.code === languageData.currentLanguage) {
+					option.selected = true;
+				}
+				languageSelect.appendChild(option);
+			}
+		}
+
+		// Request language data on page load
+		vscode.postMessage({
+			type: 'getLanguage'
+		});
 
 		// Permissions management functions
 		function renderPermissions(permissions) {
@@ -3644,6 +3714,12 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				document.getElementById('wslOptions').style.display = message.data['wsl.enabled'] ? 'block' : 'none';
 			}
 
+			if (message.type === 'languageData') {
+				// Update language data and populate options
+				currentLanguageData = message.data;
+				populateLanguageOptions(message.data);
+			}
+
 			if (message.type === 'platformInfo') {
 				// Check if user is on Windows and show WSL alert if not dismissed and WSL not already enabled
 				if (message.data.isWindows && !message.data.wslAlertDismissed && !message.data.wslEnabled) {
@@ -3674,5 +3750,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	${isTelemetryEnabled ? '<script defer src="https://cloud.umami.is/script.js" data-website-id="d050ac9b-2b6d-4c67-b4c6-766432f95644"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
 </body>
 </html>`;
+};
 
 export default getHtml;

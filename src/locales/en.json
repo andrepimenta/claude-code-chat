@@ -1,0 +1,217 @@
+{
+  "extension": {
+    "title": "Claude Code Chat",
+    "description": "Beautiful Claude Code Chat Interface for VS Code"
+  },
+  "ui": {
+    "header": {
+      "title": "Claude Code Chat",
+      "settings": "Settings",
+      "history": "History",
+      "newChat": "New Chat"
+    },
+    "conversationHistory": {
+      "title": "Conversation History",
+      "close": "Close",
+      "noConversations": "No conversations found"
+    },
+    "wslAlert": {
+      "title": "Looks like you are using Windows!",
+      "message": "If you are using WSL to run Claude Code, you should enable WSL integration in the settings.",
+      "enableWSL": "Enable WSL",
+      "dismiss": "Dismiss"
+    },
+    "input": {
+      "planFirst": "Plan First",
+      "thinkingMode": "Thinking Mode",
+      "placeholder": "Type your message to Claude Code...",
+      "attachImages": "Attach images",
+      "referenceFiles": "Reference files",
+      "slashCommands": "Slash commands",
+      "send": "Send"
+    },
+    "modelSelector": {
+      "title": "Enforce Model",
+      "explanation": "This overrides your default model setting for this conversation only.",
+      "opus": {
+        "title": "Opus - Most capable model",
+        "description": "Best for complex tasks and highest quality output"
+      },
+      "sonnet": {
+        "title": "Sonnet - Balanced model", 
+        "description": "Good balance of speed and capability"
+      },
+      "default": {
+        "title": "Default - User configured",
+        "description": "Uses the model configured in your settings",
+        "configure": "Configure"
+      }
+    },
+    "thinkingIntensity": {
+      "title": "Thinking Mode Intensity",
+      "description": "Configure the intensity of thinking mode. Higher levels provide more detailed reasoning but consume more tokens.",
+      "levels": {
+        "think": "Think",
+        "thinkHard": "Think Hard", 
+        "thinkHarder": "Think Harder",
+        "ultrathink": "Ultrathink"
+      },
+      "confirm": "Confirm"
+    },
+    "slashCommands": {
+      "title": "Commands & Prompt Snippets",
+      "search": "Search commands and snippets...",
+      "customCommands": {
+        "title": "Custom Commands",
+        "description": "Custom slash commands for quick prompt access. Click to use directly in chat.",
+        "addCustom": "Add Custom Command",
+        "addForm": {
+          "commandName": "Command name:",
+          "promptText": "Prompt Text:",
+          "save": "Save Command",
+          "cancel": "Cancel"
+        }
+      },
+      "builtinCommands": {
+        "title": "Built-in Commands",
+        "description": "These commands require the Claude CLI and will open in VS Code terminal. Return here after completion."
+      },
+      "quickCommand": {
+        "title": "Quick Command",
+        "placeholder": "enter-command"
+      }
+    },
+    "mcpServers": {
+      "title": "MCP Servers",
+      "addServer": "+ Add MCP Server",
+      "popularServers": "Popular MCP Servers",
+      "addForm": {
+        "serverName": "Server Name:",
+        "serverType": "Server Type:",
+        "command": "Command:",
+        "url": "URL:",
+        "arguments": "Arguments (one per line):",
+        "environment": "Environment Variables (KEY=value, one per line):",
+        "headers": "Headers (KEY=value, one per line):",
+        "addServer": "Add Server",
+        "cancel": "Cancel"
+      }
+    },
+    "settings": {
+      "title": "Claude Code Chat Settings",
+      "language": {
+        "title": "Language",
+        "description": "Choose your preferred interface language"
+      },
+      "wsl": {
+        "title": "WSL Configuration",
+        "description": "WSL integration allows you to run Claude Code from within Windows Subsystem for Linux. This is useful if you have Claude installed in WSL instead of Windows.",
+        "enabled": "Enable WSL Integration",
+        "distro": "WSL Distribution",
+        "nodePath": "Node.js Path in WSL",
+        "nodePathHelper": "Find your node installation path in WSL by running:",
+        "claudePath": "Claude Path in WSL", 
+        "claudePathHelper": "Find your claude installation path in WSL by running:"
+      },
+      "permissions": {
+        "title": "Permissions",
+        "description": "Manage commands and tools that are automatically allowed without asking for permission.",
+        "loadingPermissions": "Loading permissions...",
+        "addPermission": "+ Add permission",
+        "yoloMode": "Enable Yolo Mode (Auto-allow all permissions)",
+        "noPermissions": "No always-allow permissions set",
+        "addForm": {
+          "selectTool": "Select tool...",
+          "commandPattern": "Command pattern (e.g., npm i *)",
+          "selectToolHint": "Select a tool to add always-allow permission.",
+          "bashHint": "Use patterns like \"npm i *\" or \"git add *\" for specific commands.",
+          "toolHint": "This will allow all {tool} commands without asking for permission.",
+          "add": "Add",
+          "adding": "Adding..."
+        }
+      }
+    },
+    "status": {
+      "initializing": "Initializing...",
+      "ready": "Ready to chat with Claude Code! Type your message below.",
+      "processing": "Claude is working...",
+      "loginRequired": "Login Required",
+      "stop": "Stop"
+    },
+    "messages": {
+      "you": "You",
+      "claude": "Claude",
+      "error": "Error",
+      "thinking": "💭 Thinking...",
+      "sessionInfo": "🆔 Session ID: {sessionId}",
+      "toolsAvailable": "🔧 Tools Available: {count}",
+      "mcpServers": "🖥️ MCP Servers: {count}",
+      "tokens": "📊 Tokens: {total}",
+      "requestCompleted": "Request completed - Cost: {cost}, Duration: {duration}",
+      "sessionResumed": "📝 Resumed previous session\n🆔 Session ID: {sessionId}\n💡 Your conversation history is preserved",
+      "newSession": "🆕 Started new session",
+      "loginRequired": "🔐 Login Required\n\nYour Claude API key is invalid or expired.\nA terminal has been opened - please run the login process there.\n\nAfter logging in, come back to this chat to continue.",
+      "configChanged": "⚙️ WSL configuration changed. Started a new session.",
+      "stopped": "⏹️ Claude code was stopped.",
+      "yoloModeEnabled": "⚡ YOLO Mode enabled! All future permissions will be automatically allowed.",
+      "terminalOpened": "Check the terminal to update your default model configuration. Come back to this chat here after making changes.",
+      "slashCommandExecuted": "Executing /{command} command in terminal. Check the terminal output and return when ready.",
+      "restoreProgress": "🔄 {message}",
+      "restoreSuccess": "✅ {message}",
+      "restoreError": "❌ {message}",
+      "mcpServerSaved": "✅ MCP server \"{name}\" saved successfully",
+      "mcpServerDeleted": "✅ MCP server \"{name}\" deleted successfully",
+      "mcpServerError": "❌ Error with MCP server: {error}"
+    },
+    "permissions": {
+      "title": "Permission Required",
+      "message": "Allow <strong>{tool}</strong> to execute the tool call above?",
+      "allow": "Allow",
+      "deny": "Deny",
+      "alwaysAllow": "Always allow {tool}",
+      "alwaysAllowCommand": "Always allow <code>{command}</code>",
+      "enableYoloMode": "Enable YOLO Mode",
+      "yoloModeTitle": "Enable YOLO Mode",
+      "yoloModeSubtitle": "Auto-allow all permissions",
+      "decided": {
+        "allowed": "You allowed this",
+        "denied": "You denied this", 
+        "alwaysAllowed": "You allowed this and set it to always allow"
+      },
+      "suggestion": "💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks."
+    },
+    "fileTypes": {
+      "file": "📄",
+      "html": "🌐", 
+      "css": "🎨",
+      "json": "📋",
+      "markdown": "📝",
+      "python": "🐍",
+      "java": "☕",
+      "cpp": "⚙️",
+      "image": "🖼️",
+      "pdf": "📄",
+      "archive": "📦"
+    },
+    "filePicker": {
+      "title": "Select File",
+      "searchPlaceholder": "Search files..."
+    },
+    "yoloWarning": "⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.",
+    "common": {
+      "ok": "OK",
+      "cancel": "Cancel",
+      "close": "✕ Close",
+      "save": "Save",
+      "remove": "Remove",
+      "add": "Add",
+      "configure": "Configure",
+      "expand": "expand",
+      "showMore": "Show more",
+      "showLess": "Show less",
+      "copy": "Copy message",
+      "copied": "Copied!",
+      "all": "All"
+    }
+  }
+}

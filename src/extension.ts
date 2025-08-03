@@ -3,11 +3,16 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import getHtml from './ui';
+import { initializeI18n, getI18n } from './i18n';
 
 const exec = util.promisify(cp.exec);
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Claude Code Chat extension is being activated!');
+	
+	// Initialize i18n service
+	initializeI18n(context);
+	
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
 
 	const disposable = vscode.commands.registerCommand('claude-code-chat.openChat', (column?: vscode.ViewColumn) => {
@@ -238,6 +243,9 @@ class ClaudeChatProvider {
 		// Send current settings to webview
 		this._sendCurrentSettings();
 
+		// Send current language data to webview
+		this._sendCurrentLanguage();
+
 		// Send saved draft message if any
 		if (this._draftMessage) {
 			this._postMessage({
@@ -335,6 +343,12 @@ class ClaudeChatProvider {
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
+				return;
+			case 'getLanguage':
+				this._sendCurrentLanguage();
+				return;
+			case 'setLanguage':
+				this._setLanguage(message.languageCode);
 				return;
 		}
 	}
@@ -2136,18 +2150,21 @@ class ClaudeChatProvider {
 	}
 
 	private _getHtmlForWebview(): string {
-		return getHtml(vscode.env?.isTelemetryEnabled);
+		const i18n = getI18n();
+		return getHtml(vscode.env?.isTelemetryEnabled, i18n.getAllTranslations());
 	}
 
 	private _sendCurrentSettings(): void {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const i18n = getI18n();
 		const settings = {
 			'thinking.intensity': config.get<string>('thinking.intensity', 'think'),
 			'wsl.enabled': config.get<boolean>('wsl.enabled', false),
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
 			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
 			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
-			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false)
+			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
+			'language': i18n.getCurrentLanguage()
 		};
 
 		this._postMessage({
@@ -2176,6 +2193,32 @@ class ClaudeChatProvider {
 
 	private _saveInputText(text: string): void {
 		this._draftMessage = text || '';
+	}
+
+	private _sendCurrentLanguage(): void {
+		const i18n = getI18n();
+		this._postMessage({
+			type: 'languageData',
+			data: {
+				currentLanguage: i18n.getCurrentLanguage(),
+				supportedLanguages: i18n.getSupportedLanguages(),
+				translations: i18n.getAllTranslations()
+			}
+		});
+	}
+
+	private async _setLanguage(languageCode: string): Promise<void> {
+		try {
+			const i18n = getI18n();
+			await i18n.setLanguage(languageCode);
+			
+			// Send updated language data to webview
+			this._sendCurrentLanguage();
+			
+			console.log(`Language changed to: ${languageCode}`);
+		} catch (error) {
+			console.error('Error setting language:', error);
+		}
 	}
 
 	private async _updateSettings(settings: { [key: string]: any }): Promise<void> {
