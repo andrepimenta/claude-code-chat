@@ -185,6 +185,19 @@
           "type": "boolean",
           "default": false,
           "description": "Enable Yolo Mode to skip all permission checks. Use with caution as Claude can execute any command without asking."
+        },
+        "claudeCodeChat.language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "zh-TW"
+          ],
+          "enumDescriptions": [
+            "English",
+            "繁體中文 (Traditional Chinese)"
+          ],
+          "default": "en",
+          "description": "Interface language for Claude Code Chat"
         }
       }
     }

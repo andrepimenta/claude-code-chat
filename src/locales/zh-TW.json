@@ -1,0 +1,422 @@
+{
+  "extension": {
+    "title": "Claude Code Chat",
+    "description": "VS Code 的美觀 Claude Code Chat 介面",
+    "statusBar": {
+      "text": "Claude",
+      "tooltip": "開啟 Claude Code Chat (Ctrl+Shift+C)"
+    }
+  },
+  "ui": {
+    "header": {
+      "title": "Claude Code Chat",
+      "settings": "設定",
+      "history": "歷史記錄",
+      "newChat": "新對話"
+    },
+    "conversationHistory": {
+      "title": "對話歷史記錄",
+      "close": "關閉",
+      "noConversations": "沒有找到對話記錄"
+    },
+    "wslAlert": {
+      "title": "看起來您正在使用 Windows！",
+      "message": "如果您使用 WSL 來執行 Claude Code，您應該在設定中啟用 WSL 整合。",
+      "enableWSL": "啟用 WSL",
+      "dismiss": "忽略"
+    },
+    "input": {
+      "planFirst": "優先規劃",
+      "thinkingMode": "思考模式",
+      "placeholder": "輸入您的訊息給 Claude Code...",
+      "attachImages": "附加圖片",
+      "referenceFiles": "參考檔案",
+      "slashCommands": "斜槓指令",
+      "send": "傳送"
+    },
+    "modelSelector": {
+      "title": "強制指定模型",
+      "tooltip": "選擇模型",
+      "explanation": "這將覆蓋您目前對話的預設模型設定。",
+      "opus": {
+        "title": "Opus - 最強大的模型",
+        "description": "最適合複雜任務和最高品質的輸出"
+      },
+      "sonnet": {
+        "title": "Sonnet - 平衡模型", 
+        "description": "速度與能力的良好平衡"
+      },
+      "default": {
+        "title": "預設 - 使用者設定",
+        "description": "使用您設定中配置的模型",
+        "configure": "設定"
+      }
+    },
+    "thinkingIntensity": {
+      "title": "思考模式強度",
+      "description": "設定思考模式的強度。更高的級別提供更詳細的推理，但會消耗更多的代幣。",
+      "levels": {
+        "think": "思考",
+        "thinkHard": "深度思考", 
+        "thinkHarder": "更深度思考",
+        "ultrathink": "超級思考"
+      },
+      "modeLabels": {
+        "think": "思考模式",
+        "thinkHard": "深度思考模式", 
+        "thinkHarder": "更深度思考模式",
+        "ultrathink": "超級思考模式"
+      },
+      "confirm": "確認"
+    },
+    "slashCommands": {
+      "title": "指令與提示片段",
+      "search": "搜尋指令和片段...",
+      "customCommands": {
+        "title": "自訂指令",
+        "description": "用於快速存取提示的自訂斜槓指令。點擊即可直接在對話中使用。",
+        "addCustom": "新增自訂指令",
+        "addForm": {
+          "commandName": "指令名稱：",
+          "promptText": "提示文字：",
+          "save": "儲存指令",
+          "cancel": "取消",
+          "create": "建立您自己的斜槓指令"
+        }
+      },
+      "builtinCommands": {
+        "title": "內建指令",
+        "description": "這些指令需要 Claude CLI，將在 VS Code 終端機中開啟。完成後請回到這裡。",
+        "commands": {
+          "bug": {
+            "title": "/bug",
+            "description": "回報錯誤（將對話傳送至 Anthropic）"
+          },
+          "clear": {
+            "title": "/clear",
+            "description": "清除對話歷史記錄"
+          },
+          "compact": {
+            "title": "/compact",
+            "description": "壓縮對話並可選擇性加入焦點指示"
+          },
+          "config": {
+            "title": "/config",
+            "description": "查看/修改設定"
+          },
+          "cost": {
+            "title": "/cost",
+            "description": "顯示代幣使用統計"
+          },
+          "doctor": {
+            "title": "/doctor",
+            "description": "檢查您的 Claude Code 安裝健康狀態"
+          },
+          "help": {
+            "title": "/help",
+            "description": "取得使用說明"
+          },
+          "init": {
+            "title": "/init",
+            "description": "使用 CLAUDE.md 指南初始化專案"
+          },
+          "login": {
+            "title": "/login",
+            "description": "切換 Anthropic 帳戶"
+          },
+          "logout": {
+            "title": "/logout",
+            "description": "登出您的 Anthropic 帳戶"
+          },
+          "mcp": {
+            "title": "/mcp",
+            "description": "管理 MCP 伺服器連線和 OAuth 認證"
+          },
+          "memory": {
+            "title": "/memory",
+            "description": "編輯 CLAUDE.md 記憶檔案"
+          },
+          "model": {
+            "title": "/model",
+            "description": "選擇或變更 AI 模型"
+          },
+          "permissions": {
+            "title": "/permissions",
+            "description": "查看或更新權限"
+          },
+          "pr_comments": {
+            "title": "/pr_comments",
+            "description": "查看拉取請求評論"
+          },
+          "review": {
+            "title": "/review",
+            "description": "請求程式碼審查"
+          },
+          "status": {
+            "title": "/status",
+            "description": "查看帳戶和系統狀態"
+          },
+          "terminal-setup": {
+            "title": "/terminal-setup",
+            "description": "安裝 Shift+Enter 新行按鍵綁定"
+          },
+          "vim": {
+            "title": "/vim",
+            "description": "進入 vim 模式以交替插入和指令模式"
+          }
+        }
+      },
+      "quickCommand": {
+        "title": "快速指令",
+        "placeholder": "輸入指令"
+      },
+      "management": {
+        "deleteSnippet": "刪除片段",
+        "moreOptions": "更多選項"
+      },
+      "promptSnippets": {
+        "performanceAnalysis": {
+          "title": "/performance-analysis",
+          "description": "分析此程式碼的效能問題並建議最佳化方案"
+        },
+        "securityReview": {
+          "title": "/security-review", 
+          "description": "檢查此程式碼的安全性漏洞"
+        },
+        "implementationReview": {
+          "title": "/implementation-review",
+          "description": "檢查此程式碼的實作方式"
+        },
+        "codeExplanation": {
+          "title": "/code-explanation",
+          "description": "詳細解釋此程式碼的運作方式"
+        },
+        "bugFix": {
+          "title": "/bug-fix",
+          "description": "協助修復程式碼中的錯誤"
+        },
+        "refactor": {
+          "title": "/refactor",
+          "description": "重構此程式碼以提升可讀性和可維護性"
+        },
+        "testGeneration": {
+          "title": "/test-generation",
+          "description": "為此程式碼產生完整的測試"
+        },
+        "documentation": {
+          "title": "/documentation",
+          "description": "為此程式碼產生說明文件"
+        }
+      }
+    },
+    "mcpServers": {
+      "title": "MCP 伺服器",
+      "tooltip": "設定 MCP 伺服器",
+      "noServers": "未設定 MCP 伺服器",
+      "addServer": "+ 新增 MCP 伺服器",
+      "popularServers": "熱門 MCP 伺服器",
+      "popularServersList": {
+        "context7": {
+          "name": "Context7",
+          "description": "任何提示的最新程式碼文件"
+        },
+        "sequentialThinking": {
+          "name": "Sequential Thinking",
+          "description": "逐步推理功能"
+        },
+        "memory": {
+          "name": "Memory",
+          "description": "知識圖譜儲存"
+        },
+        "puppeteer": {
+          "name": "Puppeteer",
+          "description": "瀏覽器自動化"
+        },
+        "fetch": {
+          "name": "Fetch",
+          "description": "HTTP 請求與網頁抓取"
+        },
+        "filesystem": {
+          "name": "Filesystem",
+          "description": "檔案操作與管理"
+        }
+      },
+      "addForm": {
+        "serverName": "伺服器名稱：",
+        "serverType": "伺服器類型：",
+        "command": "指令：",
+        "url": "網址：",
+        "arguments": "參數（每行一個）：",
+        "environment": "環境變數（KEY=value，每行一個）：",
+        "headers": "標頭（KEY=value，每行一個）：",
+        "addServer": "新增伺服器",
+        "cancel": "取消",
+        "validation": {
+          "nameRequired": "必須輸入伺服器名稱",
+          "serverExists": "伺服器「{name}」已存在",
+          "commandRequired": "stdio 伺服器需要指令",
+          "urlRequired": "HTTP/SSE 伺服器需要網址"
+        }
+      }
+    },
+    "settings": {
+      "title": "Claude Code Chat 設定",
+      "language": {
+        "title": "語言",
+        "description": "選擇您偏好的介面語言"
+      },
+      "wsl": {
+        "title": "WSL 設定",
+        "description": "WSL 整合允許您從 Windows 子系統 Linux 內執行 Claude Code。如果您在 WSL 而不是 Windows 中安裝了 Claude，這會很有用。",
+        "enabled": "啟用 WSL 整合",
+        "distro": "WSL 發行版",
+        "nodePath": "WSL 中的 Node.js 路徑",
+        "nodePathHelper": "執行以下指令在 WSL 中找到您的 node 安裝路徑：",
+        "claudePath": "WSL 中的 Claude 路徑", 
+        "claudePathHelper": "執行以下指令在 WSL 中找到您的 claude 安裝路徑："
+      },
+      "permissions": {
+        "title": "權限",
+        "description": "管理自動允許而無需詢問權限的指令和工具。",
+        "loadingPermissions": "載入權限中...",
+        "addPermission": "+ 新增權限",
+        "yoloMode": "啟用 Yolo 模式（自動允許所有權限）",
+        "noPermissions": "未設定永遠允許的權限",
+        "addForm": {
+          "selectTool": "選擇工具...",
+          "commandPattern": "指令模式（例如：npm i *）",
+          "selectToolHint": "選擇工具以新增永遠允許的權限。",
+          "bashHint": "為特定指令使用像 \"npm i *\" 或 \"git add *\" 的模式。",
+          "toolHint": "這將允許所有 {tool} 指令而不詢問權限。",
+          "add": "新增",
+          "adding": "新增中..."
+        }
+      }
+    },
+    "status": {
+      "initializing": "初始化中...",
+      "ready": "準備好與 Claude Code 對話！請在下方輸入您的訊息。",
+      "processing": "Claude 正在工作中...",
+      "loginRequired": "需要登入",
+      "stop": "停止",
+      "cost": "成本",
+      "tokens": "代幣",
+      "requestCompleted": "請求完成",
+      "duration": "持續時間"
+    },
+    "messages": {
+      "you": "您",
+      "claude": "Claude",
+      "error": "錯誤",
+      "thinking": "💭 思考中...",
+      "sessionInfo": "🆔 工作階段 ID：{sessionId}",
+      "fileNotReadError": "檔案尚未讀取。讓我先讀取檔案再進行寫入。",
+      "toolsAvailable": "🔧 可用工具：{count}",
+      "mcpServers": "🖥️ MCP 伺服器：{count}",
+      "tokens": "📊 代幣：{total}",
+      "requestCompleted": "請求完成 - 成本：{cost}，持續時間：{duration}",
+      "sessionResumed": "📝 恢復之前的工作階段\n🆔 工作階段 ID：{sessionId}\n💡 您的對話歷史記錄已保留",
+      "newSession": "🆕 開始新工作階段",
+      "loginRequired": "🔐 需要登入\n\n您的 Claude API 金鑰無效或已過期。\n已開啟終端機 - 請在那裡執行登入程序。\n\n登入後，請回到此對話繼續。",
+      "configChanged": "⚙️ WSL 設定已變更。開始新工作階段。",
+      "stopped": "⏹️ Claude code 已停止。",
+      "yoloModeEnabled": "⚡ YOLO 模式已啟用！所有未來的權限將自動允許。",
+      "terminalOpened": "請檢查終端機以更新您的預設模型設定。變更後請回到此對話。",
+      "slashCommandExecuted": "在終端機中執行 /{command} 指令。檢查終端機輸出並在準備好時返回。",
+      "restoreProgress": "🔄 {message}",
+      "restoreSuccess": "✅ {message}",
+      "restoreError": "❌ {message}",
+      "mcpServerSaved": "✅ MCP 伺服器 \"{name}\" 儲存成功",
+      "mcpServerDeleted": "✅ MCP 伺服器 \"{name}\" 刪除成功",
+      "mcpServerError": "❌ MCP 伺服器錯誤：{error}",
+      "backupError": "無可用的工作區資料夾或備份存儲庫。",
+      "restoreSuccess": "已還原至提交：{message}",
+      "restoreFailure": "還原提交失敗：{error}",
+      "settingsUpdateFailure": "更新設定失敗",
+      "modelSwitched": "Claude 模型已切換至：{model}",
+      "invalidModel": "無效的模型：{model}。請選擇 Opus、Sonnet 或 Default。",
+      "wslConfigChanged": "WSL 設定已變更。開始新工作階段。",
+      "loginInTerminal": "請在終端機中登入 Claude，然後返回此對話以繼續。",
+      "checkTerminalForModel": "請檢查終端機以更新您的預設模型設定。變更後請回到此對話。",
+      "failedToOpenFile": "開啟檔案失敗：{filePath}",
+      "failedToCreateImageFile": "建立圖片檔案失敗"
+    },
+    "tools": {
+      "input": "輸入",
+      "result": "結果",
+      "showMoreLines": "顯示更多 {count} 行",
+      "todoWrite": {
+        "name": "更新待辦事項",
+        "listTitle": "待辦事項列表更新：",
+        "completed": "✅ 更新待辦事項完成"
+      },
+      "read": {
+        "completed": "✅ 讀取完成"
+      },
+      "edit": {
+        "completed": "✅ 編輯完成"
+      },
+      "write": {
+        "completed": "✅ 寫入完成"
+      },
+      "generic": {
+        "completed": "✅ {toolName} 完成"
+      }
+    },
+    "permissions": {
+      "title": "需要權限",
+      "message": "允許 <strong>{tool}</strong> 執行上述工具呼叫？",
+      "allow": "允許",
+      "deny": "拒絕",
+      "alwaysAllow": "永遠允許 {tool}",
+      "alwaysAllowCommand": "永遠允許 <code>{command}</code>",
+      "enableYoloMode": "啟用 YOLO 模式",
+      "yoloModeTitle": "啟用 YOLO 模式",
+      "yoloModeSubtitle": "自動允許所有權限",
+      "decided": {
+        "allowed": "您已允許此操作",
+        "denied": "您已拒絕此操作", 
+        "alwaysAllowed": "您已允許此操作並設為永遠允許"
+      },
+      "suggestion": "💡 這看起來像是權限問題。您可以啟用 Yolo 模式來跳過所有權限檢查。"
+    },
+    "fileTypes": {
+      "file": "📄",
+      "html": "🌐", 
+      "css": "🎨",
+      "json": "📋",
+      "markdown": "📝",
+      "python": "🐍",
+      "java": "☕",
+      "cpp": "⚙️",
+      "image": "🖼️",
+      "pdf": "📄",
+      "archive": "📦"
+    },
+    "filePicker": {
+      "title": "選擇檔案",
+      "searchPlaceholder": "搜尋檔案..."
+    },
+    "yoloWarning": "⚠️ Yolo 模式已啟動：Claude Code 將自動批准所有工具請求。",
+    "permissionError": {
+      "suggestion": "💡 這看起來像是權限問題。您可以啟用 Yolo 模式來跳過所有權限檢查。",
+      "enableYolo": "啟用 Yolo 模式"
+    },
+    "common": {
+      "ok": "確定",
+      "cancel": "取消",
+      "close": "✕ 關閉",
+      "save": "儲存",
+      "remove": "移除",
+      "add": "新增",
+      "configure": "設定",
+      "expand": "展開",
+      "collapse": "收合",
+      "showMore": "顯示更多",
+      "showLess": "顯示較少",
+      "copy": "複製訊息",
+      "copied": "已複製！",
+      "all": "全部"
+    }
+  }
+}

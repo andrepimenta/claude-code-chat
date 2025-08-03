@@ -3,11 +3,16 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import getHtml from './ui';
+import { initializeI18n, getI18n } from './i18n';
 
 const exec = util.promisify(cp.exec);
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Claude Code Chat extension is being activated!');
+	
+	// Initialize i18n service
+	initializeI18n(context);
+	
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
 
 	const disposable = vscode.commands.registerCommand('claude-code-chat.openChat', (column?: vscode.ViewColumn) => {
@@ -33,8 +38,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Create status bar item
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-	statusBarItem.text = "Claude";
-	statusBarItem.tooltip = "Open Claude Code Chat (Ctrl+Shift+C)";
+	const i18n = getI18n();
+	statusBarItem.text = i18n.t('extension.statusBar.text');
+	statusBarItem.tooltip = i18n.t('extension.statusBar.tooltip');
 	statusBarItem.command = 'claude-code-chat.openChat';
 	statusBarItem.show();
 
@@ -221,9 +227,11 @@ class ClaudeChatProvider {
 			});
 		}*/
 
+		// Get translations for status messages
+		const i18n = getI18n();
 		this._postMessage({
 			type: 'ready',
-			data: this._isProcessing ? 'Claude is working...' : 'Ready to chat with Claude Code! Type your message below.'
+			data: this._isProcessing ? i18n.t('ui.status.processing') : i18n.t('ui.status.ready')
 		});
 
 		// Send current model to webview
@@ -237,6 +245,9 @@ class ClaudeChatProvider {
 
 		// Send current settings to webview
 		this._sendCurrentSettings();
+
+		// Send current language data to webview
+		this._sendCurrentLanguage();
 
 		// Send saved draft message if any
 		if (this._draftMessage) {
@@ -335,6 +346,12 @@ class ClaudeChatProvider {
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
+				return;
+			case 'getLanguage':
+				this._sendCurrentLanguage();
+				return;
+			case 'setLanguage':
+				this._setLanguage(message.languageCode);
 				return;
 		}
 	}
@@ -465,10 +482,11 @@ class ClaudeChatProvider {
 			console.log("error", e);
 		}
 
-		// Show loading indicator
+		// Show loading indicator with translated text
+		const i18n = getI18n();
 		this._postMessage({
 			type: 'loading',
-			data: 'Claude is working...'
+			data: i18n.t('ui.status.processing')
 		});
 
 		// Build command arguments with session management
@@ -911,8 +929,9 @@ class ClaudeChatProvider {
 		this._newSession();
 
 		// Show notification to user
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'WSL configuration changed. Started a new Claude session.',
+			i18n.t('ui.messages.wslConfigChanged'),
 			'OK'
 		);
 
@@ -955,8 +974,9 @@ class ClaudeChatProvider {
 		terminal.show();
 
 		// Show info message
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'Please login to Claude in the terminal, then come back to this chat to continue.',
+			i18n.t('ui.messages.loginInTerminal'),
 			'OK'
 		);
 
@@ -1075,7 +1095,8 @@ class ClaudeChatProvider {
 
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 			if (!workspaceFolder || !this._backupRepoPath) {
-				vscode.window.showErrorMessage('No workspace folder or backup repository available.');
+				const i18n = getI18n();
+				vscode.window.showErrorMessage(i18n.t('ui.messages.backupError'));
 				return;
 			}
 
@@ -1089,7 +1110,8 @@ class ClaudeChatProvider {
 			// Restore files directly to workspace using git checkout
 			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
 
-			vscode.window.showInformationMessage(`Restored to commit: ${commit.message}`);
+			const i18n = getI18n();
+			vscode.window.showInformationMessage(i18n.t('ui.messages.restoreSuccess', { message: commit.message }));
 
 			this._sendAndSaveMessage({
 				type: 'restoreSuccess',
@@ -1101,7 +1123,8 @@ class ClaudeChatProvider {
 
 		} catch (error: any) {
 			console.error('Failed to restore commit:', error.message);
-			vscode.window.showErrorMessage(`Failed to restore commit: ${error.message}`);
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.restoreFailure', { error: error.message }));
 			this._postMessage({
 				type: 'restoreError',
 				data: `Failed to restore: ${error.message}`
@@ -2136,18 +2159,21 @@ class ClaudeChatProvider {
 	}
 
 	private _getHtmlForWebview(): string {
-		return getHtml(vscode.env?.isTelemetryEnabled);
+		const i18n = getI18n();
+		return getHtml(vscode.env?.isTelemetryEnabled, i18n.getAllTranslations());
 	}
 
 	private _sendCurrentSettings(): void {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const i18n = getI18n();
 		const settings = {
 			'thinking.intensity': config.get<string>('thinking.intensity', 'think'),
 			'wsl.enabled': config.get<boolean>('wsl.enabled', false),
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
 			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
 			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
-			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false)
+			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
+			'language': i18n.getCurrentLanguage()
 		};
 
 		this._postMessage({
@@ -2178,6 +2204,38 @@ class ClaudeChatProvider {
 		this._draftMessage = text || '';
 	}
 
+	private _sendCurrentLanguage(): void {
+		const i18n = getI18n();
+		this._postMessage({
+			type: 'languageData',
+			data: {
+				currentLanguage: i18n.getCurrentLanguage(),
+				supportedLanguages: i18n.getSupportedLanguages(),
+				translations: i18n.getAllTranslations()
+			}
+		});
+	}
+
+	private async _setLanguage(languageCode: string): Promise<void> {
+		try {
+			const i18n = getI18n();
+			await i18n.setLanguage(languageCode);
+			
+			// Send updated language data to webview
+			this._sendCurrentLanguage();
+			
+			// Send updated ready message with new language
+			this._postMessage({
+				type: 'ready',
+				data: this._isProcessing ? i18n.t('ui.status.processing') : i18n.t('ui.status.ready')
+			});
+			
+			console.log(`Language changed to: ${languageCode}`);
+		} catch (error) {
+			console.error('Error setting language:', error);
+		}
+	}
+
 	private async _updateSettings(settings: { [key: string]: any }): Promise<void> {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 
@@ -2195,7 +2253,8 @@ class ClaudeChatProvider {
 			console.log('Settings updated:', settings);
 		} catch (error) {
 			console.error('Failed to update settings:', error);
-			vscode.window.showErrorMessage('Failed to update settings');
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.settingsUpdateFailure'));
 		}
 	}
 
@@ -2222,10 +2281,13 @@ class ClaudeChatProvider {
 			this._context.workspaceState.update('claude.selectedModel', model);
 
 			// Show confirmation
-			vscode.window.showInformationMessage(`Claude model switched to: ${model.charAt(0).toUpperCase() + model.slice(1)}`);
+			const i18n = getI18n();
+			const modelName = model.charAt(0).toUpperCase() + model.slice(1);
+			vscode.window.showInformationMessage(i18n.t('ui.messages.modelSwitched', { model: modelName }));
 		} else {
 			console.error('Invalid model selected:', model);
-			vscode.window.showErrorMessage(`Invalid model: ${model}. Please select Opus, Sonnet, or Default.`);
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.invalidModel', { model }));
 		}
 	}
 
@@ -2254,8 +2316,9 @@ class ClaudeChatProvider {
 		terminal.show();
 
 		// Show info message
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'Check the terminal to update your default model configuration. Come back to this chat here after making changes.',
+			i18n.t('ui.messages.checkTerminalForModel'),
 			'OK'
 		);
 
@@ -2290,16 +2353,17 @@ class ClaudeChatProvider {
 		}
 		terminal.show();
 
+		// Get translated message
+		const i18n = getI18n();
+		const message = i18n.t('ui.messages.slashCommandExecuted', { command });
+
 		// Show info message
-		vscode.window.showInformationMessage(
-			`Executing /${command} command in terminal. Check the terminal output and return when ready.`,
-			'OK'
-		);
+		vscode.window.showInformationMessage(message, 'OK');
 
 		// Send message to UI about terminal
 		this._postMessage({
 			type: 'terminalOpened',
-			data: `Executing /${command} command in terminal. Check the terminal output and return when ready.`,
+			data: message,
 		});
 	}
 
@@ -2332,7 +2396,8 @@ class ClaudeChatProvider {
 			const document = await vscode.workspace.openTextDocument(uri);
 			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
 		} catch (error) {
-			vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.failedToOpenFile', { filePath }));
 			console.error('Error opening file:', error);
 		}
 	}
@@ -2381,7 +2446,8 @@ class ClaudeChatProvider {
 
 		} catch (error) {
 			console.error('Error creating image file:', error);
-			vscode.window.showErrorMessage('Failed to create image file');
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.failedToCreateImageFile'));
 		}
 	}
 
