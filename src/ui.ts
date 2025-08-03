@@ -86,13 +86,13 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<textarea class="input-field" id="messageInput" placeholder="${t('ui.input.placeholder')}" rows="1"></textarea>
 					<div class="input-controls">
 						<div class="left-controls">
-							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="Select model">
+							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="${t('ui.modelSelector.tooltip')}">
 								<span id="selectedModel">Opus</span>
 								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
 									<path d="M1 2.5l3 3 3-3"></path>
 								</svg>
 							</button>
-							<button class="tools-btn" onclick="showMCPModal()" title="Configure MCP servers">
+							<button class="tools-btn" onclick="showMCPModal()" title="${t('ui.mcpServers.tooltip')}">
 								MCP
 								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
 									<path d="M1 2.5l3 3 3-3"></path>
@@ -865,7 +865,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
 			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
-				toolName = 'Update Todos';
+				toolName = translations?.ui?.tools?.todoWrite?.name || 'Update Todos';
 			}
 			toolInfoElement.textContent = toolName;
 			
@@ -882,7 +882,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				
 				// Handle TodoWrite specially or format raw input
 				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
-					let todoHtml = 'Todo List Update:';
+					let todoHtml = translations?.ui?.tools?.todoWrite?.listTitle || 'Todo List Update:';
 					for (const todo of data.rawInput.todos) {
 						const status = todo.status === 'completed' ? '✅' :
 							todo.status === 'in_progress' ? '🔄' : '⏳';
@@ -928,7 +928,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 
 		function createExpandableInput(toolInput, rawInput) {
 			try {
-				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">expand</span>');
+				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">' + (translations?.ui?.common?.expand || 'expand') + '</span>');
 				
 				// Store raw input data for expansion
 				if (rawInput && typeof rawInput === 'object') {
@@ -940,7 +940,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 						btnIndex++;
-						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">expand</span>\`;
+						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">\${translations?.ui?.common?.expand || 'expand'}</span>\`;
 					});
 				}
 				
@@ -963,13 +963,17 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				const toolName = data.toolName;
 				let completionText;
 				if (toolName === 'Read') {
-					completionText = '✅ Read completed';
+					completionText = translations?.ui?.tools?.read?.completed || '✅ Read completed';
 				} else if (toolName === 'Edit') {
-					completionText = '✅ Edit completed';
+					completionText = translations?.ui?.tools?.edit?.completed || '✅ Edit completed';
+				} else if (toolName === 'Write') {
+					completionText = translations?.ui?.tools?.write?.completed || '✅ Write completed';
 				} else if (toolName === 'TodoWrite') {
-					completionText = '✅ Update Todos completed';
+					completionText = translations?.ui?.tools?.todoWrite?.completed || '✅ Update Todos completed';
 				} else {
-					completionText = '✅ ' + toolName + ' completed';
+					completionText = translations?.ui?.tools?.generic?.completed ? 
+						translations.ui.tools.generic.completed.replace('{toolName}', toolName) :
+						'✅ ' + toolName + ' completed';
 				}
 				addMessage(completionText, 'system');
 				return; // Don't show the result message
@@ -1430,15 +1434,18 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				container = wrapper;
 			}
 			
-			if (button.textContent === 'expand') {
+			const expandText = translations?.ui?.common?.expand || 'expand';
+			const collapseText = translations?.ui?.common?.collapse || 'collapse';
+			
+			if (button.textContent === expandText) {
 				// Show full content
 				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">collapse</span>';
+				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">' + collapseText + '</span>';
 			} else {
 				// Show truncated content
 				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 				const truncated = decodedValue.substring(0, 97) + '...';
-				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">expand</span>';
+				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">' + expandText + '</span>';
 			}
 		}
 
@@ -2087,7 +2094,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			serversList.innerHTML = '';
 
 			if (Object.keys(servers).length === 0) {
-				serversList.innerHTML = '<div class="no-servers">No MCP servers configured</div>';
+				serversList.innerHTML = '<div class="no-servers">' + (translations?.ui?.mcpServers?.noServers || 'No MCP servers configured') + '</div>';
 				return;
 			}
 
@@ -2386,7 +2393,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						<div class="slash-command-description">\${snippet.prompt}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">🗑️</button>
+						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="\${translations?.ui?.slashCommands?.management?.deleteSnippet || 'Delete snippet'}">🗑️</button>
 					</div>
 				\`;
 				
@@ -2874,7 +2881,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<span class="icon">🔐</span>
 					<span>Permission Required</span>
 					<div class="permission-menu">
-						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
+						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="\${translations?.ui?.slashCommands?.management?.moreOptions || 'More options'}">⋮</button>
 						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
 							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
 								<span class="menu-icon">⚡</span>

@@ -32,6 +32,7 @@
     },
     "modelSelector": {
       "title": "Enforce Model",
+      "tooltip": "Select model",
       "explanation": "This overrides your default model setting for this conversation only.",
       "opus": {
         "title": "Opus - Most capable model",
@@ -159,6 +160,10 @@
         "title": "Quick Command",
         "placeholder": "enter-command"
       },
+      "management": {
+        "deleteSnippet": "Delete snippet",
+        "moreOptions": "More options"
+      },
       "promptSnippets": {
         "performanceAnalysis": {
           "title": "/performance-analysis",
@@ -196,6 +201,7 @@
     },
     "mcpServers": {
       "title": "MCP Servers",
+      "tooltip": "Configure MCP servers",
       "noServers": "No MCP servers configured",
       "addServer": "+ Add MCP Server",
       "popularServers": "Popular MCP Servers",
@@ -307,6 +313,25 @@
       "mcpServerDeleted": "✅ MCP server \"{name}\" deleted successfully",
       "mcpServerError": "❌ Error with MCP server: {error}"
     },
+    "tools": {
+      "todoWrite": {
+        "name": "Update Todos",
+        "listTitle": "Todo List Update:",
+        "completed": "✅ Update Todos completed"
+      },
+      "read": {
+        "completed": "✅ Read completed"
+      },
+      "edit": {
+        "completed": "✅ Edit completed"
+      },
+      "write": {
+        "completed": "✅ Write completed"
+      },
+      "generic": {
+        "completed": "✅ {toolName} completed"
+      }
+    },
     "permissions": {
       "title": "Permission Required",
       "message": "Allow <strong>{tool}</strong> to execute the tool call above?",
@@ -355,7 +380,9 @@
       "showLess": "Show less",
       "copy": "Copy message",
       "copied": "Copied!",
-      "all": "All"
+      "all": "All",
+      "expand": "expand",
+      "collapse": "collapse"
     }
   }
 }

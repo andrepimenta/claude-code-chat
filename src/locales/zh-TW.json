@@ -32,6 +32,7 @@
     },
     "modelSelector": {
       "title": "強制指定模型",
+      "tooltip": "選擇模型",
       "explanation": "這將覆蓋您目前對話的預設模型設定。",
       "opus": {
         "title": "Opus - 最強大的模型",
@@ -159,6 +160,10 @@
         "title": "快速指令",
         "placeholder": "輸入指令"
       },
+      "management": {
+        "deleteSnippet": "刪除片段",
+        "moreOptions": "更多選項"
+      },
       "promptSnippets": {
         "performanceAnalysis": {
           "title": "/performance-analysis",
@@ -196,6 +201,7 @@
     },
     "mcpServers": {
       "title": "MCP 伺服器",
+      "tooltip": "設定 MCP 伺服器",
       "noServers": "未設定 MCP 伺服器",
       "addServer": "+ 新增 MCP 伺服器",
       "popularServers": "熱門 MCP 伺服器",
@@ -307,6 +313,25 @@
       "mcpServerDeleted": "✅ MCP 伺服器 \"{name}\" 刪除成功",
       "mcpServerError": "❌ MCP 伺服器錯誤：{error}"
     },
+    "tools": {
+      "todoWrite": {
+        "name": "更新待辦事項",
+        "listTitle": "待辦事項列表更新：",
+        "completed": "✅ 更新待辦事項完成"
+      },
+      "read": {
+        "completed": "✅ 讀取完成"
+      },
+      "edit": {
+        "completed": "✅ 編輯完成"
+      },
+      "write": {
+        "completed": "✅ 寫入完成"
+      },
+      "generic": {
+        "completed": "✅ {toolName} 完成"
+      }
+    },
     "permissions": {
       "title": "需要權限",
       "message": "允許 <strong>{tool}</strong> 執行上述工具呼叫？",
@@ -355,7 +380,9 @@
       "showLess": "顯示較少",
       "copy": "複製訊息",
       "copied": "已複製！",
-      "all": "全部"
+      "all": "全部",
+      "expand": "展開",
+      "collapse": "收合"
     }
   }
 }
