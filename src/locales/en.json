@@ -331,6 +331,9 @@
       "invalidModel": "Invalid model: {model}. Please select Opus, Sonnet, or Default."
     },
     "tools": {
+      "input": "INPUT",
+      "result": "Result",
+      "showMoreLines": "Show {count} more lines",
       "todoWrite": {
         "name": "Update Todos",
         "listTitle": "Todo List Update:",
@@ -384,6 +387,10 @@
       "searchPlaceholder": "Search files..."
     },
     "yoloWarning": "⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.",
+    "permissionError": {
+      "suggestion": "💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.",
+      "enableYolo": "Enable Yolo Mode"
+    },
     "common": {
       "ok": "OK",
       "cancel": "Cancel",
@@ -393,13 +400,12 @@
       "add": "Add",
       "configure": "Configure",
       "expand": "expand",
+      "collapse": "collapse",
       "showMore": "Show more",
       "showLess": "Show less",
       "copy": "Copy message",
       "copied": "Copied!",
-      "all": "All",
-      "expand": "expand",
-      "collapse": "collapse"
+      "all": "All"
     }
   }
 }

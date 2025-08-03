@@ -853,9 +853,9 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>\${window.t('ui.permissionError.suggestion')}</span>
 					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
+					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">\${window.t('ui.permissionError.enableYolo')}</button>
 				\`;
 				messageDiv.appendChild(yoloSuggestion);
 			}
@@ -932,7 +932,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				
 				const labelDiv = document.createElement('div');
 				labelDiv.className = 'tool-input-label';
-				labelDiv.textContent = 'INPUT';
+				labelDiv.textContent = window.t('ui.tools.input') || 'INPUT';
 				inputElement.appendChild(labelDiv);
 				
 				const contentDiv = document.createElement('div');
@@ -1017,7 +1017,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			
 			const labelDiv = document.createElement('div');
 			labelDiv.className = 'message-label';
-			labelDiv.textContent = data.isError ? 'Error' : 'Result';
+			labelDiv.textContent = data.isError ? (window.t('ui.messages.error') || 'Error') : (window.t('ui.tools.result') || 'Result');
 			
 			headerDiv.appendChild(iconDiv);
 			headerDiv.appendChild(labelDiv);
@@ -1045,7 +1045,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				expandContainer.className = 'diff-expand-container';
 				const expandButton = document.createElement('button');
 				expandButton.className = 'diff-expand-btn';
-				expandButton.textContent = 'Show more';
+				expandButton.textContent = window.t('ui.common.showMore') || 'Show more';
 				expandButton.setAttribute('onclick', 'toggleResultExpansion(\\'' + resultId + '\\\')');
 				expandContainer.appendChild(expandButton);
 				contentDiv.appendChild(expandContainer);
@@ -1063,9 +1063,9 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>\${window.t('ui.permissionError.suggestion')}</span>
 					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
+					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">\${window.t('ui.permissionError.enableYolo')}</button>
 				\`;
 				messageDiv.appendChild(yoloSuggestion);
 			}
@@ -1397,11 +1397,11 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			if (hiddenDiv && button) {
 				if (hiddenDiv.style.display === 'none') {
 					hiddenDiv.style.display = 'block';
-					button.textContent = 'Show less';
+					button.textContent = window.t('ui.common.showLess') || 'Show less';
 				} else {
 					hiddenDiv.style.display = 'none';
 					const hiddenLines = hiddenDiv.querySelectorAll('.diff-line').length;
-					button.textContent = 'Show ' + hiddenLines + ' more lines';
+					button.textContent = (window.t('ui.tools.showMoreLines') || 'Show {count} more lines').replace('{count}', hiddenLines);
 				}
 			}
 		}
@@ -1415,11 +1415,11 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				if (hiddenDiv.style.display === 'none') {
 					hiddenDiv.style.display = 'inline';
 					if (ellipsis) ellipsis.style.display = 'none';
-					button.textContent = 'Show less';
+					button.textContent = window.t('ui.common.showLess') || 'Show less';
 				} else {
 					hiddenDiv.style.display = 'none';
 					if (ellipsis) ellipsis.style.display = 'inline';
-					button.textContent = 'Show more';
+					button.textContent = window.t('ui.common.showMore') || 'Show more';
 				}
 			}
 		}
@@ -3400,7 +3400,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			listDiv.innerHTML = '';
 
 			if (conversations.length === 0) {
-				listDiv.innerHTML = '<p style="text-align: center; color: var(--vscode-descriptionForeground);">No conversations found</p>';
+				listDiv.innerHTML = '<p style="text-align: center; color: var(--vscode-descriptionForeground);">' + (window.translations?.ui?.conversationHistory?.noConversations || 'No conversations found') + '</p>';
 				return;
 			}
 

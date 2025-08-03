@@ -331,6 +331,9 @@
       "invalidModel": "無效的模型：{model}。請選擇 Opus、Sonnet 或 Default。"
     },
     "tools": {
+      "input": "輸入",
+      "result": "結果",
+      "showMoreLines": "顯示更多 {count} 行",
       "todoWrite": {
         "name": "更新待辦事項",
         "listTitle": "待辦事項列表更新：",
@@ -384,6 +387,10 @@
       "searchPlaceholder": "搜尋檔案..."
     },
     "yoloWarning": "⚠️ Yolo 模式已啟動：Claude Code 將自動批准所有工具請求。",
+    "permissionError": {
+      "suggestion": "💡 這看起來像是權限問題。您可以啟用 Yolo 模式來跳過所有權限檢查。",
+      "enableYolo": "啟用 Yolo 模式"
+    },
     "common": {
       "ok": "確定",
       "cancel": "取消",
@@ -393,13 +400,12 @@
       "add": "新增",
       "configure": "設定",
       "expand": "展開",
+      "collapse": "收合",
       "showMore": "顯示更多",
       "showLess": "顯示較少",
       "copy": "複製訊息",
       "copied": "已複製！",
-      "all": "全部",
-      "expand": "展開",
-      "collapse": "收合"
+      "all": "全部"
     }
   }
 }
