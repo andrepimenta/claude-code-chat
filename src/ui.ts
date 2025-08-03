@@ -1,16 +1,53 @@
-import styles from './ui-styles'
-const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
+import styles from './ui-styles';
+const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
+	// Helper function for translations
+	const t = (key: string, params?: Record<string, string | number>): string => {
+		if (!translations) {return key;}
+		
+		const value = key.split('.').reduce((obj, k) => obj && obj[k], translations);
+		if (!value) {return key;}
+		
+		if (params) {
+			return value.replace(/\{(\w+)\}/g, (match: string, paramKey: string) => {
+				return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+			});
+		}
+		
+		return value;
+	};
+
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Claude Code Chat</title>
 	${styles}
+	<script>
+		// Make translations available globally for runtime JavaScript functions
+		window.translations = ${JSON.stringify(translations || {})};
+		
+		// Global translation function for runtime use
+		window.t = function(key, params) {
+			if (!window.translations) return key;
+			
+			const value = key.split('.').reduce((obj, k) => obj && obj[k], window.translations);
+			if (!value) return key;
+			
+			if (params) {
+				return value.replace(/\\{(\\w+)\\}/g, (match, paramKey) => {
+					return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+				});
+			}
+			
+			return value;
+		};
+	</script>
 </head>
 <body>
 	<div class="header">
 		<div style="display: flex; align-items: center;">
-			<h2>Claude Code Chat</h2>
+			<h2>${t('ui.header.title')}</h2>
 			<!-- <div id="sessionInfo" class="session-badge" style="display: none;">
 				<span class="session-icon">💬</span>
 				<span id="sessionId">-</span>
@@ -19,16 +56,16 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 		<div style="display: flex; gap: 8px; align-items: center;">
 			<div id="sessionStatus" class="session-status" style="display: none;">No session</div>
-			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
-			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 History</button>
-			<button class="btn primary" id="newSessionBtn" onclick="newSession()">New Chat</button>
+			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="${t('ui.header.settings')}">⚙️</button>
+			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 ${t('ui.header.history')}</button>
+			<button class="btn primary" id="newSessionBtn" onclick="newSession()">${t('ui.header.newChat')}</button>
 		</div>
 	</div>
 	
 	<div id="conversationHistory" class="conversation-history" style="display: none;">
 		<div class="conversation-header">
-			<h3>Conversation History</h3>
-			<button class="btn" onclick="toggleConversationHistory()">✕ Close</button>
+			<h3>${t('ui.conversationHistory.title')}</h3>
+			<button class="btn" onclick="toggleConversationHistory()">${t('ui.conversationHistory.close')}</button>
 		</div>
 		<div id="conversationList" class="conversation-list">
 			<!-- Conversations will be loaded here -->
@@ -43,12 +80,12 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			<div class="wsl-alert-content">
 				<div class="wsl-alert-icon">💻</div>
 				<div class="wsl-alert-text">
-					<strong>Looks like you are using Windows!</strong><br/>
-					If you are using WSL to run Claude Code, you should enable WSL integration in the settings.
+					<strong>${t('ui.wslAlert.title')}</strong><br/>
+					${t('ui.wslAlert.message')}
 				</div>
 				<div class="wsl-alert-actions">
-					<button class="btn" onclick="openWSLSettings()">Enable WSL</button>
-					<button class="btn outlined" onclick="dismissWSLAlert()">Dismiss</button>
+					<button class="btn" onclick="openWSLSettings()">${t('ui.wslAlert.enableWSL')}</button>
+					<button class="btn outlined" onclick="dismissWSLAlert()">${t('ui.wslAlert.dismiss')}</button>
 				</div>
 			</div>
 		</div>
@@ -56,26 +93,26 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		<div class="input-container" id="inputContainer">
 			<div class="input-modes">
 				<div class="mode-toggle">
-					<span onclick="togglePlanMode()">Plan First</span>
+					<span onclick="togglePlanMode()">${t('ui.input.planFirst')}</span>
 					<div class="mode-switch" id="planModeSwitch" onclick="togglePlanMode()"></div>
 				</div>
 				<div class="mode-toggle">
-					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
+					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">${t('ui.input.thinkingMode')}</span>
 					<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
 				</div>
 			</div>
 			<div class="textarea-container">
 				<div class="textarea-wrapper">
-					<textarea class="input-field" id="messageInput" placeholder="Type your message to Claude Code..." rows="1"></textarea>
+					<textarea class="input-field" id="messageInput" placeholder="${t('ui.input.placeholder')}" rows="1"></textarea>
 					<div class="input-controls">
 						<div class="left-controls">
-							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="Select model">
+							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="${t('ui.modelSelector.tooltip')}">
 								<span id="selectedModel">Opus</span>
 								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
 									<path d="M1 2.5l3 3 3-3"></path>
 								</svg>
 							</button>
-							<button class="tools-btn" onclick="showMCPModal()" title="Configure MCP servers">
+							<button class="tools-btn" onclick="showMCPModal()" title="${t('ui.mcpServers.tooltip')}">
 								MCP
 								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
 									<path d="M1 2.5l3 3 3-3"></path>
@@ -83,9 +120,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 							</button>
 						</div>
 						<div class="right-controls">
-							<button class="slash-btn" onclick="showSlashCommandsModal()" title="Slash commands">/</button>
-							<button class="at-btn" onclick="showFilePicker()" title="Reference files">@</button>
-							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="Attach images">
+							<button class="slash-btn" onclick="showSlashCommandsModal()" title="${t('ui.input.slashCommands')}">/</button>
+							<button class="at-btn" onclick="showFilePicker()" title="${t('ui.input.referenceFiles')}">@</button>
+							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="${t('ui.input.attachImages')}">
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 16 16"
@@ -100,7 +137,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 							</button>
 							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
 							<div>
-							<span>Send </span>
+							<span>${t('ui.input.send')} </span>
 							   <svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 24 24"
@@ -123,25 +160,25 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	
 	<div class="status ready" id="status">
 		<div class="status-indicator"></div>
-		<div class="status-text" id="statusText">Initializing...</div>
+		<div class="status-text" id="statusText">${t('ui.status.initializing')}</div>
 		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
 			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
 				<path d="M6 6h12v12H6z"/>
 			</svg>
-			Stop
+			${t('ui.status.stop')}
 		</button>
 	</div>
 
 			<div id="yoloWarning" class="yolo-warning" style="display: none;">
-			⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.
+			${t('ui.yoloWarning')}
 		</div>
 
 	<!-- File picker modal -->
 	<div id="filePickerModal" class="file-picker-modal" style="display: none;">
 		<div class="file-picker-content">
 			<div class="file-picker-header">
-				<span>Select File</span>
-				<input type="text" id="fileSearchInput" placeholder="Search files..." class="file-search-input">
+				<span>${t('ui.filePicker.title')}</span>
+				<input type="text" id="fileSearchInput" placeholder="${t('ui.filePicker.searchPlaceholder')}" class="file-search-input">
 			</div>
 			<div id="fileList" class="file-list">
 				<!-- Files will be loaded here -->
@@ -153,7 +190,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="mcpModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>MCP Servers</span>
+				<span>${t('ui.mcpServers.title')}</span>
 				<button class="tools-close-btn" onclick="hideMCPModal()">✕</button>
 			</div>
 			<div class="tools-list">
@@ -161,62 +198,62 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<!-- MCP servers will be loaded here -->
 				</div>
 				<div class="mcp-add-server">
-					<button class="btn outlined" onclick="showAddServerForm()" id="addServerBtn">+ Add MCP Server</button>
+					<button class="btn outlined" onclick="showAddServerForm()" id="addServerBtn">${t('ui.mcpServers.addServer')}</button>
 				</div>
 				<div class="mcp-popular-servers" id="popularServers">
-					<h4>Popular MCP Servers</h4>
+					<h4>${t('ui.mcpServers.popularServers')}</h4>
 					<div class="popular-servers-grid">
 						<div class="popular-server-item" onclick="addPopularServer('context7', { type: 'http', url: 'https://context7.liam.sh/mcp' })">
 							<div class="popular-server-icon">📚</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Context7</div>
-								<div class="popular-server-desc">Up-to-date Code Docs For Any Prompt</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.context7.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.context7.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('sequential-thinking', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] })">
 							<div class="popular-server-icon">🔗</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Sequential Thinking</div>
-								<div class="popular-server-desc">Step-by-step reasoning capabilities</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.sequentialThinking.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.sequentialThinking.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('memory', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] })">
 							<div class="popular-server-icon">🧠</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Memory</div>
-								<div class="popular-server-desc">Knowledge graph storage</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.memory.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.memory.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('puppeteer', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer'] })">
 							<div class="popular-server-icon">🎭</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Puppeteer</div>
-								<div class="popular-server-desc">Browser automation</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.puppeteer.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.puppeteer.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('fetch', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-fetch'] })">
 							<div class="popular-server-icon">🌐</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Fetch</div>
-								<div class="popular-server-desc">HTTP requests & web scraping</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.fetch.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.fetch.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('filesystem', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] })">
 							<div class="popular-server-icon">📁</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Filesystem</div>
-								<div class="popular-server-desc">File operations & management</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.filesystem.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.filesystem.description')}</div>
 							</div>
 						</div>
 					</div>
 				</div>
 				<div class="mcp-add-form" id="addServerForm" style="display: none;">
 				<div class="form-group">
-					<label for="serverName">Server Name:</label>
+					<label for="serverName">${t('ui.mcpServers.addForm.serverName')}</label>
 					<input type="text" id="serverName" placeholder="my-server" required>
 				</div>
 				<div class="form-group">
-					<label for="serverType">Server Type:</label>
+					<label for="serverType">${t('ui.mcpServers.addForm.serverType')}</label>
 					<select id="serverType" onchange="updateServerForm()">
 						<option value="http">HTTP</option>
 						<option value="sse">SSE</option>
@@ -224,28 +261,28 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					</select>
 				</div>
 				<div class="form-group" id="commandGroup" style="display: none;">
-					<label for="serverCommand">Command:</label>
+					<label for="serverCommand">${t('ui.mcpServers.addForm.command')}</label>
 					<input type="text" id="serverCommand" placeholder="/path/to/server">
 				</div>
 				<div class="form-group" id="urlGroup">
-					<label for="serverUrl">URL:</label>
+					<label for="serverUrl">${t('ui.mcpServers.addForm.url')}</label>
 					<input type="text" id="serverUrl" placeholder="https://example.com/mcp">
 				</div>
 				<div class="form-group" id="argsGroup" style="display: none;">
-					<label for="serverArgs">Arguments (one per line):</label>
+					<label for="serverArgs">${t('ui.mcpServers.addForm.arguments')}</label>
 					<textarea id="serverArgs" placeholder="--api-key&#10;abc123" rows="3"></textarea>
 				</div>
 				<div class="form-group" id="envGroup" style="display: none;">
-					<label for="serverEnv">Environment Variables (KEY=value, one per line):</label>
+					<label for="serverEnv">${t('ui.mcpServers.addForm.environment')}</label>
 					<textarea id="serverEnv" placeholder="API_KEY=123&#10;CACHE_DIR=/tmp" rows="3"></textarea>
 				</div>
 				<div class="form-group" id="headersGroup">
-					<label for="serverHeaders">Headers (KEY=value, one per line):</label>
+					<label for="serverHeaders">${t('ui.mcpServers.addForm.headers')}</label>
 					<textarea id="serverHeaders" placeholder="Authorization=Bearer token&#10;X-API-Key=key" rows="3"></textarea>
 				</div>
 				<div class="form-buttons">
-					<button class="btn" onclick="saveMCPServer()">Add Server</button>
-					<button class="btn outlined" onclick="hideAddServerForm()">Cancel</button>
+					<button class="btn" onclick="saveMCPServer()">${t('ui.mcpServers.addForm.addServer')}</button>
+					<button class="btn outlined" onclick="hideAddServerForm()">${t('ui.mcpServers.addForm.cancel')}</button>
 				</div>
 			</div>
 		</div>
@@ -256,64 +293,78 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="settingsModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>Claude Code Chat Settings</span>
+				<span>${t('ui.settings.title')}</span>
 				<button class="tools-close-btn" onclick="hideSettingsModal()">✕</button>
 			</div>
 			<div class="tools-list">
-				<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 14px; font-weight: 600;">WSL Configuration</h3>
+				<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.language.title')}</h3>
 				<div>
 					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
-						WSL integration allows you to run Claude Code from within Windows Subsystem for Linux.
-						This is useful if you have Claude installed in WSL instead of Windows.
+						${t('ui.settings.language.description')}
+					</p>
+				</div>
+				<div class="settings-group">
+					<div style="margin-bottom: 12px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.language.title')}</label>
+						<select id="language-select" class="file-search-input" style="width: 200px; max-width: 100%;" onchange="updateLanguage()">
+							<!-- Language options will be populated by JavaScript -->
+						</select>
+					</div>
+				</div>
+
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.wsl.title')}</h3>
+				<div>
+					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
+						${t('ui.settings.wsl.description')}
 					</p>
 				</div>
 				<div class="settings-group">
 					<div class="tool-item">
 						<input type="checkbox" id="wsl-enabled" onchange="updateSettings()">
-						<label for="wsl-enabled">Enable WSL Integration</label>
+						<label for="wsl-enabled">${t('ui.settings.wsl.enabled')}</label>
 					</div>
 					
 					<div id="wslOptions" style="margin-left: 24px; margin-top: 12px;">
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">WSL Distribution</label>
-							<input type="text" id="wsl-distro" class="file-search-input" style="width: 100%;" placeholder="Ubuntu" onchange="updateSettings()">
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.distro')}</label>
+							<input type="text" id="wsl-distro" class="file-search-input" style="width: 200px; max-width: 100%;" placeholder="Ubuntu" onchange="updateSettings()">
 						</div>
 						
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Node.js Path in WSL</label>
-							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.nodePath')}</label>
+							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 300px; max-width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
-								Find your node installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
+								${t('ui.settings.wsl.nodePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
 							</p>
 						</div>
 						
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Claude Path in WSL</label>
-							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.claudePath')}</label>
+							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 300px; max-width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
-								Find your claude installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
+								${t('ui.settings.wsl.claudePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
 							</p>
 						</div>
 					</div>
 				</div>
 
-				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Permissions</h3>
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.permissions.title')}</h3>
 				<div>
 					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
-						Manage commands and tools that are automatically allowed without asking for permission.
+						${t('ui.settings.permissions.description')}
 					</p>
 				</div>
 				<div class="settings-group">
 					<div id="permissionsList" class="permissions-list">
 						<div class="permissions-loading" style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
-							Loading permissions...
+							${t('ui.settings.permissions.loadingPermissions')}
 						</div>
 					</div>
 					<div class="permissions-add-section">
 						<div id="addPermissionForm" class="permissions-add-form" style="display: none;">
 							<div class="permissions-form-row">
 								<select id="addPermissionTool" class="permissions-tool-select" onchange="toggleCommandInput()">
-									<option value="">Select tool...</option>
+									<option value="">${t('ui.settings.permissions.addForm.selectTool')}</option>
 									<option value="Bash">Bash</option>
 									<option value="Read">Read</option>
 									<option value="Edit">Edit</option>
@@ -326,20 +377,20 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 									<option value="WebFetch">WebFetch</option>
 								</select>
 								<div style="flex-grow: 1; display: flex;">
-									<input type="text" id="addPermissionCommand" class="permissions-command-input" placeholder="Command pattern (e.g., npm i *)" style="display: none;" />
+									<input type="text" id="addPermissionCommand" class="permissions-command-input" placeholder="${t('ui.settings.permissions.addForm.commandPattern')}" style="display: none;" />
 								</div>
-								<button id="addPermissionBtn" class="permissions-add-btn" onclick="addPermission()">Add</button>
+								<button id="addPermissionBtn" class="permissions-add-btn" onclick="addPermission()">${t('ui.settings.permissions.addForm.add')}</button>
 							</div>
 							<div id="permissionsFormHint" class="permissions-form-hint">
-								Select a tool to add always-allow permission.
+								${t('ui.settings.permissions.addForm.selectToolHint')}
 							</div>
 						</div>
 						<button id="showAddPermissionBtn" class="permissions-show-add-btn" onclick="showAddPermissionForm()">
-							+ Add permission
+							${t('ui.settings.permissions.addPermission')}
 						</button>
 						<div class="yolo-mode-section">
 							<input type="checkbox" id="yolo-mode" onchange="updateSettings(); updateYoloWarning();">
-							<label for="yolo-mode">Enable Yolo Mode (Auto-allow all permissions)</label>
+							<label for="yolo-mode">${t('ui.settings.permissions.yoloMode')}</label>
 						</div>
 					</div>
 				</div>
@@ -353,28 +404,28 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="modelModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content" style="width: 400px;">
 			<div class="tools-modal-header">
-				<span>Enforce Model</span>
+				<span>${t('ui.modelSelector.title')}</span>
 				<button class="tools-close-btn" onclick="hideModelModal()">✕</button>
 			</div>
 			<div class="model-explanatory-text">
-				This overrides your default model setting for this conversation only.
+				${t('ui.modelSelector.explanation')}
 			</div>
 			<div class="tools-list">
 				<div class="tool-item" onclick="selectModel('opus')">
 					<input type="radio" name="model" id="model-opus" value="opus" checked>
 					<label for="model-opus">
-						<div class="model-title">Opus - Most capable model</div>
+						<div class="model-title">${t('ui.modelSelector.opus.title')}</div>
 						<div class="model-description">
-							Best for complex tasks and highest quality output
+							${t('ui.modelSelector.opus.description')}
 						</div>
 					</label>
 				</div>
 				<div class="tool-item" onclick="selectModel('sonnet')">
 					<input type="radio" name="model" id="model-sonnet" value="sonnet">
 					<label for="model-sonnet">
-						<div class="model-title">Sonnet - Balanced model</div>
+						<div class="model-title">${t('ui.modelSelector.sonnet.title')}</div>
 						<div class="model-description">
-							Good balance of speed and capability
+							${t('ui.modelSelector.sonnet.description')}
 						</div>
 					</label>
 				</div>
@@ -382,13 +433,13 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<input type="radio" name="model" id="model-default" value="default">
 					<label for="model-default" class="default-model-layout">
 						<div class="model-option-content">
-							<div class="model-title">Default - User configured</div>
+							<div class="model-title">${t('ui.modelSelector.default.title')}</div>
 							<div class="model-description">
-								Uses the model configured in your settings
+								${t('ui.modelSelector.default.description')}
 							</div>
 						</div>
 						<button class="secondary-button configure-button" onclick="event.stopPropagation(); openModelTerminal();">
-							Configure
+							${t('ui.modelSelector.default.configure')}
 						</button>
 					</label>
 				</div>
@@ -400,24 +451,24 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="thinkingIntensityModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content" style="width: 450px;">
 			<div class="tools-modal-header">
-				<span>Thinking Mode Intensity</span>
+				<span>${t('ui.thinkingIntensity.title')}</span>
 				<button class="tools-close-btn" onclick="hideThinkingIntensityModal()">✕</button>
 			</div>
 			<div class="thinking-modal-description">
-				Configure the intensity of thinking mode. Higher levels provide more detailed reasoning but consume more tokens.
+				${t('ui.thinkingIntensity.description')}
 			</div>
 			<div class="tools-list">
 				<div class="thinking-slider-container">
 					<input type="range" min="0" max="3" value="0" step="1" class="thinking-slider" id="thinkingIntensitySlider" oninput="updateThinkingIntensityDisplay(this.value)">
 					<div class="slider-labels">
-						<div class="slider-label active" id="thinking-label-0" onclick="setThinkingIntensityValue(0)">Think</div>
-						<div class="slider-label" id="thinking-label-1" onclick="setThinkingIntensityValue(1)">Think Hard</div>
-						<div class="slider-label" id="thinking-label-2" onclick="setThinkingIntensityValue(2)">Think Harder</div>
-						<div class="slider-label" id="thinking-label-3" onclick="setThinkingIntensityValue(3)">Ultrathink</div>
+						<div class="slider-label active" id="thinking-label-0" onclick="setThinkingIntensityValue(0)">${t('ui.thinkingIntensity.levels.think')}</div>
+						<div class="slider-label" id="thinking-label-1" onclick="setThinkingIntensityValue(1)">${t('ui.thinkingIntensity.levels.thinkHard')}</div>
+						<div class="slider-label" id="thinking-label-2" onclick="setThinkingIntensityValue(2)">${t('ui.thinkingIntensity.levels.thinkHarder')}</div>
+						<div class="slider-label" id="thinking-label-3" onclick="setThinkingIntensityValue(3)">${t('ui.thinkingIntensity.levels.ultrathink')}</div>
 					</div>
 				</div>
 				<div class="thinking-modal-actions">
-					<button class="confirm-btn" onclick="confirmThinkingIntensity()">Confirm</button>
+					<button class="confirm-btn" onclick="confirmThinkingIntensity()">${t('ui.thinkingIntensity.confirm')}</button>
 				</div>
 			</div>
 		</div>
@@ -427,7 +478,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div id="slashCommandsModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>Commands & Prompt Snippets</span>
+				<span>${t('ui.slashCommands.title')}</span>
 				<button class="tools-close-btn" onclick="hideSlashCommandsModal()">✕</button>
 			</div>
 			<div class="tools-modal-body">
@@ -436,42 +487,42 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			<div class="slash-commands-search">
 				<div class="search-input-wrapper">
 					<span class="search-prefix">/</span>
-					<input type="text" id="slashCommandsSearch" placeholder="Search commands and snippets..." oninput="filterSlashCommands()">
+					<input type="text" id="slashCommandsSearch" placeholder="${t('ui.slashCommands.search')}" oninput="filterSlashCommands()">
 				</div>
 			</div>
 			
 			<!-- Custom Commands Section -->
 			<div class="slash-commands-section">
-				<h3>Custom Commands</h3>
+				<h3>${t('ui.slashCommands.customCommands.title')}</h3>
 				<div class="slash-commands-info">
-					<p>Custom slash commands for quick prompt access. Click to use directly in chat.</p>
+					<p>${t('ui.slashCommands.customCommands.description')}</p>
 				</div>
 				<div class="slash-commands-list" id="promptSnippetsList">
 					<!-- Add Custom Snippet Button -->
 					<div class="slash-command-item add-snippet-item" onclick="showAddSnippetForm()">
 						<div class="slash-command-icon">➕</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">Add Custom Command</div>
-							<div class="slash-command-description">Create your own slash command</div>
+							<div class="slash-command-title">${t('ui.slashCommands.customCommands.addCustom')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.customCommands.addForm.create')}</div>
 						</div>
 					</div>
 					
 					<!-- Add Custom Command Form (initially hidden) -->
 					<div class="add-snippet-form" id="addSnippetForm" style="display: none;">
 						<div class="form-group">
-							<label for="snippetName">Command name:</label>
+							<label for="snippetName">${t('ui.slashCommands.customCommands.addForm.commandName')}</label>
 							<div class="command-input-wrapper">
 								<span class="command-prefix">/</span>
 								<input type="text" id="snippetName" placeholder="e.g., fix-bug" maxlength="50">
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="snippetPrompt">Prompt Text:</label>
+							<label for="snippetPrompt">${t('ui.slashCommands.customCommands.addForm.promptText')}</label>
 							<textarea id="snippetPrompt" placeholder="e.g., Help me fix this bug in my code..." rows="3"></textarea>
 						</div>
 						<div class="form-buttons">
-							<button class="btn" onclick="saveCustomSnippet()">Save Command</button>
-							<button class="btn outlined" onclick="hideAddSnippetForm()">Cancel</button>
+							<button class="btn" onclick="saveCustomSnippet()">${t('ui.slashCommands.customCommands.addForm.save')}</button>
+							<button class="btn outlined" onclick="hideAddSnippetForm()">${t('ui.slashCommands.customCommands.addForm.cancel')}</button>
 						</div>
 					</div>
 					
@@ -479,57 +530,57 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('performance-analysis')">
 						<div class="slash-command-icon">⚡</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/performance-analysis</div>
-							<div class="slash-command-description">Analyze this code for performance issues and suggest optimizations</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.performanceAnalysis.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.performanceAnalysis.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('security-review')">
 						<div class="slash-command-icon">🔒</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/security-review</div>
-							<div class="slash-command-description">Review this code for security vulnerabilities</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.securityReview.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.securityReview.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('implementation-review')">
 						<div class="slash-command-icon">🔍</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/implementation-review</div>
-							<div class="slash-command-description">Review the implementation in this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.implementationReview.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.implementationReview.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('code-explanation')">
 						<div class="slash-command-icon">📖</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/code-explanation</div>
-							<div class="slash-command-description">Explain how this code works in detail</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.codeExplanation.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.codeExplanation.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('bug-fix')">
 						<div class="slash-command-icon">🐛</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/bug-fix</div>
-							<div class="slash-command-description">Help me fix this bug in my code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.bugFix.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.bugFix.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('refactor')">
 						<div class="slash-command-icon">🔄</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/refactor</div>
-							<div class="slash-command-description">Refactor this code to improve readability and maintainability</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.refactor.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.refactor.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('test-generation')">
 						<div class="slash-command-icon">🧪</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/test-generation</div>
-							<div class="slash-command-description">Generate comprehensive tests for this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.testGeneration.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.testGeneration.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('documentation')">
 						<div class="slash-command-icon">📝</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/documentation</div>
-							<div class="slash-command-description">Generate documentation for this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.documentation.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.documentation.description')}</div>
 						</div>
 					</div>
 				</div>
@@ -537,155 +588,155 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			
 			<!-- Built-in Commands Section -->
 			<div class="slash-commands-section">
-				<h3>Built-in Commands</h3>
+				<h3>${t('ui.slashCommands.builtinCommands.title')}</h3>
 				<div class="slash-commands-info">
-					<p>These commands require the Claude CLI and will open in VS Code terminal. Return here after completion.</p>
+					<p>${t('ui.slashCommands.builtinCommands.description')}</p>
 				</div>
 				<div class="slash-commands-list" id="nativeCommandsList">
 				<div class="slash-command-item" onclick="executeSlashCommand('bug')">
 					<div class="slash-command-icon">🐛</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/bug</div>
-						<div class="slash-command-description">Report bugs (sends conversation to Anthropic)</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.bug.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.bug.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('clear')">
 					<div class="slash-command-icon">🗑️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/clear</div>
-						<div class="slash-command-description">Clear conversation history</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.clear.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.clear.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('compact')">
 					<div class="slash-command-icon">📦</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/compact</div>
-						<div class="slash-command-description">Compact conversation with optional focus instructions</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.compact.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.compact.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('config')">
 					<div class="slash-command-icon">⚙️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/config</div>
-						<div class="slash-command-description">View/modify configuration</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.config.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.config.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('cost')">
 					<div class="slash-command-icon">💰</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/cost</div>
-						<div class="slash-command-description">Show token usage statistics</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.cost.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.cost.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('doctor')">
 					<div class="slash-command-icon">🩺</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/doctor</div>
-						<div class="slash-command-description">Checks the health of your Claude Code installation</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.doctor.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.doctor.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('help')">
 					<div class="slash-command-icon">❓</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/help</div>
-						<div class="slash-command-description">Get usage help</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.help.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.help.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('init')">
 					<div class="slash-command-icon">🚀</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/init</div>
-						<div class="slash-command-description">Initialize project with CLAUDE.md guide</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.init.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.init.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('login')">
 					<div class="slash-command-icon">🔑</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/login</div>
-						<div class="slash-command-description">Switch Anthropic accounts</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.login.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.login.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('logout')">
 					<div class="slash-command-icon">🚪</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/logout</div>
-						<div class="slash-command-description">Sign out from your Anthropic account</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.logout.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.logout.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('mcp')">
 					<div class="slash-command-icon">🔌</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/mcp</div>
-						<div class="slash-command-description">Manage MCP server connections and OAuth authentication</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.mcp.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.mcp.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('memory')">
 					<div class="slash-command-icon">🧠</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/memory</div>
-						<div class="slash-command-description">Edit CLAUDE.md memory files</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.memory.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.memory.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('model')">
 					<div class="slash-command-icon">🤖</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/model</div>
-						<div class="slash-command-description">Select or change the AI model</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.model.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.model.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('permissions')">
 					<div class="slash-command-icon">🔒</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/permissions</div>
-						<div class="slash-command-description">View or update permissions</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.permissions.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.permissions.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('pr_comments')">
 					<div class="slash-command-icon">💬</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/pr_comments</div>
-						<div class="slash-command-description">View pull request comments</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.pr_comments.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.pr_comments.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('review')">
 					<div class="slash-command-icon">👀</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/review</div>
-						<div class="slash-command-description">Request code review</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.review.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.review.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('status')">
 					<div class="slash-command-icon">📊</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/status</div>
-						<div class="slash-command-description">View account and system statuses</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.status.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.status.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('terminal-setup')">
 					<div class="slash-command-icon">⌨️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/terminal-setup</div>
-						<div class="slash-command-description">Install Shift+Enter key binding for newlines</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.terminal-setup.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.terminal-setup.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('vim')">
 					<div class="slash-command-icon">📝</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/vim</div>
-						<div class="slash-command-description">Enter vim mode for alternating insert and command modes</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.vim.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.vim.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item custom-command-item">
 					<div class="slash-command-icon">⚡</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">Quick Command</div>
+						<div class="slash-command-title">${t('ui.slashCommands.quickCommand.title')}</div>
 						<div class="slash-command-description">
 							<div class="command-input-wrapper">
 								<span class="command-prefix">/</span>
 								<input type="text" 
 									   class="custom-command-input" 
 									   id="customCommandInput"
-									   placeholder="enter-command" 
+									   placeholder="${t('ui.slashCommands.quickCommand.placeholder')}" 
 									   onkeydown="handleCustomCommandKeydown(event)"
 									   onclick="event.stopPropagation()">
 							</div>
@@ -757,22 +808,22 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				switch(type) {
 					case 'user':
 						iconDiv.textContent = '👤';
-						labelDiv.textContent = 'You';
+						labelDiv.textContent = translations?.ui?.messages?.you || 'You';
 						break;
 					case 'claude':
 						iconDiv.textContent = '🤖';
-						labelDiv.textContent = 'Claude';
+						labelDiv.textContent = translations?.ui?.messages?.claude || 'Claude';
 						break;
 					case 'error':
 						iconDiv.textContent = '⚠️';
-						labelDiv.textContent = 'Error';
+						labelDiv.textContent = translations?.ui?.messages?.error || 'Error';
 						break;
 				}
 				
 				// Add copy button
 				const copyBtn = document.createElement('button');
 				copyBtn.className = 'copy-btn';
-				copyBtn.title = 'Copy message';
+				copyBtn.title = translations?.ui?.common?.copy || 'Copy message';
 				copyBtn.onclick = () => copyMessageContent(messageDiv);
 				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
 				
@@ -802,9 +853,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>\${window.t('ui.permissionError.suggestion')}</span>
 					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
+					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">\${window.t('ui.permissionError.enableYolo')}</button>
 				\`;
 				messageDiv.appendChild(yoloSuggestion);
 			}
@@ -834,7 +885,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
 			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
-				toolName = 'Update Todos';
+				toolName = translations?.ui?.tools?.todoWrite?.name || 'Update Todos';
 			}
 			toolInfoElement.textContent = toolName;
 			
@@ -851,7 +902,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				
 				// Handle TodoWrite specially or format raw input
 				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
-					let todoHtml = 'Todo List Update:';
+					let todoHtml = translations?.ui?.tools?.todoWrite?.listTitle || 'Todo List Update:';
 					for (const todo of data.rawInput.todos) {
 						const status = todo.status === 'completed' ? '✅' :
 							todo.status === 'in_progress' ? '🔄' : '⏳';
@@ -881,7 +932,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				
 				const labelDiv = document.createElement('div');
 				labelDiv.className = 'tool-input-label';
-				labelDiv.textContent = 'INPUT';
+				labelDiv.textContent = window.t('ui.tools.input') || 'INPUT';
 				inputElement.appendChild(labelDiv);
 				
 				const contentDiv = document.createElement('div');
@@ -897,7 +948,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 
 		function createExpandableInput(toolInput, rawInput) {
 			try {
-				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">expand</span>');
+				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">' + (translations?.ui?.common?.expand || 'expand') + '</span>');
 				
 				// Store raw input data for expansion
 				if (rawInput && typeof rawInput === 'object') {
@@ -909,7 +960,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 						const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 						btnIndex++;
-						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">expand</span>\`;
+						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">\${translations?.ui?.common?.expand || 'expand'}</span>\`;
 					});
 				}
 				
@@ -932,20 +983,22 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				const toolName = data.toolName;
 				let completionText;
 				if (toolName === 'Read') {
-					completionText = '✅ Read completed';
+					completionText = window.t('ui.tools.read.completed');
 				} else if (toolName === 'Edit') {
-					completionText = '✅ Edit completed';
+					completionText = window.t('ui.tools.edit.completed');
+				} else if (toolName === 'Write') {
+					completionText = window.t('ui.tools.write.completed');
 				} else if (toolName === 'TodoWrite') {
-					completionText = '✅ Update Todos completed';
+					completionText = window.t('ui.tools.todoWrite.completed');
 				} else {
-					completionText = '✅ ' + toolName + ' completed';
+					completionText = window.t('ui.tools.generic.completed', { toolName: toolName });
 				}
 				addMessage(completionText, 'system');
 				return; // Don't show the result message
 			}
 			
 			if(data.isError && data.content === "File has not been read yet. Read it first before writing to it."){
-				return addMessage("File has not been read yet. Let me read it first before writing to it.", 'system');
+				return addMessage(window.t('ui.messages.fileNotReadError'), 'system');
 			}
 
 			const messageDiv = document.createElement('div');
@@ -964,7 +1017,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			
 			const labelDiv = document.createElement('div');
 			labelDiv.className = 'message-label';
-			labelDiv.textContent = data.isError ? 'Error' : 'Result';
+			labelDiv.textContent = data.isError ? (window.t('ui.messages.error') || 'Error') : (window.t('ui.tools.result') || 'Result');
 			
 			headerDiv.appendChild(iconDiv);
 			headerDiv.appendChild(labelDiv);
@@ -992,7 +1045,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				expandContainer.className = 'diff-expand-container';
 				const expandButton = document.createElement('button');
 				expandButton.className = 'diff-expand-btn';
-				expandButton.textContent = 'Show more';
+				expandButton.textContent = window.t('ui.common.showMore') || 'Show more';
 				expandButton.setAttribute('onclick', 'toggleResultExpansion(\\'' + resultId + '\\\')');
 				expandContainer.appendChild(expandButton);
 				contentDiv.appendChild(expandContainer);
@@ -1010,9 +1063,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>\${window.t('ui.permissionError.suggestion')}</span>
 					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
+					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">\${window.t('ui.permissionError.enableYolo')}</button>
 				\`;
 				messageDiv.appendChild(yoloSuggestion);
 			}
@@ -1344,11 +1397,11 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			if (hiddenDiv && button) {
 				if (hiddenDiv.style.display === 'none') {
 					hiddenDiv.style.display = 'block';
-					button.textContent = 'Show less';
+					button.textContent = window.t('ui.common.showLess') || 'Show less';
 				} else {
 					hiddenDiv.style.display = 'none';
 					const hiddenLines = hiddenDiv.querySelectorAll('.diff-line').length;
-					button.textContent = 'Show ' + hiddenLines + ' more lines';
+					button.textContent = (window.t('ui.tools.showMoreLines') || 'Show {count} more lines').replace('{count}', hiddenLines);
 				}
 			}
 		}
@@ -1362,11 +1415,11 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				if (hiddenDiv.style.display === 'none') {
 					hiddenDiv.style.display = 'inline';
 					if (ellipsis) ellipsis.style.display = 'none';
-					button.textContent = 'Show less';
+					button.textContent = window.t('ui.common.showLess') || 'Show less';
 				} else {
 					hiddenDiv.style.display = 'none';
 					if (ellipsis) ellipsis.style.display = 'inline';
-					button.textContent = 'Show more';
+					button.textContent = window.t('ui.common.showMore') || 'Show more';
 				}
 			}
 		}
@@ -1399,15 +1452,18 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				container = wrapper;
 			}
 			
-			if (button.textContent === 'expand') {
+			const expandText = translations?.ui?.common?.expand || 'expand';
+			const collapseText = translations?.ui?.common?.collapse || 'collapse';
+			
+			if (button.textContent === expandText) {
 				// Show full content
 				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">collapse</span>';
+				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">' + collapseText + '</span>';
 			} else {
 				// Show truncated content
 				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 				const truncated = decodedValue.substring(0, 97) + '...';
-				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">expand</span>';
+				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">' + expandText + '</span>';
 			}
 		}
 
@@ -1454,7 +1510,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				switchElement.classList.remove('active');
 				// Reset to default "Thinking Mode" when turned off
 				if (toggleLabel) {
-					toggleLabel.textContent = 'Thinking Mode';
+					toggleLabel.textContent = window.t('ui.input.thinkingMode');
 				}
 			}
 		}
@@ -1491,7 +1547,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				// While processing, show tokens and elapsed time
 				const totalTokens = totalTokensInput + totalTokensOutput;
 				const tokensStr = totalTokens > 0 ? 
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					\`\${totalTokens.toLocaleString()} \${translations?.ui?.status?.tokens || 'tokens'}\` : \`0 \${translations?.ui?.status?.tokens || 'tokens'}\`;
 				
 				let elapsedStr = '';
 				if (requestStartTime) {
@@ -1499,14 +1555,14 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					elapsedStr = \` • \${elapsedSeconds}s\`;
 				}
 				
-				const statusText = \`Processing • \${tokensStr}\${elapsedStr}\`;
+				const statusText = \`\${translations?.ui?.status?.processing || 'Processing'} • \${tokensStr}\${elapsedStr}\`;
 				updateStatus(statusText, 'processing');
 			} else {
 				// When ready, show full info
 				const costStr = totalCost > 0 ? \`$\${totalCost.toFixed(4)}\` : '$0.00';
 				const totalTokens = totalTokensInput + totalTokensOutput;
 				const tokensStr = totalTokens > 0 ? 
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					\`\${totalTokens.toLocaleString()} \${translations?.ui?.status?.tokens || 'tokens'}\` : \`0 \${translations?.ui?.status?.tokens || 'tokens'}\`;
 				const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 				
 				const statusText = \`Ready • \${costStr} • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''}\`;
@@ -1785,7 +1841,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				updateSettings();
 				
 				// Show confirmation message
-				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
+				addMessage(window.t('ui.messages.yoloModeEnabled'), 'system');
 				
 				// Update the warning banner
 				updateYoloWarning();
@@ -1874,7 +1930,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			if (!name) {
 				// Use a simple notification instead of alert which is blocked
 				const notification = document.createElement('div');
-				notification.textContent = 'Server name is required';
+				notification.textContent = window.t('ui.mcpServers.addForm.validation.nameRequired');
 				notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 				document.body.appendChild(notification);
 				setTimeout(() => notification.remove(), 3000);
@@ -1888,7 +1944,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				for (let server of existingServers) {
 					if (server.textContent === name) {
 						const notification = document.createElement('div');
-						notification.textContent = \`Server "\${name}" already exists\`;
+						notification.textContent = window.t('ui.mcpServers.addForm.validation.serverExists', { name });
 						notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 						document.body.appendChild(notification);
 						setTimeout(() => notification.remove(), 3000);
@@ -1903,7 +1959,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				const command = document.getElementById('serverCommand').value.trim();
 				if (!command) {
 					const notification = document.createElement('div');
-					notification.textContent = 'Command is required for stdio servers';
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.commandRequired');
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);
@@ -1930,7 +1986,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				const url = document.getElementById('serverUrl').value.trim();
 				if (!url) {
 					const notification = document.createElement('div');
-					notification.textContent = 'URL is required for HTTP/SSE servers';
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.urlRequired');
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);
@@ -2033,7 +2089,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			for (let server of existingServers) {
 				if (server.textContent === name) {
 					const notification = document.createElement('div');
-					notification.textContent = \`Server "\${name}" already exists\`;
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.serverExists', { name });
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);
@@ -2056,7 +2112,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			serversList.innerHTML = '';
 
 			if (Object.keys(servers).length === 0) {
-				serversList.innerHTML = '<div class="no-servers">No MCP servers configured</div>';
+				serversList.innerHTML = '<div class="no-servers">' + (translations?.ui?.mcpServers?.noServers || 'No MCP servers configured') + '</div>';
 				return;
 			}
 
@@ -2157,11 +2213,12 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		}
 
 		function updateThinkingModeToggleName(intensityValue) {
-			const intensityNames = ['Thinking', 'Think Hard', 'Think Harder', 'Ultrathink'];
-			const modeName = intensityNames[intensityValue] || 'Thinking';
+			const intensityKeys = ['think', 'thinkHard', 'thinkHarder', 'ultrathink'];
+			const modeKey = intensityKeys[intensityValue] || 'think';
+			const modeName = window.t('ui.thinkingIntensity.modeLabels.' + modeKey);
 			const toggleLabel = document.getElementById('thinkingModeLabel');
 			if (toggleLabel) {
-				toggleLabel.textContent = modeName + ' Mode';
+				toggleLabel.textContent = modeName;
 			}
 		}
 
@@ -2242,7 +2299,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			});
 			
 			// Show user feedback
-			addMessage('user', \`Executing /\${command} command in terminal. Check the terminal output and return when ready.\`, 'assistant');
+			addMessage('user', window.t('ui.messages.slashCommandExecuted', { command }), 'assistant');
 		}
 
 		function handleCustomCommandKeydown(event) {
@@ -2261,15 +2318,16 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		let customSnippetsData = {};
 
 		function usePromptSnippet(snippetType) {
+			// Get translated built-in snippets
 			const builtInSnippets = {
-				'performance-analysis': 'Analyze this code for performance issues and suggest optimizations',
-				'security-review': 'Review this code for security vulnerabilities',
-				'implementation-review': 'Review the implementation in this code',
-				'code-explanation': 'Explain how this code works in detail',
-				'bug-fix': 'Help me fix this bug in my code',
-				'refactor': 'Refactor this code to improve readability and maintainability',
-				'test-generation': 'Generate comprehensive tests for this code',
-				'documentation': 'Generate documentation for this code'
+				'performance-analysis': window.t('ui.slashCommands.promptSnippets.performanceAnalysis.description'),
+				'security-review': window.t('ui.slashCommands.promptSnippets.securityReview.description'),
+				'implementation-review': window.t('ui.slashCommands.promptSnippets.implementationReview.description'),
+				'code-explanation': window.t('ui.slashCommands.promptSnippets.codeExplanation.description'),
+				'bug-fix': window.t('ui.slashCommands.promptSnippets.bugFix.description'),
+				'refactor': window.t('ui.slashCommands.promptSnippets.refactor.description'),
+				'test-generation': window.t('ui.slashCommands.promptSnippets.testGeneration.description'),
+				'documentation': window.t('ui.slashCommands.promptSnippets.documentation.description')
 			};
 			
 			// Check built-in snippets first
@@ -2355,7 +2413,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 						<div class="slash-command-description">\${snippet.prompt}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">🗑️</button>
+						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="\${window.t('ui.slashCommands.management.deleteSnippet')}">🗑️</button>
 					</div>
 				\`;
 				
@@ -2635,7 +2693,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					
 				case 'thinking':
 					if (message.data.trim()) {
-						addMessage('💭 Thinking...' + parseSimpleMarkdown(message.data), 'thinking');
+						addMessage(window.t('ui.messages.thinking') + parseSimpleMarkdown(message.data), 'thinking');
 					}
 					break;
 					
@@ -2734,7 +2792,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
 					hideSessionInfo();
-					addMessage('🆕 Started new session', 'system');
+					addMessage(window.t('ui.messages.newSession'), 'system');
 					// Reset totals
 					totalCost = 0;
 					totalTokensInput = 0;
@@ -2745,8 +2803,8 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					
 				case 'loginRequired':
 					sendStats('Login required');
-					addMessage('🔐 Login Required\\n\\nYour Claude API key is invalid or expired.\\nA terminal has been opened - please run the login process there.\\n\\nAfter logging in, come back to this chat to continue.', 'error');
-					updateStatus('Login Required', 'error');
+					addMessage(window.t('ui.messages.loginRequired'), 'error');
+					updateStatus(window.t('ui.status.loginRequired'), 'error');
 					break;
 					
 				case 'showRestoreOption':
@@ -2804,14 +2862,14 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					break;
 				case 'mcpServerSaved':
 					loadMCPServers(); // Reload the servers list
-					addMessage('✅ MCP server "' + message.data.name + '" saved successfully', 'system');
+					addMessage(window.t('ui.messages.mcpServerSaved', { name: message.data.name }), 'system');
 					break;
 				case 'mcpServerDeleted':
 					loadMCPServers(); // Reload the servers list
-					addMessage('✅ MCP server "' + message.data.name + '" deleted successfully', 'system');
+					addMessage(window.t('ui.messages.mcpServerDeleted', { name: message.data.name }), 'system');
 					break;
 				case 'mcpServerError':
-					addMessage('❌ Error with MCP server: ' + message.data.error, 'error');
+					addMessage(window.t('ui.messages.mcpServerError', { error: message.data.error }), 'error');
 					break;
 			}
 		});
@@ -2827,40 +2885,40 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			const toolName = data.tool || 'Unknown Tool';
 			
 			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
+			let alwaysAllowText = window.t('ui.permissions.alwaysAllow', { tool: toolName });
 			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
 				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
+				alwaysAllowText = window.t('ui.permissions.alwaysAllowCommand', { command: truncatedPattern });
 				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
 			}
 			
 			messageDiv.innerHTML = \`
 				<div class="permission-header">
 					<span class="icon">🔐</span>
-					<span>Permission Required</span>
+					<span>\${window.t('ui.permissions.title')}</span>
 					<div class="permission-menu">
-						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
+						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="\${window.t('ui.slashCommands.management.moreOptions')}">⋮</button>
 						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
 							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
 								<span class="menu-icon">⚡</span>
 								<div class="menu-content">
-									<span class="menu-title">Enable YOLO Mode</span>
-									<span class="menu-subtitle">Auto-allow all permissions</span>
+									<span class="menu-title">\${window.t('ui.permissions.yoloModeTitle')}</span>
+									<span class="menu-subtitle">\${window.t('ui.permissions.yoloModeSubtitle')}</span>
 								</div>
 							</button>
 						</div>
 					</div>
 				</div>
 				<div class="permission-content">
-					<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+					<p>\${window.t('ui.permissions.message', { tool: toolName })}</p>
 					<div class="permission-buttons">
-						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">\${window.t('ui.permissions.deny')}</button>
 						<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">\${window.t('ui.permissions.allow')}</button>
 					</div>
 				</div>
 			\`;
@@ -2933,7 +2991,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			respondToPermission(permissionId, true);
 			
 			// Show notification
-			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
+			addMessage(window.t('ui.messages.yoloModeEnabled'), 'system');
 		}
 
 		// Close permission menus when clicking outside
@@ -3016,7 +3074,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				const sessionIdSpan = document.getElementById('sessionId');
 				if (sessionIdSpan) {
 					const originalText = sessionIdSpan.textContent;
-					sessionIdSpan.textContent = 'Copied!';
+					sessionIdSpan.textContent = translations?.ui?.common?.copied || 'Copied!';
 					setTimeout(() => {
 						sessionIdSpan.textContent = originalText;
 					}, 1000);
@@ -3043,7 +3101,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			}
 		}
 
-		updateStatus('Initializing...', 'disconnected');
+		updateStatus(translations?.ui?.status?.initializing || 'Initializing...', 'disconnected');
 		
 
 		function parseSimpleMarkdown(markdown) {
@@ -3343,7 +3401,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			listDiv.innerHTML = '';
 
 			if (conversations.length === 0) {
-				listDiv.innerHTML = '<p style="text-align: center; color: var(--vscode-descriptionForeground);">No conversations found</p>';
+				listDiv.innerHTML = '<p style="text-align: center; color: var(--vscode-descriptionForeground);">' + (window.translations?.ui?.conversationHistory?.noConversations || 'No conversations found') + '</p>';
 				return;
 			}
 
@@ -3397,6 +3455,10 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				vscode.postMessage({
 					type: 'getPermissions'
 				});
+				// Request current language data
+				vscode.postMessage({
+					type: 'getLanguage'
+				});
 				settingsModal.style.display = 'flex';
 			} else {
 				hideSettingsModal();
@@ -3432,6 +3494,134 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			});
 		}
 
+		// Language functions
+		let currentLanguageData = null;
+
+		function updateLanguage() {
+			const languageSelect = document.getElementById('language-select');
+			const selectedLanguage = languageSelect.value;
+			
+			vscode.postMessage({
+				type: 'setLanguage',
+				languageCode: selectedLanguage
+			});
+		}
+
+		function populateLanguageOptions(languageData) {
+			const languageSelect = document.getElementById('language-select');
+			if (!languageSelect || !languageData) return;
+			
+			languageSelect.innerHTML = '';
+			
+			for (const lang of languageData.supportedLanguages) {
+				const option = document.createElement('option');
+				option.value = lang.code;
+				option.textContent = lang.nativeName;
+				if (lang.code === languageData.currentLanguage) {
+					option.selected = true;
+				}
+				languageSelect.appendChild(option);
+			}
+		}
+
+		function updateUIText(translations) {
+			if (!translations) return;
+			
+			// Helper function for translations
+			const t = (key) => {
+				const value = key.split('.').reduce((obj, k) => obj && obj[k], translations);
+				return value || key;
+			};
+			
+			// Update header elements
+			const headerTitle = document.querySelector('.header h2');
+			if (headerTitle) headerTitle.textContent = t('ui.header.title');
+			
+			const settingsBtn = document.getElementById('settingsBtn');
+			if (settingsBtn) settingsBtn.title = t('ui.header.settings');
+			
+			const historyBtn = document.getElementById('historyBtn');
+			if (historyBtn) historyBtn.innerHTML = '📚 ' + t('ui.header.history');
+			
+			const newSessionBtn = document.getElementById('newSessionBtn');
+			if (newSessionBtn) newSessionBtn.textContent = t('ui.header.newChat');
+			
+			// Update conversation history
+			const conversationTitle = document.querySelector('.conversation-header h3');
+			if (conversationTitle) conversationTitle.textContent = t('ui.conversationHistory.title');
+			
+			const conversationClose = document.querySelector('.conversation-header .btn');
+			if (conversationClose) conversationClose.textContent = t('ui.conversationHistory.close');
+			
+			// Update input placeholder and controls
+			const messageInput = document.getElementById('messageInput');
+			if (messageInput) messageInput.placeholder = t('ui.input.placeholder');
+			
+			const planFirstSpan = document.querySelector('.mode-toggle span[onclick="togglePlanMode()"]');
+			if (planFirstSpan) planFirstSpan.textContent = t('ui.input.planFirst');
+			
+			const thinkingModeSpan = document.getElementById('thinkingModeLabel');
+			if (thinkingModeSpan) {
+				// Check if thinking mode is currently active and update label accordingly
+				const thinkingModeSwitch = document.getElementById('thinkingModeSwitch');
+				if (thinkingModeSwitch && thinkingModeSwitch.classList.contains('active')) {
+					// If thinking mode is active, get current intensity and update label
+					const thinkingIntensitySlider = document.getElementById('thinkingIntensitySlider');
+					if (thinkingIntensitySlider) {
+						updateThinkingModeToggleName(thinkingIntensitySlider.value);
+					} else {
+						thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+					}
+				} else {
+					// If thinking mode is not active, use default label
+					thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+				}
+			}
+			
+			const slashBtn = document.querySelector('.slash-btn');
+			if (slashBtn) slashBtn.title = t('ui.input.slashCommands');
+			
+			const atBtn = document.querySelector('.at-btn');
+			if (atBtn) atBtn.title = t('ui.input.referenceFiles');
+			
+			const imageBtn = document.getElementById('imageBtn');
+			if (imageBtn) imageBtn.title = t('ui.input.attachImages');
+			
+			const sendBtn = document.querySelector('.send-btn span');
+			if (sendBtn) sendBtn.textContent = t('ui.input.send') + ' ';
+			
+			// Update status
+			const statusText = document.getElementById('statusText');
+			if (statusText && statusText.textContent.includes('Initializing')) {
+				statusText.textContent = t('ui.status.initializing');
+			}
+			
+			const stopBtn = document.querySelector('#stopBtn svg + text, #stopBtn');
+			if (stopBtn && stopBtn.textContent && stopBtn.textContent.includes('Stop')) {
+				stopBtn.childNodes.forEach(node => {
+					if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === 'Stop') {
+						node.textContent = t('ui.status.stop');
+					}
+				});
+			}
+			
+			// Update yolo warning
+			const yoloWarning = document.getElementById('yoloWarning');
+			if (yoloWarning) yoloWarning.textContent = t('ui.yoloWarning');
+			
+			// Update file picker
+			const filePickerTitle = document.querySelector('#filePickerModal .file-picker-header span');
+			if (filePickerTitle) filePickerTitle.textContent = t('ui.filePicker.title');
+			
+			const fileSearchInput = document.getElementById('fileSearchInput');
+			if (fileSearchInput) fileSearchInput.placeholder = t('ui.filePicker.searchPlaceholder');
+		}
+
+		// Request language data on page load
+		vscode.postMessage({
+			type: 'getLanguage'
+		});
+
 		// Permissions management functions
 		function renderPermissions(permissions) {
 			const permissionsList = document.getElementById('permissionsList');
@@ -3439,7 +3629,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			if (!permissions || !permissions.alwaysAllow || Object.keys(permissions.alwaysAllow).length === 0) {
 				permissionsList.innerHTML = \`
 					<div class="permissions-empty">
-						No always-allow permissions set
+						\${window.t('ui.settings.permissions.noPermissions')}
 					</div>
 				\`;
 				return;
@@ -3454,9 +3644,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 						<div class="permission-item">
 							<div class="permission-info">
 								<span class="permission-tool">\${toolName}</span>
-								<span class="permission-desc">All</span>
+								<span class="permission-desc">\${window.t('ui.common.all')}</span>
 							</div>
-							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">Remove</button>
+							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">\${window.t('ui.common.remove')}</button>
 						</div>
 					\`;
 				} else if (Array.isArray(permission)) {
@@ -3469,7 +3659,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 									<span class="permission-tool">\${toolName}</span>
 									<span class="permission-command"><code>\${displayCommand}</code></span>
 								</div>
-								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">Remove</button>
+								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">\${window.t('ui.common.remove')}</button>
 							</div>
 						\`;
 					}
@@ -3644,6 +3834,17 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				document.getElementById('wslOptions').style.display = message.data['wsl.enabled'] ? 'block' : 'none';
 			}
 
+			if (message.type === 'languageData') {
+				// Update language data and populate options
+				currentLanguageData = message.data;
+				
+				// Update global translations for runtime JavaScript functions
+				window.translations = message.data.translations;
+				
+				populateLanguageOptions(message.data);
+				updateUIText(message.data.translations);
+			}
+
 			if (message.type === 'platformInfo') {
 				// Check if user is on Windows and show WSL alert if not dismissed and WSL not already enabled
 				if (message.data.isWindows && !message.data.wslAlertDismissed && !message.data.wslEnabled) {
@@ -3674,5 +3875,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	${isTelemetryEnabled ? '<script defer src="https://cloud.umami.is/script.js" data-website-id="d050ac9b-2b6d-4c67-b4c6-766432f95644"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
 </body>
 </html>`;
+};
 
 export default getHtml;
