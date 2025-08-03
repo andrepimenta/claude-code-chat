@@ -2,10 +2,10 @@ import styles from './ui-styles';
 const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	// Helper function for translations
 	const t = (key: string, params?: Record<string, string | number>): string => {
-		if (!translations) return key;
+		if (!translations) {return key;}
 		
 		const value = key.split('.').reduce((obj, k) => obj && obj[k], translations);
-		if (!value) return key;
+		if (!value) {return key;}
 		
 		if (params) {
 			return value.replace(/\{(\w+)\}/g, (match: string, paramKey: string) => {

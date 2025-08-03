@@ -437,7 +437,7 @@ class ClaudeChatProvider {
 		}
 		if (thinkingMode) {
 			let thinkingPrompt = '';
-			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n'
+			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n';
 			switch (thinkingIntensity) {
 				case 'think':
 					thinkingPrompt = 'THINK';
@@ -778,7 +778,7 @@ class ClaudeChatProvider {
 							const isError = content.is_error || false;
 
 							// Find the last tool use to get the tool name
-							const lastToolUse = this._currentConversation[this._currentConversation.length - 1]
+							const lastToolUse = this._currentConversation[this._currentConversation.length - 1];
 
 							const toolName = lastToolUse?.data?.toolName;
 
@@ -886,7 +886,7 @@ class ClaudeChatProvider {
 
 	private _newSession() {
 
-		this._isProcessing = false
+		this._isProcessing = false;
 
 		// Update UI state
 		this._postMessage({
@@ -1228,7 +1228,7 @@ class ClaudeChatProvider {
 				console.log(`Created permission requests directory at: ${this._permissionRequestsPath}`);
 			}
 
-			console.log("DIRECTORY-----", this._permissionRequestsPath)
+			console.log("DIRECTORY-----", this._permissionRequestsPath);
 
 			// Set up file watcher for *.request files
 			this._permissionWatcher = vscode.workspace.createFileSystemWatcher(
@@ -1324,7 +1324,7 @@ class ClaudeChatProvider {
 		try {
 			// Read the original request to get tool name and input
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const requestFileUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', `${requestId}.request`));
 
@@ -1387,7 +1387,7 @@ class ClaudeChatProvider {
 
 	private getCommandPattern(command: string): string {
 		const parts = command.trim().split(/\s+/);
-		if (parts.length === 0) return command;
+		if (parts.length === 0) {return command;}
 
 		const baseCmd = parts[0];
 		const subCmd = parts.length > 1 ? parts[1] : '';
@@ -1516,7 +1516,7 @@ class ClaudeChatProvider {
 	private async _removePermission(toolName: string, command: string | null): Promise<void> {
 		try {
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const permissionsUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', 'permissions.json'));
 			let permissions: any = { alwaysAllow: {} };
@@ -1562,7 +1562,7 @@ class ClaudeChatProvider {
 	private async _addPermission(toolName: string, command: string | null): Promise<void> {
 		try {
 			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) return;
+			if (!storagePath) {return;}
 
 			const permissionsUri = vscode.Uri.file(path.join(storagePath, 'permission-requests', 'permissions.json'));
 			let permissions: any = { alwaysAllow: {} };
@@ -1991,7 +1991,7 @@ class ClaudeChatProvider {
 	private _stopClaudeProcess(): void {
 		console.log('Stop request received');
 
-		this._isProcessing = false
+		this._isProcessing = false;
 
 		// Update UI state
 		this._postMessage({
@@ -2100,7 +2100,7 @@ class ClaudeChatProvider {
 					type: 'sessionCleared'
 				});
 
-				let requestStartTime: number
+				let requestStartTime: number;
 
 				// Small delay to ensure messages are cleared before loading new ones
 				setTimeout(() => {
@@ -2122,9 +2122,9 @@ class ClaudeChatProvider {
 						});
 						if (message.messageType === 'userInput') {
 							try {
-								requestStartTime = new Date(message.timestamp).getTime()
+								requestStartTime = new Date(message.timestamp).getTime();
 							} catch (e) {
-								console.log(e)
+								console.log(e);
 							}
 						}
 					}
