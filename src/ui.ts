@@ -170,7 +170,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	<div id="mcpModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>MCP Servers</span>
+				<span>${t('ui.mcpServers.title')}</span>
 				<button class="tools-close-btn" onclick="hideMCPModal()">✕</button>
 			</div>
 			<div class="tools-list">
@@ -178,62 +178,62 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<!-- MCP servers will be loaded here -->
 				</div>
 				<div class="mcp-add-server">
-					<button class="btn outlined" onclick="showAddServerForm()" id="addServerBtn">+ Add MCP Server</button>
+					<button class="btn outlined" onclick="showAddServerForm()" id="addServerBtn">${t('ui.mcpServers.addServer')}</button>
 				</div>
 				<div class="mcp-popular-servers" id="popularServers">
-					<h4>Popular MCP Servers</h4>
+					<h4>${t('ui.mcpServers.popularServers')}</h4>
 					<div class="popular-servers-grid">
 						<div class="popular-server-item" onclick="addPopularServer('context7', { type: 'http', url: 'https://context7.liam.sh/mcp' })">
 							<div class="popular-server-icon">📚</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Context7</div>
-								<div class="popular-server-desc">Up-to-date Code Docs For Any Prompt</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.context7.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.context7.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('sequential-thinking', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] })">
 							<div class="popular-server-icon">🔗</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Sequential Thinking</div>
-								<div class="popular-server-desc">Step-by-step reasoning capabilities</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.sequentialThinking.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.sequentialThinking.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('memory', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] })">
 							<div class="popular-server-icon">🧠</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Memory</div>
-								<div class="popular-server-desc">Knowledge graph storage</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.memory.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.memory.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('puppeteer', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer'] })">
 							<div class="popular-server-icon">🎭</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Puppeteer</div>
-								<div class="popular-server-desc">Browser automation</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.puppeteer.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.puppeteer.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('fetch', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-fetch'] })">
 							<div class="popular-server-icon">🌐</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Fetch</div>
-								<div class="popular-server-desc">HTTP requests & web scraping</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.fetch.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.fetch.description')}</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('filesystem', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] })">
 							<div class="popular-server-icon">📁</div>
 							<div class="popular-server-info">
-								<div class="popular-server-name">Filesystem</div>
-								<div class="popular-server-desc">File operations & management</div>
+								<div class="popular-server-name">${t('ui.mcpServers.popularServersList.filesystem.name')}</div>
+								<div class="popular-server-desc">${t('ui.mcpServers.popularServersList.filesystem.description')}</div>
 							</div>
 						</div>
 					</div>
 				</div>
 				<div class="mcp-add-form" id="addServerForm" style="display: none;">
 				<div class="form-group">
-					<label for="serverName">Server Name:</label>
+					<label for="serverName">${t('ui.mcpServers.addForm.serverName')}</label>
 					<input type="text" id="serverName" placeholder="my-server" required>
 				</div>
 				<div class="form-group">
-					<label for="serverType">Server Type:</label>
+					<label for="serverType">${t('ui.mcpServers.addForm.serverType')}</label>
 					<select id="serverType" onchange="updateServerForm()">
 						<option value="http">HTTP</option>
 						<option value="sse">SSE</option>
@@ -241,28 +241,28 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					</select>
 				</div>
 				<div class="form-group" id="commandGroup" style="display: none;">
-					<label for="serverCommand">Command:</label>
+					<label for="serverCommand">${t('ui.mcpServers.addForm.command')}</label>
 					<input type="text" id="serverCommand" placeholder="/path/to/server">
 				</div>
 				<div class="form-group" id="urlGroup">
-					<label for="serverUrl">URL:</label>
+					<label for="serverUrl">${t('ui.mcpServers.addForm.url')}</label>
 					<input type="text" id="serverUrl" placeholder="https://example.com/mcp">
 				</div>
 				<div class="form-group" id="argsGroup" style="display: none;">
-					<label for="serverArgs">Arguments (one per line):</label>
+					<label for="serverArgs">${t('ui.mcpServers.addForm.arguments')}</label>
 					<textarea id="serverArgs" placeholder="--api-key&#10;abc123" rows="3"></textarea>
 				</div>
 				<div class="form-group" id="envGroup" style="display: none;">
-					<label for="serverEnv">Environment Variables (KEY=value, one per line):</label>
+					<label for="serverEnv">${t('ui.mcpServers.addForm.environment')}</label>
 					<textarea id="serverEnv" placeholder="API_KEY=123&#10;CACHE_DIR=/tmp" rows="3"></textarea>
 				</div>
 				<div class="form-group" id="headersGroup">
-					<label for="serverHeaders">Headers (KEY=value, one per line):</label>
+					<label for="serverHeaders">${t('ui.mcpServers.addForm.headers')}</label>
 					<textarea id="serverHeaders" placeholder="Authorization=Bearer token&#10;X-API-Key=key" rows="3"></textarea>
 				</div>
 				<div class="form-buttons">
-					<button class="btn" onclick="saveMCPServer()">Add Server</button>
-					<button class="btn outlined" onclick="hideAddServerForm()">Cancel</button>
+					<button class="btn" onclick="saveMCPServer()">${t('ui.mcpServers.addForm.addServer')}</button>
+					<button class="btn outlined" onclick="hideAddServerForm()">${t('ui.mcpServers.addForm.cancel')}</button>
 				</div>
 			</div>
 		</div>
@@ -319,32 +319,32 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						</div>
 						
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Claude Path in WSL</label>
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.claudePath')}</label>
 							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
-								Find your claude installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
+								${t('ui.settings.wsl.claudePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
 							</p>
 						</div>
 					</div>
 				</div>
 
-				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Permissions</h3>
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">${t('ui.settings.permissions.title')}</h3>
 				<div>
 					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
-						Manage commands and tools that are automatically allowed without asking for permission.
+						${t('ui.settings.permissions.description')}
 					</p>
 				</div>
 				<div class="settings-group">
 					<div id="permissionsList" class="permissions-list">
 						<div class="permissions-loading" style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
-							Loading permissions...
+							${t('ui.settings.permissions.loadingPermissions')}
 						</div>
 					</div>
 					<div class="permissions-add-section">
 						<div id="addPermissionForm" class="permissions-add-form" style="display: none;">
 							<div class="permissions-form-row">
 								<select id="addPermissionTool" class="permissions-tool-select" onchange="toggleCommandInput()">
-									<option value="">Select tool...</option>
+									<option value="">${t('ui.settings.permissions.addForm.selectTool')}</option>
 									<option value="Bash">Bash</option>
 									<option value="Read">Read</option>
 									<option value="Edit">Edit</option>
@@ -357,20 +357,20 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 									<option value="WebFetch">WebFetch</option>
 								</select>
 								<div style="flex-grow: 1; display: flex;">
-									<input type="text" id="addPermissionCommand" class="permissions-command-input" placeholder="Command pattern (e.g., npm i *)" style="display: none;" />
+									<input type="text" id="addPermissionCommand" class="permissions-command-input" placeholder="${t('ui.settings.permissions.addForm.commandPattern')}" style="display: none;" />
 								</div>
-								<button id="addPermissionBtn" class="permissions-add-btn" onclick="addPermission()">Add</button>
+								<button id="addPermissionBtn" class="permissions-add-btn" onclick="addPermission()">${t('ui.settings.permissions.addForm.add')}</button>
 							</div>
 							<div id="permissionsFormHint" class="permissions-form-hint">
-								Select a tool to add always-allow permission.
+								${t('ui.settings.permissions.addForm.selectToolHint')}
 							</div>
 						</div>
 						<button id="showAddPermissionBtn" class="permissions-show-add-btn" onclick="showAddPermissionForm()">
-							+ Add permission
+							${t('ui.settings.permissions.addPermission')}
 						</button>
 						<div class="yolo-mode-section">
 							<input type="checkbox" id="yolo-mode" onchange="updateSettings(); updateYoloWarning();">
-							<label for="yolo-mode">Enable Yolo Mode (Auto-allow all permissions)</label>
+							<label for="yolo-mode">${t('ui.settings.permissions.yoloMode')}</label>
 						</div>
 					</div>
 				</div>
@@ -384,28 +384,28 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	<div id="modelModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content" style="width: 400px;">
 			<div class="tools-modal-header">
-				<span>Enforce Model</span>
+				<span>${t('ui.modelSelector.title')}</span>
 				<button class="tools-close-btn" onclick="hideModelModal()">✕</button>
 			</div>
 			<div class="model-explanatory-text">
-				This overrides your default model setting for this conversation only.
+				${t('ui.modelSelector.explanation')}
 			</div>
 			<div class="tools-list">
 				<div class="tool-item" onclick="selectModel('opus')">
 					<input type="radio" name="model" id="model-opus" value="opus" checked>
 					<label for="model-opus">
-						<div class="model-title">Opus - Most capable model</div>
+						<div class="model-title">${t('ui.modelSelector.opus.title')}</div>
 						<div class="model-description">
-							Best for complex tasks and highest quality output
+							${t('ui.modelSelector.opus.description')}
 						</div>
 					</label>
 				</div>
 				<div class="tool-item" onclick="selectModel('sonnet')">
 					<input type="radio" name="model" id="model-sonnet" value="sonnet">
 					<label for="model-sonnet">
-						<div class="model-title">Sonnet - Balanced model</div>
+						<div class="model-title">${t('ui.modelSelector.sonnet.title')}</div>
 						<div class="model-description">
-							Good balance of speed and capability
+							${t('ui.modelSelector.sonnet.description')}
 						</div>
 					</label>
 				</div>
@@ -413,13 +413,13 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<input type="radio" name="model" id="model-default" value="default">
 					<label for="model-default" class="default-model-layout">
 						<div class="model-option-content">
-							<div class="model-title">Default - User configured</div>
+							<div class="model-title">${t('ui.modelSelector.default.title')}</div>
 							<div class="model-description">
-								Uses the model configured in your settings
+								${t('ui.modelSelector.default.description')}
 							</div>
 						</div>
 						<button class="secondary-button configure-button" onclick="event.stopPropagation(); openModelTerminal();">
-							Configure
+							${t('ui.modelSelector.default.configure')}
 						</button>
 					</label>
 				</div>
@@ -431,24 +431,24 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	<div id="thinkingIntensityModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content" style="width: 450px;">
 			<div class="tools-modal-header">
-				<span>Thinking Mode Intensity</span>
+				<span>${t('ui.thinkingIntensity.title')}</span>
 				<button class="tools-close-btn" onclick="hideThinkingIntensityModal()">✕</button>
 			</div>
 			<div class="thinking-modal-description">
-				Configure the intensity of thinking mode. Higher levels provide more detailed reasoning but consume more tokens.
+				${t('ui.thinkingIntensity.description')}
 			</div>
 			<div class="tools-list">
 				<div class="thinking-slider-container">
 					<input type="range" min="0" max="3" value="0" step="1" class="thinking-slider" id="thinkingIntensitySlider" oninput="updateThinkingIntensityDisplay(this.value)">
 					<div class="slider-labels">
-						<div class="slider-label active" id="thinking-label-0" onclick="setThinkingIntensityValue(0)">Think</div>
-						<div class="slider-label" id="thinking-label-1" onclick="setThinkingIntensityValue(1)">Think Hard</div>
-						<div class="slider-label" id="thinking-label-2" onclick="setThinkingIntensityValue(2)">Think Harder</div>
-						<div class="slider-label" id="thinking-label-3" onclick="setThinkingIntensityValue(3)">Ultrathink</div>
+						<div class="slider-label active" id="thinking-label-0" onclick="setThinkingIntensityValue(0)">${t('ui.thinkingIntensity.levels.think')}</div>
+						<div class="slider-label" id="thinking-label-1" onclick="setThinkingIntensityValue(1)">${t('ui.thinkingIntensity.levels.thinkHard')}</div>
+						<div class="slider-label" id="thinking-label-2" onclick="setThinkingIntensityValue(2)">${t('ui.thinkingIntensity.levels.thinkHarder')}</div>
+						<div class="slider-label" id="thinking-label-3" onclick="setThinkingIntensityValue(3)">${t('ui.thinkingIntensity.levels.ultrathink')}</div>
 					</div>
 				</div>
 				<div class="thinking-modal-actions">
-					<button class="confirm-btn" onclick="confirmThinkingIntensity()">Confirm</button>
+					<button class="confirm-btn" onclick="confirmThinkingIntensity()">${t('ui.thinkingIntensity.confirm')}</button>
 				</div>
 			</div>
 		</div>
@@ -458,7 +458,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	<div id="slashCommandsModal" class="tools-modal" style="display: none;">
 		<div class="tools-modal-content">
 			<div class="tools-modal-header">
-				<span>Commands & Prompt Snippets</span>
+				<span>${t('ui.slashCommands.title')}</span>
 				<button class="tools-close-btn" onclick="hideSlashCommandsModal()">✕</button>
 			</div>
 			<div class="tools-modal-body">
@@ -467,42 +467,42 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			<div class="slash-commands-search">
 				<div class="search-input-wrapper">
 					<span class="search-prefix">/</span>
-					<input type="text" id="slashCommandsSearch" placeholder="Search commands and snippets..." oninput="filterSlashCommands()">
+					<input type="text" id="slashCommandsSearch" placeholder="${t('ui.slashCommands.search')}" oninput="filterSlashCommands()">
 				</div>
 			</div>
 			
 			<!-- Custom Commands Section -->
 			<div class="slash-commands-section">
-				<h3>Custom Commands</h3>
+				<h3>${t('ui.slashCommands.customCommands.title')}</h3>
 				<div class="slash-commands-info">
-					<p>Custom slash commands for quick prompt access. Click to use directly in chat.</p>
+					<p>${t('ui.slashCommands.customCommands.description')}</p>
 				</div>
 				<div class="slash-commands-list" id="promptSnippetsList">
 					<!-- Add Custom Snippet Button -->
 					<div class="slash-command-item add-snippet-item" onclick="showAddSnippetForm()">
 						<div class="slash-command-icon">➕</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">Add Custom Command</div>
-							<div class="slash-command-description">Create your own slash command</div>
+							<div class="slash-command-title">${t('ui.slashCommands.customCommands.addCustom')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.customCommands.addForm.create')}</div>
 						</div>
 					</div>
 					
 					<!-- Add Custom Command Form (initially hidden) -->
 					<div class="add-snippet-form" id="addSnippetForm" style="display: none;">
 						<div class="form-group">
-							<label for="snippetName">Command name:</label>
+							<label for="snippetName">${t('ui.slashCommands.customCommands.addForm.commandName')}</label>
 							<div class="command-input-wrapper">
 								<span class="command-prefix">/</span>
 								<input type="text" id="snippetName" placeholder="e.g., fix-bug" maxlength="50">
 							</div>
 						</div>
 						<div class="form-group">
-							<label for="snippetPrompt">Prompt Text:</label>
+							<label for="snippetPrompt">${t('ui.slashCommands.customCommands.addForm.promptText')}</label>
 							<textarea id="snippetPrompt" placeholder="e.g., Help me fix this bug in my code..." rows="3"></textarea>
 						</div>
 						<div class="form-buttons">
-							<button class="btn" onclick="saveCustomSnippet()">Save Command</button>
-							<button class="btn outlined" onclick="hideAddSnippetForm()">Cancel</button>
+							<button class="btn" onclick="saveCustomSnippet()">${t('ui.slashCommands.customCommands.addForm.save')}</button>
+							<button class="btn outlined" onclick="hideAddSnippetForm()">${t('ui.slashCommands.customCommands.addForm.cancel')}</button>
 						</div>
 					</div>
 					
@@ -510,57 +510,57 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('performance-analysis')">
 						<div class="slash-command-icon">⚡</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/performance-analysis</div>
-							<div class="slash-command-description">Analyze this code for performance issues and suggest optimizations</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.performanceAnalysis.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.performanceAnalysis.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('security-review')">
 						<div class="slash-command-icon">🔒</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/security-review</div>
-							<div class="slash-command-description">Review this code for security vulnerabilities</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.securityReview.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.securityReview.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('implementation-review')">
 						<div class="slash-command-icon">🔍</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/implementation-review</div>
-							<div class="slash-command-description">Review the implementation in this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.implementationReview.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.implementationReview.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('code-explanation')">
 						<div class="slash-command-icon">📖</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/code-explanation</div>
-							<div class="slash-command-description">Explain how this code works in detail</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.codeExplanation.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.codeExplanation.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('bug-fix')">
 						<div class="slash-command-icon">🐛</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/bug-fix</div>
-							<div class="slash-command-description">Help me fix this bug in my code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.bugFix.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.bugFix.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('refactor')">
 						<div class="slash-command-icon">🔄</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/refactor</div>
-							<div class="slash-command-description">Refactor this code to improve readability and maintainability</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.refactor.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.refactor.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('test-generation')">
 						<div class="slash-command-icon">🧪</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/test-generation</div>
-							<div class="slash-command-description">Generate comprehensive tests for this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.testGeneration.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.testGeneration.description')}</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('documentation')">
 						<div class="slash-command-icon">📝</div>
 						<div class="slash-command-content">
-							<div class="slash-command-title">/documentation</div>
-							<div class="slash-command-description">Generate documentation for this code</div>
+							<div class="slash-command-title">${t('ui.slashCommands.promptSnippets.documentation.title')}</div>
+							<div class="slash-command-description">${t('ui.slashCommands.promptSnippets.documentation.description')}</div>
 						</div>
 					</div>
 				</div>
@@ -568,155 +568,155 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			
 			<!-- Built-in Commands Section -->
 			<div class="slash-commands-section">
-				<h3>Built-in Commands</h3>
+				<h3>${t('ui.slashCommands.builtinCommands.title')}</h3>
 				<div class="slash-commands-info">
-					<p>These commands require the Claude CLI and will open in VS Code terminal. Return here after completion.</p>
+					<p>${t('ui.slashCommands.builtinCommands.description')}</p>
 				</div>
 				<div class="slash-commands-list" id="nativeCommandsList">
 				<div class="slash-command-item" onclick="executeSlashCommand('bug')">
 					<div class="slash-command-icon">🐛</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/bug</div>
-						<div class="slash-command-description">Report bugs (sends conversation to Anthropic)</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.bug.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.bug.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('clear')">
 					<div class="slash-command-icon">🗑️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/clear</div>
-						<div class="slash-command-description">Clear conversation history</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.clear.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.clear.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('compact')">
 					<div class="slash-command-icon">📦</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/compact</div>
-						<div class="slash-command-description">Compact conversation with optional focus instructions</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.compact.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.compact.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('config')">
 					<div class="slash-command-icon">⚙️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/config</div>
-						<div class="slash-command-description">View/modify configuration</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.config.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.config.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('cost')">
 					<div class="slash-command-icon">💰</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/cost</div>
-						<div class="slash-command-description">Show token usage statistics</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.cost.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.cost.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('doctor')">
 					<div class="slash-command-icon">🩺</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/doctor</div>
-						<div class="slash-command-description">Checks the health of your Claude Code installation</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.doctor.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.doctor.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('help')">
 					<div class="slash-command-icon">❓</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/help</div>
-						<div class="slash-command-description">Get usage help</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.help.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.help.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('init')">
 					<div class="slash-command-icon">🚀</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/init</div>
-						<div class="slash-command-description">Initialize project with CLAUDE.md guide</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.init.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.init.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('login')">
 					<div class="slash-command-icon">🔑</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/login</div>
-						<div class="slash-command-description">Switch Anthropic accounts</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.login.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.login.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('logout')">
 					<div class="slash-command-icon">🚪</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/logout</div>
-						<div class="slash-command-description">Sign out from your Anthropic account</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.logout.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.logout.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('mcp')">
 					<div class="slash-command-icon">🔌</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/mcp</div>
-						<div class="slash-command-description">Manage MCP server connections and OAuth authentication</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.mcp.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.mcp.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('memory')">
 					<div class="slash-command-icon">🧠</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/memory</div>
-						<div class="slash-command-description">Edit CLAUDE.md memory files</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.memory.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.memory.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('model')">
 					<div class="slash-command-icon">🤖</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/model</div>
-						<div class="slash-command-description">Select or change the AI model</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.model.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.model.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('permissions')">
 					<div class="slash-command-icon">🔒</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/permissions</div>
-						<div class="slash-command-description">View or update permissions</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.permissions.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.permissions.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('pr_comments')">
 					<div class="slash-command-icon">💬</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/pr_comments</div>
-						<div class="slash-command-description">View pull request comments</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.pr_comments.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.pr_comments.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('review')">
 					<div class="slash-command-icon">👀</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/review</div>
-						<div class="slash-command-description">Request code review</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.review.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.review.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('status')">
 					<div class="slash-command-icon">📊</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/status</div>
-						<div class="slash-command-description">View account and system statuses</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.status.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.status.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('terminal-setup')">
 					<div class="slash-command-icon">⌨️</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/terminal-setup</div>
-						<div class="slash-command-description">Install Shift+Enter key binding for newlines</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.terminal-setup.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.terminal-setup.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('vim')">
 					<div class="slash-command-icon">📝</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/vim</div>
-						<div class="slash-command-description">Enter vim mode for alternating insert and command modes</div>
+						<div class="slash-command-title">${t('ui.slashCommands.builtinCommands.commands.vim.title')}</div>
+						<div class="slash-command-description">${t('ui.slashCommands.builtinCommands.commands.vim.description')}</div>
 					</div>
 				</div>
 				<div class="slash-command-item custom-command-item">
 					<div class="slash-command-icon">⚡</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">Quick Command</div>
+						<div class="slash-command-title">${t('ui.slashCommands.quickCommand.title')}</div>
 						<div class="slash-command-description">
 							<div class="command-input-wrapper">
 								<span class="command-prefix">/</span>
 								<input type="text" 
 									   class="custom-command-input" 
 									   id="customCommandInput"
-									   placeholder="enter-command" 
+									   placeholder="${t('ui.slashCommands.quickCommand.placeholder')}" 
 									   onkeydown="handleCustomCommandKeydown(event)"
 									   onclick="event.stopPropagation()">
 							</div>
@@ -788,22 +788,22 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				switch(type) {
 					case 'user':
 						iconDiv.textContent = '👤';
-						labelDiv.textContent = 'You';
+						labelDiv.textContent = translations?.ui?.messages?.you || 'You';
 						break;
 					case 'claude':
 						iconDiv.textContent = '🤖';
-						labelDiv.textContent = 'Claude';
+						labelDiv.textContent = translations?.ui?.messages?.claude || 'Claude';
 						break;
 					case 'error':
 						iconDiv.textContent = '⚠️';
-						labelDiv.textContent = 'Error';
+						labelDiv.textContent = translations?.ui?.messages?.error || 'Error';
 						break;
 				}
 				
 				// Add copy button
 				const copyBtn = document.createElement('button');
 				copyBtn.className = 'copy-btn';
-				copyBtn.title = 'Copy message';
+				copyBtn.title = translations?.ui?.common?.copy || 'Copy message';
 				copyBtn.onclick = () => copyMessageContent(messageDiv);
 				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
 				
@@ -1522,7 +1522,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				// While processing, show tokens and elapsed time
 				const totalTokens = totalTokensInput + totalTokensOutput;
 				const tokensStr = totalTokens > 0 ? 
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					\`\${totalTokens.toLocaleString()} \${translations?.ui?.status?.tokens || 'tokens'}\` : \`0 \${translations?.ui?.status?.tokens || 'tokens'}\`;
 				
 				let elapsedStr = '';
 				if (requestStartTime) {
@@ -1530,14 +1530,14 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					elapsedStr = \` • \${elapsedSeconds}s\`;
 				}
 				
-				const statusText = \`Processing • \${tokensStr}\${elapsedStr}\`;
+				const statusText = \`\${translations?.ui?.status?.processing || 'Processing'} • \${tokensStr}\${elapsedStr}\`;
 				updateStatus(statusText, 'processing');
 			} else {
 				// When ready, show full info
 				const costStr = totalCost > 0 ? \`$\${totalCost.toFixed(4)}\` : '$0.00';
 				const totalTokens = totalTokensInput + totalTokensOutput;
 				const tokensStr = totalTokens > 0 ? 
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					\`\${totalTokens.toLocaleString()} \${translations?.ui?.status?.tokens || 'tokens'}\` : \`0 \${translations?.ui?.status?.tokens || 'tokens'}\`;
 				const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 				
 				const statusText = \`Ready • \${costStr} • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''}\`;
@@ -3047,7 +3047,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				const sessionIdSpan = document.getElementById('sessionId');
 				if (sessionIdSpan) {
 					const originalText = sessionIdSpan.textContent;
-					sessionIdSpan.textContent = 'Copied!';
+					sessionIdSpan.textContent = translations?.ui?.common?.copied || 'Copied!';
 					setTimeout(() => {
 						sessionIdSpan.textContent = originalText;
 					}, 1000);
@@ -3074,7 +3074,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			}
 		}
 
-		updateStatus('Initializing...', 'disconnected');
+		updateStatus(translations?.ui?.status?.initializing || 'Initializing...', 'disconnected');
 		
 
 		function parseSimpleMarkdown(markdown) {

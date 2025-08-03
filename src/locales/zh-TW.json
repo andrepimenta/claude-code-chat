@@ -69,12 +69,91 @@
           "commandName": "指令名稱：",
           "promptText": "提示文字：",
           "save": "儲存指令",
-          "cancel": "取消"
+          "cancel": "取消",
+          "create": "建立您自己的斜槓指令"
         }
       },
       "builtinCommands": {
         "title": "內建指令",
-        "description": "這些指令需要 Claude CLI，將在 VS Code 終端機中開啟。完成後請回到這裡。"
+        "description": "這些指令需要 Claude CLI，將在 VS Code 終端機中開啟。完成後請回到這裡。",
+        "commands": {
+          "bug": {
+            "title": "/bug",
+            "description": "回報錯誤（將對話傳送至 Anthropic）"
+          },
+          "clear": {
+            "title": "/clear",
+            "description": "清除對話歷史記錄"
+          },
+          "compact": {
+            "title": "/compact",
+            "description": "壓縮對話並可選擇性加入焦點指示"
+          },
+          "config": {
+            "title": "/config",
+            "description": "查看/修改設定"
+          },
+          "cost": {
+            "title": "/cost",
+            "description": "顯示代幣使用統計"
+          },
+          "doctor": {
+            "title": "/doctor",
+            "description": "檢查您的 Claude Code 安裝健康狀態"
+          },
+          "help": {
+            "title": "/help",
+            "description": "取得使用說明"
+          },
+          "init": {
+            "title": "/init",
+            "description": "使用 CLAUDE.md 指南初始化專案"
+          },
+          "login": {
+            "title": "/login",
+            "description": "切換 Anthropic 帳戶"
+          },
+          "logout": {
+            "title": "/logout",
+            "description": "登出您的 Anthropic 帳戶"
+          },
+          "mcp": {
+            "title": "/mcp",
+            "description": "管理 MCP 伺服器連線和 OAuth 認證"
+          },
+          "memory": {
+            "title": "/memory",
+            "description": "編輯 CLAUDE.md 記憶檔案"
+          },
+          "model": {
+            "title": "/model",
+            "description": "選擇或變更 AI 模型"
+          },
+          "permissions": {
+            "title": "/permissions",
+            "description": "查看或更新權限"
+          },
+          "pr_comments": {
+            "title": "/pr_comments",
+            "description": "查看拉取請求評論"
+          },
+          "review": {
+            "title": "/review",
+            "description": "請求程式碼審查"
+          },
+          "status": {
+            "title": "/status",
+            "description": "查看帳戶和系統狀態"
+          },
+          "terminal-setup": {
+            "title": "/terminal-setup",
+            "description": "安裝 Shift+Enter 新行按鍵綁定"
+          },
+          "vim": {
+            "title": "/vim",
+            "description": "進入 vim 模式以交替插入和指令模式"
+          }
+        }
       },
       "quickCommand": {
         "title": "快速指令",
@@ -117,8 +196,35 @@
     },
     "mcpServers": {
       "title": "MCP 伺服器",
+      "noServers": "未設定 MCP 伺服器",
       "addServer": "+ 新增 MCP 伺服器",
       "popularServers": "熱門 MCP 伺服器",
+      "popularServersList": {
+        "context7": {
+          "name": "Context7",
+          "description": "任何提示的最新程式碼文件"
+        },
+        "sequentialThinking": {
+          "name": "Sequential Thinking",
+          "description": "逐步推理功能"
+        },
+        "memory": {
+          "name": "Memory",
+          "description": "知識圖譜儲存"
+        },
+        "puppeteer": {
+          "name": "Puppeteer",
+          "description": "瀏覽器自動化"
+        },
+        "fetch": {
+          "name": "Fetch",
+          "description": "HTTP 請求與網頁抓取"
+        },
+        "filesystem": {
+          "name": "Filesystem",
+          "description": "檔案操作與管理"
+        }
+      },
       "addForm": {
         "serverName": "伺服器名稱：",
         "serverType": "伺服器類型：",
@@ -170,7 +276,11 @@
       "ready": "準備好與 Claude Code 對話！請在下方輸入您的訊息。",
       "processing": "Claude 正在工作中...",
       "loginRequired": "需要登入",
-      "stop": "停止"
+      "stop": "停止",
+      "cost": "成本",
+      "tokens": "代幣",
+      "requestCompleted": "請求完成",
+      "duration": "持續時間"
     },
     "messages": {
       "you": "您",

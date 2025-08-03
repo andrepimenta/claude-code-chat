@@ -69,12 +69,91 @@
           "commandName": "Command name:",
           "promptText": "Prompt Text:",
           "save": "Save Command",
-          "cancel": "Cancel"
+          "cancel": "Cancel",
+          "create": "Create your own slash command"
         }
       },
       "builtinCommands": {
         "title": "Built-in Commands",
-        "description": "These commands require the Claude CLI and will open in VS Code terminal. Return here after completion."
+        "description": "These commands require the Claude CLI and will open in VS Code terminal. Return here after completion.",
+        "commands": {
+          "bug": {
+            "title": "/bug",
+            "description": "Report bugs (sends conversation to Anthropic)"
+          },
+          "clear": {
+            "title": "/clear",
+            "description": "Clear conversation history"
+          },
+          "compact": {
+            "title": "/compact",
+            "description": "Compact conversation with optional focus instructions"
+          },
+          "config": {
+            "title": "/config",
+            "description": "View/modify configuration"
+          },
+          "cost": {
+            "title": "/cost",
+            "description": "Show token usage statistics"
+          },
+          "doctor": {
+            "title": "/doctor",
+            "description": "Checks the health of your Claude Code installation"
+          },
+          "help": {
+            "title": "/help",
+            "description": "Get usage help"
+          },
+          "init": {
+            "title": "/init",
+            "description": "Initialize project with CLAUDE.md guide"
+          },
+          "login": {
+            "title": "/login",
+            "description": "Switch Anthropic accounts"
+          },
+          "logout": {
+            "title": "/logout",
+            "description": "Sign out from your Anthropic account"
+          },
+          "mcp": {
+            "title": "/mcp",
+            "description": "Manage MCP server connections and OAuth authentication"
+          },
+          "memory": {
+            "title": "/memory",
+            "description": "Edit CLAUDE.md memory files"
+          },
+          "model": {
+            "title": "/model",
+            "description": "Select or change the AI model"
+          },
+          "permissions": {
+            "title": "/permissions",
+            "description": "View or update permissions"
+          },
+          "pr_comments": {
+            "title": "/pr_comments",
+            "description": "View pull request comments"
+          },
+          "review": {
+            "title": "/review",
+            "description": "Request code review"
+          },
+          "status": {
+            "title": "/status",
+            "description": "View account and system statuses"
+          },
+          "terminal-setup": {
+            "title": "/terminal-setup",
+            "description": "Install Shift+Enter key binding for newlines"
+          },
+          "vim": {
+            "title": "/vim",
+            "description": "Enter vim mode for alternating insert and command modes"
+          }
+        }
       },
       "quickCommand": {
         "title": "Quick Command",
@@ -117,8 +196,35 @@
     },
     "mcpServers": {
       "title": "MCP Servers",
+      "noServers": "No MCP servers configured",
       "addServer": "+ Add MCP Server",
       "popularServers": "Popular MCP Servers",
+      "popularServersList": {
+        "context7": {
+          "name": "Context7",
+          "description": "Up-to-date Code Docs For Any Prompt"
+        },
+        "sequentialThinking": {
+          "name": "Sequential Thinking",
+          "description": "Step-by-step reasoning capabilities"
+        },
+        "memory": {
+          "name": "Memory",
+          "description": "Knowledge graph storage"
+        },
+        "puppeteer": {
+          "name": "Puppeteer",
+          "description": "Browser automation"
+        },
+        "fetch": {
+          "name": "Fetch",
+          "description": "HTTP requests & web scraping"
+        },
+        "filesystem": {
+          "name": "Filesystem",
+          "description": "File operations & management"
+        }
+      },
       "addForm": {
         "serverName": "Server Name:",
         "serverType": "Server Type:",
@@ -170,7 +276,11 @@
       "ready": "Ready to chat with Claude Code! Type your message below.",
       "processing": "Claude is working...",
       "loginRequired": "Login Required",
-      "stop": "Stop"
+      "stop": "Stop",
+      "cost": "Cost",
+      "tokens": "Tokens",
+      "requestCompleted": "Request completed",
+      "duration": "Duration"
     },
     "messages": {
       "you": "You",
