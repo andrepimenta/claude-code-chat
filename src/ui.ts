@@ -286,7 +286,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				<div class="settings-group">
 					<div style="margin-bottom: 12px;">
 						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.language.title')}</label>
-						<select id="language-select" class="file-search-input" style="width: 100%;" onchange="updateLanguage()">
+						<select id="language-select" class="file-search-input" style="width: 200px; max-width: 100%;" onchange="updateLanguage()">
 							<!-- Language options will be populated by JavaScript -->
 						</select>
 					</div>
@@ -307,12 +307,12 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<div id="wslOptions" style="margin-left: 24px; margin-top: 12px;">
 						<div style="margin-bottom: 12px;">
 							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.distro')}</label>
-							<input type="text" id="wsl-distro" class="file-search-input" style="width: 100%;" placeholder="Ubuntu" onchange="updateSettings()">
+							<input type="text" id="wsl-distro" class="file-search-input" style="width: 200px; max-width: 100%;" placeholder="Ubuntu" onchange="updateSettings()">
 						</div>
 						
 						<div style="margin-bottom: 12px;">
 							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.nodePath')}</label>
-							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
+							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 300px; max-width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
 								${t('ui.settings.wsl.nodePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
 							</p>
@@ -320,7 +320,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						
 						<div style="margin-bottom: 12px;">
 							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">${t('ui.settings.wsl.claudePath')}</label>
-							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
+							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 300px; max-width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
 								${t('ui.settings.wsl.claudePathHelper')} <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
 							</p>
@@ -2299,15 +2299,16 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 		let customSnippetsData = {};
 
 		function usePromptSnippet(snippetType) {
+			// Get translated built-in snippets
 			const builtInSnippets = {
-				'performance-analysis': 'Analyze this code for performance issues and suggest optimizations',
-				'security-review': 'Review this code for security vulnerabilities',
-				'implementation-review': 'Review the implementation in this code',
-				'code-explanation': 'Explain how this code works in detail',
-				'bug-fix': 'Help me fix this bug in my code',
-				'refactor': 'Refactor this code to improve readability and maintainability',
-				'test-generation': 'Generate comprehensive tests for this code',
-				'documentation': 'Generate documentation for this code'
+				'performance-analysis': t('ui.slashCommands.promptSnippets.performanceAnalysis.description'),
+				'security-review': t('ui.slashCommands.promptSnippets.securityReview.description'),
+				'implementation-review': t('ui.slashCommands.promptSnippets.implementationReview.description'),
+				'code-explanation': t('ui.slashCommands.promptSnippets.codeExplanation.description'),
+				'bug-fix': t('ui.slashCommands.promptSnippets.bugFix.description'),
+				'refactor': t('ui.slashCommands.promptSnippets.refactor.description'),
+				'test-generation': t('ui.slashCommands.promptSnippets.testGeneration.description'),
+				'documentation': t('ui.slashCommands.promptSnippets.documentation.description')
 			};
 			
 			// Check built-in snippets first
