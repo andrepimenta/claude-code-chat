@@ -23,6 +23,26 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Claude Code Chat</title>
 	${styles}
+	<script>
+		// Make translations available globally for runtime JavaScript functions
+		window.translations = ${JSON.stringify(translations || {})};
+		
+		// Global translation function for runtime use
+		window.t = function(key, params) {
+			if (!window.translations) return key;
+			
+			const value = key.split('.').reduce((obj, k) => obj && obj[k], window.translations);
+			if (!value) return key;
+			
+			if (params) {
+				return value.replace(/\\{(\\w+)\\}/g, (match, paramKey) => {
+					return params[paramKey] !== undefined ? String(params[paramKey]) : match;
+				});
+			}
+			
+			return value;
+		};
+	</script>
 </head>
 <body>
 	<div class="header">
@@ -963,17 +983,15 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				const toolName = data.toolName;
 				let completionText;
 				if (toolName === 'Read') {
-					completionText = translations?.ui?.tools?.read?.completed || '✅ Read completed';
+					completionText = window.t('ui.tools.read.completed');
 				} else if (toolName === 'Edit') {
-					completionText = translations?.ui?.tools?.edit?.completed || '✅ Edit completed';
+					completionText = window.t('ui.tools.edit.completed');
 				} else if (toolName === 'Write') {
-					completionText = translations?.ui?.tools?.write?.completed || '✅ Write completed';
+					completionText = window.t('ui.tools.write.completed');
 				} else if (toolName === 'TodoWrite') {
-					completionText = translations?.ui?.tools?.todoWrite?.completed || '✅ Update Todos completed';
+					completionText = window.t('ui.tools.todoWrite.completed');
 				} else {
-					completionText = translations?.ui?.tools?.generic?.completed ? 
-						translations.ui.tools.generic.completed.replace('{toolName}', toolName) :
-						'✅ ' + toolName + ' completed';
+					completionText = window.t('ui.tools.generic.completed', { toolName: toolName });
 				}
 				addMessage(completionText, 'system');
 				return; // Don't show the result message
@@ -2301,14 +2319,14 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 		function usePromptSnippet(snippetType) {
 			// Get translated built-in snippets
 			const builtInSnippets = {
-				'performance-analysis': t('ui.slashCommands.promptSnippets.performanceAnalysis.description'),
-				'security-review': t('ui.slashCommands.promptSnippets.securityReview.description'),
-				'implementation-review': t('ui.slashCommands.promptSnippets.implementationReview.description'),
-				'code-explanation': t('ui.slashCommands.promptSnippets.codeExplanation.description'),
-				'bug-fix': t('ui.slashCommands.promptSnippets.bugFix.description'),
-				'refactor': t('ui.slashCommands.promptSnippets.refactor.description'),
-				'test-generation': t('ui.slashCommands.promptSnippets.testGeneration.description'),
-				'documentation': t('ui.slashCommands.promptSnippets.documentation.description')
+				'performance-analysis': window.t('ui.slashCommands.promptSnippets.performanceAnalysis.description'),
+				'security-review': window.t('ui.slashCommands.promptSnippets.securityReview.description'),
+				'implementation-review': window.t('ui.slashCommands.promptSnippets.implementationReview.description'),
+				'code-explanation': window.t('ui.slashCommands.promptSnippets.codeExplanation.description'),
+				'bug-fix': window.t('ui.slashCommands.promptSnippets.bugFix.description'),
+				'refactor': window.t('ui.slashCommands.promptSnippets.refactor.description'),
+				'test-generation': window.t('ui.slashCommands.promptSnippets.testGeneration.description'),
+				'documentation': window.t('ui.slashCommands.promptSnippets.documentation.description')
 			};
 			
 			// Check built-in snippets first
@@ -2394,7 +2412,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						<div class="slash-command-description">\${snippet.prompt}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="\${translations?.ui?.slashCommands?.management?.deleteSnippet || 'Delete snippet'}">🗑️</button>
+						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="\${window.t('ui.slashCommands.management.deleteSnippet')}">🗑️</button>
 					</div>
 				\`;
 				
@@ -2882,7 +2900,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					<span class="icon">🔐</span>
 					<span>Permission Required</span>
 					<div class="permission-menu">
-						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="\${translations?.ui?.slashCommands?.management?.moreOptions || 'More options'}">⋮</button>
+						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="\${window.t('ui.slashCommands.management.moreOptions')}">⋮</button>
 						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
 							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
 								<span class="menu-icon">⚡</span>
