@@ -1930,7 +1930,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			if (!name) {
 				// Use a simple notification instead of alert which is blocked
 				const notification = document.createElement('div');
-				notification.textContent = 'Server name is required';
+				notification.textContent = window.t('ui.mcpServers.addForm.validation.nameRequired');
 				notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 				document.body.appendChild(notification);
 				setTimeout(() => notification.remove(), 3000);
@@ -1944,7 +1944,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				for (let server of existingServers) {
 					if (server.textContent === name) {
 						const notification = document.createElement('div');
-						notification.textContent = \`Server "\${name}" already exists\`;
+						notification.textContent = window.t('ui.mcpServers.addForm.validation.serverExists', { name });
 						notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 						document.body.appendChild(notification);
 						setTimeout(() => notification.remove(), 3000);
@@ -1959,7 +1959,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				const command = document.getElementById('serverCommand').value.trim();
 				if (!command) {
 					const notification = document.createElement('div');
-					notification.textContent = 'Command is required for stdio servers';
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.commandRequired');
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);
@@ -1986,7 +1986,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				const url = document.getElementById('serverUrl').value.trim();
 				if (!url) {
 					const notification = document.createElement('div');
-					notification.textContent = 'URL is required for HTTP/SSE servers';
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.urlRequired');
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);
@@ -2089,7 +2089,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			for (let server of existingServers) {
 				if (server.textContent === name) {
 					const notification = document.createElement('div');
-					notification.textContent = \`Server "\${name}" already exists\`;
+					notification.textContent = window.t('ui.mcpServers.addForm.validation.serverExists', { name });
 					notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: var(--vscode-inputValidation-errorBackground); color: var(--vscode-inputValidation-errorForeground); padding: 8px 12px; border-radius: 4px; z-index: 9999;';
 					document.body.appendChild(notification);
 					setTimeout(() => notification.remove(), 3000);

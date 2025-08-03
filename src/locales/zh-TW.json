@@ -240,7 +240,13 @@
         "environment": "環境變數（KEY=value，每行一個）：",
         "headers": "標頭（KEY=value，每行一個）：",
         "addServer": "新增伺服器",
-        "cancel": "取消"
+        "cancel": "取消",
+        "validation": {
+          "nameRequired": "必須輸入伺服器名稱",
+          "serverExists": "伺服器「{name}」已存在",
+          "commandRequired": "stdio 伺服器需要指令",
+          "urlRequired": "HTTP/SSE 伺服器需要網址"
+        }
       }
     },
     "settings": {

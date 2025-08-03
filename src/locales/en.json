@@ -240,7 +240,13 @@
         "environment": "Environment Variables (KEY=value, one per line):",
         "headers": "Headers (KEY=value, one per line):",
         "addServer": "Add Server",
-        "cancel": "Cancel"
+        "cancel": "Cancel",
+        "validation": {
+          "nameRequired": "Server name is required",
+          "serverExists": "Server \"{name}\" already exists",
+          "commandRequired": "Command is required for stdio servers",
+          "urlRequired": "URL is required for HTTP/SSE servers"
+        }
       }
     },
     "settings": {
