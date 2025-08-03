@@ -61,6 +61,12 @@
         "thinkHarder": "Think Harder",
         "ultrathink": "Ultrathink"
       },
+      "modeLabels": {
+        "think": "Thinking Mode",
+        "thinkHard": "Think Hard Mode", 
+        "thinkHarder": "Think Harder Mode",
+        "ultrathink": "Ultrathink Mode"
+      },
       "confirm": "Confirm"
     },
     "slashCommands": {

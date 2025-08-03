@@ -61,6 +61,12 @@
         "thinkHarder": "更深度思考",
         "ultrathink": "超級思考"
       },
+      "modeLabels": {
+        "think": "思考模式",
+        "thinkHard": "深度思考模式", 
+        "thinkHarder": "更深度思考模式",
+        "ultrathink": "超級思考模式"
+      },
       "confirm": "確認"
     },
     "slashCommands": {

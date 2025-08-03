@@ -1510,7 +1510,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				switchElement.classList.remove('active');
 				// Reset to default "Thinking Mode" when turned off
 				if (toggleLabel) {
-					toggleLabel.textContent = 'Thinking Mode';
+					toggleLabel.textContent = window.t('ui.input.thinkingMode');
 				}
 			}
 		}
@@ -2213,11 +2213,12 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 		}
 
 		function updateThinkingModeToggleName(intensityValue) {
-			const intensityNames = ['Thinking', 'Think Hard', 'Think Harder', 'Ultrathink'];
-			const modeName = intensityNames[intensityValue] || 'Thinking';
+			const intensityKeys = ['think', 'thinkHard', 'thinkHarder', 'ultrathink'];
+			const modeKey = intensityKeys[intensityValue] || 'think';
+			const modeName = window.t('ui.thinkingIntensity.modeLabels.' + modeKey);
 			const toggleLabel = document.getElementById('thinkingModeLabel');
 			if (toggleLabel) {
-				toggleLabel.textContent = modeName + ' Mode';
+				toggleLabel.textContent = modeName;
 			}
 		}
 
@@ -3560,7 +3561,22 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			if (planFirstSpan) planFirstSpan.textContent = t('ui.input.planFirst');
 			
 			const thinkingModeSpan = document.getElementById('thinkingModeLabel');
-			if (thinkingModeSpan) thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+			if (thinkingModeSpan) {
+				// Check if thinking mode is currently active and update label accordingly
+				const thinkingModeSwitch = document.getElementById('thinkingModeSwitch');
+				if (thinkingModeSwitch && thinkingModeSwitch.classList.contains('active')) {
+					// If thinking mode is active, get current intensity and update label
+					const thinkingIntensitySlider = document.getElementById('thinkingIntensitySlider');
+					if (thinkingIntensitySlider) {
+						updateThinkingModeToggleName(thinkingIntensitySlider.value);
+					} else {
+						thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+					}
+				} else {
+					// If thinking mode is not active, use default label
+					thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+				}
+			}
 			
 			const slashBtn = document.querySelector('.slash-btn');
 			if (slashBtn) slashBtn.title = t('ui.input.slashCommands');
