@@ -226,9 +226,11 @@ class ClaudeChatProvider {
 			});
 		}*/
 
+		// Get translations for status messages
+		const i18n = getI18n();
 		this._postMessage({
 			type: 'ready',
-			data: this._isProcessing ? 'Claude is working...' : 'Ready to chat with Claude Code! Type your message below.'
+			data: this._isProcessing ? i18n.t('ui.status.processing') : i18n.t('ui.status.ready')
 		});
 
 		// Send current model to webview
@@ -479,10 +481,11 @@ class ClaudeChatProvider {
 			console.log("error", e);
 		}
 
-		// Show loading indicator
+		// Show loading indicator with translated text
+		const i18n = getI18n();
 		this._postMessage({
 			type: 'loading',
-			data: 'Claude is working...'
+			data: i18n.t('ui.status.processing')
 		});
 
 		// Build command arguments with session management
