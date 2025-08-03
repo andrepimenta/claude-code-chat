@@ -2692,7 +2692,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					
 				case 'thinking':
 					if (message.data.trim()) {
-						addMessage('💭 Thinking...' + parseSimpleMarkdown(message.data), 'thinking');
+						addMessage(window.t('ui.messages.thinking') + parseSimpleMarkdown(message.data), 'thinking');
 					}
 					break;
 					
@@ -2791,7 +2791,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
 					hideSessionInfo();
-					addMessage('🆕 Started new session', 'system');
+					addMessage(window.t('ui.messages.newSession'), 'system');
 					// Reset totals
 					totalCost = 0;
 					totalTokensInput = 0;
@@ -2802,8 +2802,8 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					
 				case 'loginRequired':
 					sendStats('Login required');
-					addMessage('🔐 Login Required\\n\\nYour Claude API key is invalid or expired.\\nA terminal has been opened - please run the login process there.\\n\\nAfter logging in, come back to this chat to continue.', 'error');
-					updateStatus('Login Required', 'error');
+					addMessage(window.t('ui.messages.loginRequired'), 'error');
+					updateStatus(window.t('ui.status.loginRequired'), 'error');
 					break;
 					
 				case 'showRestoreOption':
@@ -2861,14 +2861,14 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 					break;
 				case 'mcpServerSaved':
 					loadMCPServers(); // Reload the servers list
-					addMessage('✅ MCP server "' + message.data.name + '" saved successfully', 'system');
+					addMessage(window.t('ui.messages.mcpServerSaved', { name: message.data.name }), 'system');
 					break;
 				case 'mcpServerDeleted':
 					loadMCPServers(); // Reload the servers list
-					addMessage('✅ MCP server "' + message.data.name + '" deleted successfully', 'system');
+					addMessage(window.t('ui.messages.mcpServerDeleted', { name: message.data.name }), 'system');
 					break;
 				case 'mcpServerError':
-					addMessage('❌ Error with MCP server: ' + message.data.error, 'error');
+					addMessage(window.t('ui.messages.mcpServerError', { error: message.data.error }), 'error');
 					break;
 			}
 		});
@@ -2990,7 +2990,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			respondToPermission(permissionId, true);
 			
 			// Show notification
-			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
+			addMessage(window.t('ui.messages.yoloModeEnabled'), 'system');
 		}
 
 		// Close permission menus when clicking outside
