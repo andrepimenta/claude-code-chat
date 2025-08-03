@@ -79,6 +79,40 @@
       "quickCommand": {
         "title": "快速指令",
         "placeholder": "輸入指令"
+      },
+      "promptSnippets": {
+        "performanceAnalysis": {
+          "title": "/performance-analysis",
+          "description": "分析此程式碼的效能問題並建議最佳化方案"
+        },
+        "securityReview": {
+          "title": "/security-review", 
+          "description": "檢查此程式碼的安全性漏洞"
+        },
+        "implementationReview": {
+          "title": "/implementation-review",
+          "description": "檢查此程式碼的實作方式"
+        },
+        "codeExplanation": {
+          "title": "/code-explanation",
+          "description": "詳細解釋此程式碼的運作方式"
+        },
+        "bugFix": {
+          "title": "/bug-fix",
+          "description": "協助修復程式碼中的錯誤"
+        },
+        "refactor": {
+          "title": "/refactor",
+          "description": "重構此程式碼以提升可讀性和可維護性"
+        },
+        "testGeneration": {
+          "title": "/test-generation",
+          "description": "為此程式碼產生完整的測試"
+        },
+        "documentation": {
+          "title": "/documentation",
+          "description": "為此程式碼產生說明文件"
+        }
       }
     },
     "mcpServers": {

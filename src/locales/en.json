@@ -79,6 +79,40 @@
       "quickCommand": {
         "title": "Quick Command",
         "placeholder": "enter-command"
+      },
+      "promptSnippets": {
+        "performanceAnalysis": {
+          "title": "/performance-analysis",
+          "description": "Analyze this code for performance issues and suggest optimizations"
+        },
+        "securityReview": {
+          "title": "/security-review", 
+          "description": "Review this code for security vulnerabilities"
+        },
+        "implementationReview": {
+          "title": "/implementation-review",
+          "description": "Review the implementation in this code"
+        },
+        "codeExplanation": {
+          "title": "/code-explanation",
+          "description": "Explain how this code works in detail"
+        },
+        "bugFix": {
+          "title": "/bug-fix",
+          "description": "Help me fix this bug in my code"
+        },
+        "refactor": {
+          "title": "/refactor",
+          "description": "Refactor this code to improve readability and maintainability"
+        },
+        "testGeneration": {
+          "title": "/test-generation",
+          "description": "Generate comprehensive tests for this code"
+        },
+        "documentation": {
+          "title": "/documentation",
+          "description": "Generate documentation for this code"
+        }
       }
     },
     "mcpServers": {

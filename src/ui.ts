@@ -60,12 +60,12 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			<div class="wsl-alert-content">
 				<div class="wsl-alert-icon">💻</div>
 				<div class="wsl-alert-text">
-					<strong>Looks like you are using Windows!</strong><br/>
-					If you are using WSL to run Claude Code, you should enable WSL integration in the settings.
+					<strong>${t('ui.wslAlert.title')}</strong><br/>
+					${t('ui.wslAlert.message')}
 				</div>
 				<div class="wsl-alert-actions">
-					<button class="btn" onclick="openWSLSettings()">Enable WSL</button>
-					<button class="btn outlined" onclick="dismissWSLAlert()">Dismiss</button>
+					<button class="btn" onclick="openWSLSettings()">${t('ui.wslAlert.enableWSL')}</button>
+					<button class="btn outlined" onclick="dismissWSLAlert()">${t('ui.wslAlert.dismiss')}</button>
 				</div>
 			</div>
 		</div>
@@ -73,17 +73,17 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 		<div class="input-container" id="inputContainer">
 			<div class="input-modes">
 				<div class="mode-toggle">
-					<span onclick="togglePlanMode()">Plan First</span>
+					<span onclick="togglePlanMode()">${t('ui.input.planFirst')}</span>
 					<div class="mode-switch" id="planModeSwitch" onclick="togglePlanMode()"></div>
 				</div>
 				<div class="mode-toggle">
-					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
+					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">${t('ui.input.thinkingMode')}</span>
 					<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
 				</div>
 			</div>
 			<div class="textarea-container">
 				<div class="textarea-wrapper">
-					<textarea class="input-field" id="messageInput" placeholder="Type your message to Claude Code..." rows="1"></textarea>
+					<textarea class="input-field" id="messageInput" placeholder="${t('ui.input.placeholder')}" rows="1"></textarea>
 					<div class="input-controls">
 						<div class="left-controls">
 							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="Select model">
@@ -100,9 +100,9 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 							</button>
 						</div>
 						<div class="right-controls">
-							<button class="slash-btn" onclick="showSlashCommandsModal()" title="Slash commands">/</button>
-							<button class="at-btn" onclick="showFilePicker()" title="Reference files">@</button>
-							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="Attach images">
+							<button class="slash-btn" onclick="showSlashCommandsModal()" title="${t('ui.input.slashCommands')}">/</button>
+							<button class="at-btn" onclick="showFilePicker()" title="${t('ui.input.referenceFiles')}">@</button>
+							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="${t('ui.input.attachImages')}">
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 16 16"
@@ -117,7 +117,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 							</button>
 							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
 							<div>
-							<span>Send </span>
+							<span>${t('ui.input.send')} </span>
 							   <svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 24 24"
@@ -140,25 +140,25 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 	
 	<div class="status ready" id="status">
 		<div class="status-indicator"></div>
-		<div class="status-text" id="statusText">Initializing...</div>
+		<div class="status-text" id="statusText">${t('ui.status.initializing')}</div>
 		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
 			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
 				<path d="M6 6h12v12H6z"/>
 			</svg>
-			Stop
+			${t('ui.status.stop')}
 		</button>
 	</div>
 
 			<div id="yoloWarning" class="yolo-warning" style="display: none;">
-			⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.
+			${t('ui.yoloWarning')}
 		</div>
 
 	<!-- File picker modal -->
 	<div id="filePickerModal" class="file-picker-modal" style="display: none;">
 		<div class="file-picker-content">
 			<div class="file-picker-header">
-				<span>Select File</span>
-				<input type="text" id="fileSearchInput" placeholder="Search files..." class="file-search-input">
+				<span>${t('ui.filePicker.title')}</span>
+				<input type="text" id="fileSearchInput" placeholder="${t('ui.filePicker.searchPlaceholder')}" class="file-search-input">
 			</div>
 			<div id="fileList" class="file-list">
 				<!-- Files will be loaded here -->
@@ -3497,6 +3497,84 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			}
 		}
 
+		function updateUIText(translations) {
+			if (!translations) return;
+			
+			// Helper function for translations
+			const t = (key) => {
+				const value = key.split('.').reduce((obj, k) => obj && obj[k], translations);
+				return value || key;
+			};
+			
+			// Update header elements
+			const headerTitle = document.querySelector('.header h2');
+			if (headerTitle) headerTitle.textContent = t('ui.header.title');
+			
+			const settingsBtn = document.getElementById('settingsBtn');
+			if (settingsBtn) settingsBtn.title = t('ui.header.settings');
+			
+			const historyBtn = document.getElementById('historyBtn');
+			if (historyBtn) historyBtn.innerHTML = '📚 ' + t('ui.header.history');
+			
+			const newSessionBtn = document.getElementById('newSessionBtn');
+			if (newSessionBtn) newSessionBtn.textContent = t('ui.header.newChat');
+			
+			// Update conversation history
+			const conversationTitle = document.querySelector('.conversation-header h3');
+			if (conversationTitle) conversationTitle.textContent = t('ui.conversationHistory.title');
+			
+			const conversationClose = document.querySelector('.conversation-header .btn');
+			if (conversationClose) conversationClose.textContent = t('ui.conversationHistory.close');
+			
+			// Update input placeholder and controls
+			const messageInput = document.getElementById('messageInput');
+			if (messageInput) messageInput.placeholder = t('ui.input.placeholder');
+			
+			const planFirstSpan = document.querySelector('.mode-toggle span[onclick="togglePlanMode()"]');
+			if (planFirstSpan) planFirstSpan.textContent = t('ui.input.planFirst');
+			
+			const thinkingModeSpan = document.getElementById('thinkingModeLabel');
+			if (thinkingModeSpan) thinkingModeSpan.textContent = t('ui.input.thinkingMode');
+			
+			const slashBtn = document.querySelector('.slash-btn');
+			if (slashBtn) slashBtn.title = t('ui.input.slashCommands');
+			
+			const atBtn = document.querySelector('.at-btn');
+			if (atBtn) atBtn.title = t('ui.input.referenceFiles');
+			
+			const imageBtn = document.getElementById('imageBtn');
+			if (imageBtn) imageBtn.title = t('ui.input.attachImages');
+			
+			const sendBtn = document.querySelector('.send-btn span');
+			if (sendBtn) sendBtn.textContent = t('ui.input.send') + ' ';
+			
+			// Update status
+			const statusText = document.getElementById('statusText');
+			if (statusText && statusText.textContent.includes('Initializing')) {
+				statusText.textContent = t('ui.status.initializing');
+			}
+			
+			const stopBtn = document.querySelector('#stopBtn svg + text, #stopBtn');
+			if (stopBtn && stopBtn.textContent && stopBtn.textContent.includes('Stop')) {
+				stopBtn.childNodes.forEach(node => {
+					if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === 'Stop') {
+						node.textContent = t('ui.status.stop');
+					}
+				});
+			}
+			
+			// Update yolo warning
+			const yoloWarning = document.getElementById('yoloWarning');
+			if (yoloWarning) yoloWarning.textContent = t('ui.yoloWarning');
+			
+			// Update file picker
+			const filePickerTitle = document.querySelector('#filePickerModal .file-picker-header span');
+			if (filePickerTitle) filePickerTitle.textContent = t('ui.filePicker.title');
+			
+			const fileSearchInput = document.getElementById('fileSearchInput');
+			if (fileSearchInput) fileSearchInput.placeholder = t('ui.filePicker.searchPlaceholder');
+		}
+
 		// Request language data on page load
 		vscode.postMessage({
 			type: 'getLanguage'
@@ -3718,6 +3796,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				// Update language data and populate options
 				currentLanguageData = message.data;
 				populateLanguageOptions(message.data);
+				updateUIText(message.data.translations);
 			}
 
 			if (message.type === 'platformInfo') {
