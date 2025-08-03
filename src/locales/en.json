@@ -334,7 +334,12 @@
       "restoreFailure": "Failed to restore commit: {error}",
       "settingsUpdateFailure": "Failed to update settings",
       "modelSwitched": "Claude model switched to: {model}",
-      "invalidModel": "Invalid model: {model}. Please select Opus, Sonnet, or Default."
+      "invalidModel": "Invalid model: {model}. Please select Opus, Sonnet, or Default.",
+      "wslConfigChanged": "WSL configuration changed. Started a new Claude session.",
+      "loginInTerminal": "Please login to Claude in the terminal, then come back to this chat to continue.",
+      "checkTerminalForModel": "Check the terminal to update your default model configuration. Come back to this chat here after making changes.",
+      "failedToOpenFile": "Failed to open file: {filePath}",
+      "failedToCreateImageFile": "Failed to create image file"
     },
     "tools": {
       "input": "INPUT",

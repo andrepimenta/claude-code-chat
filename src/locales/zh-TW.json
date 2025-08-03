@@ -334,7 +334,12 @@
       "restoreFailure": "還原提交失敗：{error}",
       "settingsUpdateFailure": "更新設定失敗",
       "modelSwitched": "Claude 模型已切換至：{model}",
-      "invalidModel": "無效的模型：{model}。請選擇 Opus、Sonnet 或 Default。"
+      "invalidModel": "無效的模型：{model}。請選擇 Opus、Sonnet 或 Default。",
+      "wslConfigChanged": "WSL 設定已變更。開始新工作階段。",
+      "loginInTerminal": "請在終端機中登入 Claude，然後返回此對話以繼續。",
+      "checkTerminalForModel": "請檢查終端機以更新您的預設模型設定。變更後請回到此對話。",
+      "failedToOpenFile": "開啟檔案失敗：{filePath}",
+      "failedToCreateImageFile": "建立圖片檔案失敗"
     },
     "tools": {
       "input": "輸入",

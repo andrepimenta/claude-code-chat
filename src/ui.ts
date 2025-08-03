@@ -2885,40 +2885,40 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			const toolName = data.tool || 'Unknown Tool';
 			
 			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
+			let alwaysAllowText = window.t('ui.permissions.alwaysAllow', { tool: toolName });
 			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
 				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
+				alwaysAllowText = window.t('ui.permissions.alwaysAllowCommand', { command: truncatedPattern });
 				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
 			}
 			
 			messageDiv.innerHTML = \`
 				<div class="permission-header">
 					<span class="icon">🔐</span>
-					<span>Permission Required</span>
+					<span>\${window.t('ui.permissions.title')}</span>
 					<div class="permission-menu">
 						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="\${window.t('ui.slashCommands.management.moreOptions')}">⋮</button>
 						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
 							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
 								<span class="menu-icon">⚡</span>
 								<div class="menu-content">
-									<span class="menu-title">Enable YOLO Mode</span>
-									<span class="menu-subtitle">Auto-allow all permissions</span>
+									<span class="menu-title">\${window.t('ui.permissions.yoloModeTitle')}</span>
+									<span class="menu-subtitle">\${window.t('ui.permissions.yoloModeSubtitle')}</span>
 								</div>
 							</button>
 						</div>
 					</div>
 				</div>
 				<div class="permission-content">
-					<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+					<p>\${window.t('ui.permissions.message', { tool: toolName })}</p>
 					<div class="permission-buttons">
-						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">\${window.t('ui.permissions.deny')}</button>
 						<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">\${window.t('ui.permissions.allow')}</button>
 					</div>
 				</div>
 			\`;
@@ -3629,7 +3629,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			if (!permissions || !permissions.alwaysAllow || Object.keys(permissions.alwaysAllow).length === 0) {
 				permissionsList.innerHTML = \`
 					<div class="permissions-empty">
-						No always-allow permissions set
+						\${window.t('ui.settings.permissions.noPermissions')}
 					</div>
 				\`;
 				return;
@@ -3644,9 +3644,9 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 						<div class="permission-item">
 							<div class="permission-info">
 								<span class="permission-tool">\${toolName}</span>
-								<span class="permission-desc">All</span>
+								<span class="permission-desc">\${window.t('ui.common.all')}</span>
 							</div>
-							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">Remove</button>
+							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">\${window.t('ui.common.remove')}</button>
 						</div>
 					\`;
 				} else if (Array.isArray(permission)) {
@@ -3659,7 +3659,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 									<span class="permission-tool">\${toolName}</span>
 									<span class="permission-command"><code>\${displayCommand}</code></span>
 								</div>
-								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">Remove</button>
+								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">\${window.t('ui.common.remove')}</button>
 							</div>
 						\`;
 					}
@@ -3837,6 +3837,10 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			if (message.type === 'languageData') {
 				// Update language data and populate options
 				currentLanguageData = message.data;
+				
+				// Update global translations for runtime JavaScript functions
+				window.translations = message.data.translations;
+				
 				populateLanguageOptions(message.data);
 				updateUIText(message.data.translations);
 			}

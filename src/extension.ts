@@ -929,8 +929,9 @@ class ClaudeChatProvider {
 		this._newSession();
 
 		// Show notification to user
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'WSL configuration changed. Started a new Claude session.',
+			i18n.t('ui.messages.wslConfigChanged'),
 			'OK'
 		);
 
@@ -973,8 +974,9 @@ class ClaudeChatProvider {
 		terminal.show();
 
 		// Show info message
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'Please login to Claude in the terminal, then come back to this chat to continue.',
+			i18n.t('ui.messages.loginInTerminal'),
 			'OK'
 		);
 
@@ -2314,8 +2316,9 @@ class ClaudeChatProvider {
 		terminal.show();
 
 		// Show info message
+		const i18n = getI18n();
 		vscode.window.showInformationMessage(
-			'Check the terminal to update your default model configuration. Come back to this chat here after making changes.',
+			i18n.t('ui.messages.checkTerminalForModel'),
 			'OK'
 		);
 
@@ -2393,7 +2396,8 @@ class ClaudeChatProvider {
 			const document = await vscode.workspace.openTextDocument(uri);
 			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
 		} catch (error) {
-			vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.failedToOpenFile', { filePath }));
 			console.error('Error opening file:', error);
 		}
 	}
@@ -2442,7 +2446,8 @@ class ClaudeChatProvider {
 
 		} catch (error) {
 			console.error('Error creating image file:', error);
-			vscode.window.showErrorMessage('Failed to create image file');
+			const i18n = getI18n();
+			vscode.window.showErrorMessage(i18n.t('ui.messages.failedToCreateImageFile'));
 		}
 	}
 
