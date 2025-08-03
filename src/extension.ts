@@ -2218,6 +2218,12 @@ class ClaudeChatProvider {
 			// Send updated language data to webview
 			this._sendCurrentLanguage();
 			
+			// Send updated ready message with new language
+			this._postMessage({
+				type: 'ready',
+				data: this._isProcessing ? i18n.t('ui.status.processing') : i18n.t('ui.status.ready')
+			});
+			
 			console.log(`Language changed to: ${languageCode}`);
 		} catch (error) {
 			console.error('Error setting language:', error);

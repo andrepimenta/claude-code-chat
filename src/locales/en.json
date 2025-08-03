@@ -294,6 +294,7 @@
       "error": "Error",
       "thinking": "💭 Thinking...",
       "sessionInfo": "🆔 Session ID: {sessionId}",
+      "fileNotReadError": "File has not been read yet. Let me read it first before writing to it.",
       "toolsAvailable": "🔧 Tools Available: {count}",
       "mcpServers": "🖥️ MCP Servers: {count}",
       "tokens": "📊 Tokens: {total}",

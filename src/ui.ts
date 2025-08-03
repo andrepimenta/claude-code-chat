@@ -998,7 +998,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			}
 			
 			if(data.isError && data.content === "File has not been read yet. Read it first before writing to it."){
-				return addMessage("File has not been read yet. Let me read it first before writing to it.", 'system');
+				return addMessage(window.t('ui.messages.fileNotReadError'), 'system');
 			}
 
 			const messageDiv = document.createElement('div');
@@ -1841,7 +1841,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 				updateSettings();
 				
 				// Show confirmation message
-				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
+				addMessage(window.t('ui.messages.yoloModeEnabled'), 'system');
 				
 				// Update the warning banner
 				updateYoloWarning();
@@ -2298,7 +2298,7 @@ const getHtml = (isTelemetryEnabled: boolean, translations?: any) => {
 			});
 			
 			// Show user feedback
-			addMessage('user', \`Executing /\${command} command in terminal. Check the terminal output and return when ready.\`, 'assistant');
+			addMessage('user', window.t('ui.messages.slashCommandExecuted', { command }), 'assistant');
 		}
 
 		function handleCustomCommandKeydown(event) {

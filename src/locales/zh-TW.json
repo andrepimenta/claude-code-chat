@@ -294,6 +294,7 @@
       "error": "錯誤",
       "thinking": "💭 思考中...",
       "sessionInfo": "🆔 工作階段 ID：{sessionId}",
+      "fileNotReadError": "檔案尚未讀取。讓我先讀取檔案再進行寫入。",
       "toolsAvailable": "🔧 可用工具：{count}",
       "mcpServers": "🖥️ MCP 伺服器：{count}",
       "tokens": "📊 代幣：{total}",
