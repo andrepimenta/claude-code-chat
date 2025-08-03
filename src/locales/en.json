@@ -1,7 +1,11 @@
 {
   "extension": {
     "title": "Claude Code Chat",
-    "description": "Beautiful Claude Code Chat Interface for VS Code"
+    "description": "Beautiful Claude Code Chat Interface for VS Code",
+    "statusBar": {
+      "text": "Claude",
+      "tooltip": "Open Claude Code Chat (Ctrl+Shift+C)"
+    }
   },
   "ui": {
     "header": {
@@ -318,7 +322,13 @@
       "restoreError": "❌ {message}",
       "mcpServerSaved": "✅ MCP server \"{name}\" saved successfully",
       "mcpServerDeleted": "✅ MCP server \"{name}\" deleted successfully",
-      "mcpServerError": "❌ Error with MCP server: {error}"
+      "mcpServerError": "❌ Error with MCP server: {error}",
+      "backupError": "No workspace folder or backup repository available.",
+      "restoreSuccess": "Restored to commit: {message}",
+      "restoreFailure": "Failed to restore commit: {error}",
+      "settingsUpdateFailure": "Failed to update settings",
+      "modelSwitched": "Claude model switched to: {model}",
+      "invalidModel": "Invalid model: {model}. Please select Opus, Sonnet, or Default."
     },
     "tools": {
       "todoWrite": {

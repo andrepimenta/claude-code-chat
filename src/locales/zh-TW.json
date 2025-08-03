@@ -1,7 +1,11 @@
 {
   "extension": {
     "title": "Claude Code Chat",
-    "description": "VS Code 的美觀 Claude Code Chat 介面"
+    "description": "VS Code 的美觀 Claude Code Chat 介面",
+    "statusBar": {
+      "text": "Claude",
+      "tooltip": "開啟 Claude Code Chat (Ctrl+Shift+C)"
+    }
   },
   "ui": {
     "header": {
@@ -318,7 +322,13 @@
       "restoreError": "❌ {message}",
       "mcpServerSaved": "✅ MCP 伺服器 \"{name}\" 儲存成功",
       "mcpServerDeleted": "✅ MCP 伺服器 \"{name}\" 刪除成功",
-      "mcpServerError": "❌ MCP 伺服器錯誤：{error}"
+      "mcpServerError": "❌ MCP 伺服器錯誤：{error}",
+      "backupError": "無可用的工作區資料夾或備份存儲庫。",
+      "restoreSuccess": "已還原至提交：{message}",
+      "restoreFailure": "還原提交失敗：{error}",
+      "settingsUpdateFailure": "更新設定失敗",
+      "modelSwitched": "Claude 模型已切換至：{model}",
+      "invalidModel": "無效的模型：{model}。請選擇 Opus、Sonnet 或 Default。"
     },
     "tools": {
       "todoWrite": {
