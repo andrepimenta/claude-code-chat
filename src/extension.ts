@@ -226,6 +226,16 @@ class ClaudeChatProvider {
 			data: this._isProcessing ? 'Claude is working...' : 'Ready to chat with Claude Code! Type your message below.'
 		});
 
+		// Send workspace info to webview
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (workspaceFolder) {
+			const workspaceName = workspaceFolder.name;
+			this._postMessage({
+				type: 'workspaceInfo',
+				data: { name: workspaceName }
+			});
+		}
+
 		// Send current model to webview
 		this._postMessage({
 			type: 'modelSelected',

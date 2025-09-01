@@ -2831,6 +2831,49 @@ const styles = `
         border-color: var(--vscode-terminal-ansiGreen);
     }
 
+    .workspace-info {
+        margin-left: 12px;
+        padding: 2px 8px;
+        background-color: rgba(255, 255, 255, 0.05);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .workspace-icon {
+        margin-right: 4px;
+        font-size: 10px;
+    }
+
+    .user-copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 4px;
+        color: var(--vscode-foreground);
+        cursor: pointer;
+        padding: 4px;
+        opacity: 0;
+        transition: opacity 0.2s ease, background-color 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+    }
+
+    .user-copy-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .message.user:hover .user-copy-btn {
+        opacity: 1;
+    }
+
     /* Markdown content styles */
     .message h1, .message h2, .message h3, .message h4 {
         margin: 0.8em 0 0.4em 0;

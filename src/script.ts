@@ -43,8 +43,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messageDiv = document.createElement('div');
 			messageDiv.className = \`message \${type}\`;
 			
-			// Add header for main message types (excluding system)
-			if (type === 'user' || type === 'claude' || type === 'error') {
+			// Add header only for error messages
+			if (type === 'error') {
 				const headerDiv = document.createElement('div');
 				headerDiv.className = 'message-header';
 				
@@ -93,6 +93,17 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const preElement = document.createElement('pre');
 				preElement.textContent = content;
 				contentDiv.appendChild(preElement);
+			}
+			
+			// Add copy button for user messages after content is set
+			if (type === 'user') {
+				contentDiv.style.position = 'relative';
+				const copyBtn = document.createElement('button');
+				copyBtn.className = 'user-copy-btn';
+				copyBtn.setAttribute('aria-label', 'Copy message');
+				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+				copyBtn.onclick = () => copyToClipboard(content.replace(/<[^>]*>/g, ''));
+				contentDiv.appendChild(copyBtn);
 			}
 			
 			messageDiv.appendChild(contentDiv);
@@ -1829,6 +1840,15 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			transformStopToSend();
 		}
 
+		// Copy to clipboard function
+		function copyToClipboard(text) {
+			navigator.clipboard.writeText(text).then(() => {
+				console.log('Text copied to clipboard');
+			}).catch(err => {
+				console.error('Failed to copy text: ', err);
+			});
+		}
+
 		// Copy message content function
 		function copyMessageContent(messageDiv) {
 			const contentDiv = messageDiv.querySelector('.message-content');
@@ -2135,6 +2155,15 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Update the UI with the current model
 					currentModel = message.model;
 					selectModel(message.model, true);
+					break;
+				case 'workspaceInfo':
+					// Update the UI with workspace information
+					const workspaceElement = document.getElementById('workspaceName');
+					const workspaceContainer = document.getElementById('workspaceInfo');
+					if (workspaceElement && workspaceContainer && message.data?.name) {
+						workspaceElement.textContent = message.data.name;
+						workspaceContainer.style.display = 'block';
+					}
 					break;
 				case 'terminalOpened':
 					// Display notification about checking the terminal
