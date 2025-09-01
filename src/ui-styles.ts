@@ -744,12 +744,15 @@ const styles = `
         background-color: rgba(255, 255, 255, 0.02);
     }
 
-    .tool-header {
+    .tool-info-body {
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-bottom: 4px;
+        margin-bottom: 12px !important;
         font-weight: 500;
+        font-size: 12px;
+        color: #999999;
+        opacity: 0.9;
     }
 
     .tool-icon {
@@ -924,13 +927,11 @@ const styles = `
         background-color: rgba(231, 76, 60, 0.1);
     }
 
-    /* Update tool header to use flexbox for permission indicator */
-    .tool-header {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
-        font-weight: 500;
+    /* Tool info body styles for permission indicator */
+    .tool-info-body .permission-status-indicator {
+        margin-left: auto;
+        font-size: 11px;
+        opacity: 0.8;
     }
 
     /* WSL Alert */
@@ -1138,14 +1139,7 @@ const styles = `
         display: none;
     }
 
-    .tool-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 8px;
-        padding-bottom: 6px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    }
+    /* Tool header removed - using tool-info-body instead */
 
     .tool-icon {
         width: 14px;
@@ -1167,6 +1161,24 @@ const styles = `
         font-size: 11px;
         color: #999999;
         opacity: 0.8;
+        cursor: default; /* Ensure tool name is not clickable */
+    }
+    
+    .clickable-filename {
+        cursor: pointer;
+        color: var(--vscode-textLink-foreground);
+        text-decoration: underline;
+        text-decoration-color: transparent;
+        transition: all 0.2s ease;
+        border-radius: 2px;
+        padding: 1px 2px;
+    }
+    
+    .clickable-filename:hover {
+        color: var(--vscode-textLink-activeForeground);
+        text-decoration-color: currentColor;
+        background-color: var(--vscode-textLink-foreground);
+        color: var(--vscode-editor-background);
     }
 
     .message-header {
@@ -1377,7 +1389,7 @@ const styles = `
     }
 
     .tool-input {
-        padding: 6px;
+        padding: 0;
         font-family: var(--vscode-editor-font-family);
         font-size: 12px;
         line-height: 1.4;

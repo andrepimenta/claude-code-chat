@@ -720,18 +720,28 @@ class ClaudeChatProvider {
 							});
 						} else if (content.type === 'tool_use') {
 							// Prepare tool execution information with better formatting
-							const toolInfo = `🔧 Executing: ${content.name}`;
+							let toolInfo = `🔧 Executing: ${content.name}`;
+							
+							// For file-related tools, show just the filename in the header
+							if (content.input && content.input.file_path) {
+								const filePath = content.input.file_path;
+								const fileName = filePath.split(/[/\\]/).pop();
+								toolInfo = `${content.name} ${fileName}`;
+							}
+							
 							let toolInput = '';
 
 							if (content.input) {
 								// Special formatting for TodoWrite to make it more readable
 								if (content.name === 'TodoWrite' && content.input.todos) {
-									toolInput = '\nTodo List Update:';
-									for (const todo of content.input.todos) {
+									toolInput = '';
+									for (let i = 0; i < content.input.todos.length; i++) {
+										const todo = content.input.todos[i];
 										const status = todo.status === 'completed' ? '✓' :
 											todo.status === 'in_progress' ? '◌' : '○';
 										const strikethrough = todo.status === 'completed' ? '~~' : '';
-										toolInput += `\n${status} ${strikethrough}${todo.content}${strikethrough}${todo.priority ? ` (priority: ${todo.priority})` : ''}`;
+										const prefix = i > 0 ? '\n' : '';
+										toolInput += `${prefix}${status} ${strikethrough}${todo.content}${strikethrough}${todo.priority ? ` (priority: ${todo.priority})` : ''}`;
 									}
 								} else {
 									// Send raw input to UI for formatting
@@ -745,7 +755,8 @@ class ClaudeChatProvider {
 								toolInput: toolInput,
 								rawInput: content.input,
 								toolName: content.name,
-								toolUseId: content.id
+								toolUseId: content.id,
+								filePath: content.input && content.input.file_path ? content.input.file_path : null
 							};
 							
 							this._sendAndSaveMessage({

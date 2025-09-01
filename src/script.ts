@@ -130,44 +130,60 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				messageDiv.setAttribute('data-tool-use-id', data.toolUseId);
 			}
 			
-			// Create modern header with icon
-			const headerDiv = document.createElement('div');
-			headerDiv.className = 'tool-header';
-			
-			const iconDiv = document.createElement('div');
-			iconDiv.className = 'tool-icon';
-			iconDiv.textContent = '🔧';
-			
-			const toolInfoElement = document.createElement('div');
-			toolInfoElement.className = 'tool-info';
+			// Prepare tool info for body (no separate header)
 			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
 			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
 				toolName = 'Update Todos';
 			}
-			toolInfoElement.textContent = toolName;
-			
-			headerDiv.appendChild(iconDiv);
-			headerDiv.appendChild(toolInfoElement);
-			messageDiv.appendChild(headerDiv);
 			
 			if (data.rawInput) {
 				const inputElement = document.createElement('div');
 				inputElement.className = 'tool-input';
+				
+				// Add tool info at the top of the body
+				const toolInfoDiv = document.createElement('div');
+				toolInfoDiv.className = 'tool-info-body';
+				toolInfoDiv.innerHTML = '🔧 ';
+				
+				// Make filename clickable if this is a file-related tool
+				if (data.filePath && toolName.includes(' ')) {
+					const parts = toolName.split(' ');
+					const fileName = parts.slice(1).join(' ');
+					const toolType = parts[0];
+					
+					const fileSpan = document.createElement('span');
+					fileSpan.className = 'clickable-filename';
+					fileSpan.title = data.filePath;
+					fileSpan.textContent = fileName;
+					fileSpan.addEventListener('click', () => openFileInEditor(data.filePath));
+					
+					toolInfoDiv.appendChild(document.createTextNode(toolType + ' '));
+					toolInfoDiv.appendChild(fileSpan);
+				} else {
+					toolInfoDiv.appendChild(document.createTextNode(toolName));
+				}
+				
+				inputElement.appendChild(toolInfoDiv);
 				
 				const contentDiv = document.createElement('div');
 				contentDiv.className = 'tool-input-content';
 				
 				// Handle TodoWrite specially or format raw input
 				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
-					let todoHtml = 'Todo List Update:';
-					for (const todo of data.rawInput.todos) {
+					let todoHtml = '';
+					for (let i = 0; i < data.rawInput.todos.length; i++) {
+						const todo = data.rawInput.todos[i];
 						const status = todo.status === 'completed' ? '✓' :
 							todo.status === 'in_progress' ? '◌' : '○';
+						
+						// Add newline before each todo except the first one
+						const prefix = i > 0 ? '\\n' : '';
+						
 						if (todo.status === 'completed') {
-							todoHtml += '\\n' + status + ' <span style="text-decoration: line-through; text-decoration-color: #999;">' + todo.content + '</span>';
+							todoHtml += prefix + status + ' <span style="text-decoration: line-through; text-decoration-color: #999;">' + todo.content + '</span>';
 						} else {
-							todoHtml += '\\n' + status + ' ' + todo.content;
+							todoHtml += prefix + status + ' ' + todo.content;
 						}
 					}
 					contentDiv.innerHTML = todoHtml;
@@ -192,10 +208,30 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const inputElement = document.createElement('div');
 				inputElement.className = 'tool-input';
 				
-				const labelDiv = document.createElement('div');
-				labelDiv.className = 'tool-input-label';
-				labelDiv.textContent = 'INPUT';
-				inputElement.appendChild(labelDiv);
+				// Add tool info at the top of the body for fallback case too
+				const toolInfoDiv = document.createElement('div');
+				toolInfoDiv.className = 'tool-info-body';
+				toolInfoDiv.innerHTML = '🔧 ';
+				
+				// Make filename clickable if this is a file-related tool
+				if (data.filePath && toolName.includes(' ')) {
+					const parts = toolName.split(' ');
+					const fileName = parts.slice(1).join(' ');
+					const toolType = parts[0];
+					
+					const fileSpan = document.createElement('span');
+					fileSpan.className = 'clickable-filename';
+					fileSpan.title = data.filePath;
+					fileSpan.textContent = fileName;
+					fileSpan.addEventListener('click', () => openFileInEditor(data.filePath));
+					
+					toolInfoDiv.appendChild(document.createTextNode(toolType + ' '));
+					toolInfoDiv.appendChild(fileSpan);
+				} else {
+					toolInfoDiv.appendChild(document.createTextNode(toolName));
+				}
+				
+				inputElement.appendChild(toolInfoDiv);
 				
 				const contentDiv = document.createElement('div');
 				contentDiv.className = 'tool-input-content';
@@ -352,10 +388,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return str;
 			}
 
-			// Special handling for Read tool with file_path
+			// Special handling for Read tool with file_path - since filename is now in header, 
+			// don't show redundant file path for single-parameter file tools
 			if (input.file_path && Object.keys(input).length === 1) {
-				const formattedPath = formatFilePath(input.file_path);
-				return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+				return ''; // Don't show anything since filename is already in header
 			}
 
 			let result = '';
@@ -366,10 +402,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				if (!isFirst) result += '\\n';
 				isFirst = false;
 				
-				// Special formatting for file_path in Read tool context
+				// Skip file_path since it's now shown in the header
 				if (key === 'file_path') {
-					const formattedPath = formatFilePath(valueStr);
-					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
+					continue; // Skip displaying file_path in body
 				} else if (valueStr.length > 100) {
 					const truncated = valueStr.substring(0, 97) + '...';
 					const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -391,9 +426,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Create diff view
 			const oldLines = input.old_string.split('\\n');
@@ -460,9 +494,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Count total lines across all edits for truncation
 			let totalLines = 0;
@@ -574,9 +607,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Create diff view showing all content as additions
 			const contentLines = input.content.split('\\n');
@@ -2061,7 +2093,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
 					hideSessionInfo();
-					addMessage('🆕 Started new session', 'system');
+					addMessage('Started new session', 'system');
 					// Reset totals
 					totalCost = 0;
 					totalTokensInput = 0;
@@ -2172,13 +2204,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			// Mark the card as requiring permission
 			targetCard.classList.add('requires-permission', 'permission-pending');
 			
-			// Add permission status indicator to header
-			const headerDiv = targetCard.querySelector('.tool-header');
-			if (headerDiv && !headerDiv.querySelector('.permission-status-indicator')) {
+			// Add permission status indicator to tool info in body
+			const toolInfoDiv = targetCard.querySelector('.tool-info-body');
+			if (toolInfoDiv && !toolInfoDiv.querySelector('.permission-status-indicator')) {
 				const permissionStatus = document.createElement('div');
 				permissionStatus.className = 'permission-status-indicator';
 				permissionStatus.innerHTML = '<span class="status-text">Awaiting Permission</span>';
-				headerDiv.appendChild(permissionStatus);
+				toolInfoDiv.appendChild(permissionStatus);
 			}
 			
 			// Add or update the permission controls with the specific permission request ID
