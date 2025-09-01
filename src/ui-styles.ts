@@ -576,6 +576,149 @@ const styles = `
         font-weight: 400;
     }
 
+    /* Minimal Permission Request */
+    .permission-request-minimal {
+        margin: 3px 16px;
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(100, 149, 237, 0.4);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        animation: slideUp 0.15s ease;
+    }
+
+    .permission-minimal-content {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+
+    .permission-minimal-buttons {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 6px;
+        align-self: flex-end;
+        width: 100%;
+    }
+
+    .btn-minimal {
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 3px;
+        border: 1px solid;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        background: transparent;
+        font-weight: 400;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-minimal.deny {
+        color: var(--vscode-descriptionForeground);
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .btn-minimal.deny:hover {
+        background-color: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-minimal.allow {
+        color: var(--vscode-foreground);
+        border-color: rgba(255, 255, 255, 0.12);
+        background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    .btn-minimal.allow:hover {
+        background-color: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.16);
+    }
+
+    .allow-button-group {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .allow-dropdown-btn {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-left: none;
+        border-radius: 0 3px 3px 0;
+        padding: 4px 3px;
+        cursor: pointer;
+        color: var(--vscode-descriptionForeground);
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        margin-left: -1px;
+    }
+
+    .allow-dropdown-btn:hover {
+        background-color: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.16);
+        color: var(--vscode-foreground);
+    }
+
+    .allow-button-group .btn-minimal.allow {
+        border-radius: 3px 0 0 3px;
+    }
+
+    .always-allow-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background-color: var(--vscode-menu-background);
+        border: 1px solid var(--vscode-menu-border);
+        border-radius: 3px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        margin-top: 2px;
+    }
+
+    .always-allow-option {
+        display: block;
+        width: 100%;
+        padding: 6px 10px;
+        background: none;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        color: var(--vscode-foreground);
+        font-size: 11px;
+        transition: background-color 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .always-allow-option:hover {
+        background-color: var(--vscode-list-hoverBackground);
+    }
+
+    .permission-minimal-decision {
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 3px;
+    }
+
+    .permission-minimal-decision.allowed {
+        color: var(--vscode-charts-blue);
+        background-color: rgba(0, 122, 204, 0.1);
+    }
+
+    .permission-minimal-decision.denied {
+        color: #e74c3c;
+        background-color: rgba(231, 76, 60, 0.1);
+    }
+
     /* WSL Alert */
     .wsl-alert {
         margin: 8px 16px;

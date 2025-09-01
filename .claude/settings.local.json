@@ -7,7 +7,8 @@
       "Bash(rg:*)",
       "Bash(npx tsc:*)",
       "Bash(npm run watch:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "Bash(cat:*)"
     ],
     "deny": []
   },

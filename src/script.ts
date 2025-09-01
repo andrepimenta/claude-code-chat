@@ -2141,45 +2141,38 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 
 			const messageDiv = document.createElement('div');
-			messageDiv.className = 'message permission-request';
+			messageDiv.className = 'message permission-request-minimal';
 			
 			const toolName = data.tool || 'Unknown Tool';
 			
-			// Create always allow button text with command styling for Bash
+			// Create always allow text with command styling for Bash
 			let alwaysAllowText = \`Always allow \${toolName}\`;
-			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
-				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+				const truncatedPattern = displayPattern.length > 25 ? displayPattern.substring(0, 25) + '...' : displayPattern;
+				alwaysAllowText = \`Always allow "\${truncatedPattern}"\`;
 			}
 			
 			messageDiv.innerHTML = \`
-				<div class="permission-header">
-					<span class="icon">🔐</span>
-					<span>Permission Required</span>
-					<div class="permission-menu">
-						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
-						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
-							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
-								<span class="menu-icon">⚡</span>
-								<div class="menu-content">
-									<span class="menu-title">Enable YOLO Mode</span>
-									<span class="menu-subtitle">Auto-allow all permissions</span>
-								</div>
+				<div class="permission-minimal-content">
+					<div>Allow <strong>\${toolName}</strong> tool call?</div>
+					<div class="permission-minimal-buttons">
+						<button class="btn-minimal deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+						<div class="allow-button-group">
+							<button class="btn-minimal allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+							<button class="allow-dropdown-btn" onclick="toggleAlwaysAllowDropdown('\${data.id}')" title="Always allow options">
+								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+									<path d="M1 2.5l3 3 3-3"></path>
+								</svg>
 							</button>
+							<div class="always-allow-dropdown" id="alwaysAllowDropdown-\${data.id}" style="display: none;">
+								<button class="always-allow-option" onclick="respondToPermission('\${data.id}', true, true)">
+									\${alwaysAllowText}
+								</button>
+							</div>
 						</div>
-					</div>
-				</div>
-				<div class="permission-content">
-					<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-					<div class="permission-buttons">
-						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-						<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
 					</div>
 				</div>
 			\`;
@@ -2197,30 +2190,43 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				alwaysAllow: alwaysAllow
 			});
 			
-			// Update the UI to show the decision
-			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`);
+			// Update the UI to show the decision - handle both old and new UI styles
+			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`) || 
+								  document.querySelector(\`.permission-request-minimal:has([onclick*="\${id}"])\`);
+								  
 			if (permissionMsg) {
-				const buttons = permissionMsg.querySelector('.permission-buttons');
-				const permissionContent = permissionMsg.querySelector('.permission-content');
-				let decision = approved ? 'You allowed this' : 'You denied this';
-				
+				let decision = approved ? 'Allowed' : 'Denied';
 				if (alwaysAllow && approved) {
-					decision = 'You allowed this and set it to always allow';
+					decision = 'Allowed (always)';
 				}
 				
 				const emoji = approved ? '✅' : '❌';
 				const decisionClass = approved ? 'allowed' : 'denied';
 				
-				// Hide buttons
-				buttons.style.display = 'none';
-				
-				// Add decision div to permission-content
-				const decisionDiv = document.createElement('div');
-				decisionDiv.className = \`permission-decision \${decisionClass}\`;
-				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
-				permissionContent.appendChild(decisionDiv);
-				
-				permissionMsg.classList.add('permission-decided', decisionClass);
+				// Handle new minimal UI
+				if (permissionMsg.classList.contains('permission-request-minimal')) {
+					const buttonsContainer = permissionMsg.querySelector('.permission-minimal-buttons');
+					if (buttonsContainer) {
+						// Replace buttons with decision
+						buttonsContainer.innerHTML = \`<span class="permission-minimal-decision \${decisionClass}">\${emoji} \${decision}</span>\`;
+					}
+				} 
+				// Handle old UI (for compatibility)
+				else if (permissionMsg.classList.contains('permission-request')) {
+					const buttons = permissionMsg.querySelector('.permission-buttons');
+					const permissionContent = permissionMsg.querySelector('.permission-content');
+					
+					// Hide buttons
+					buttons.style.display = 'none';
+					
+					// Add decision div to permission-content
+					const decisionDiv = document.createElement('div');
+					decisionDiv.className = \`permission-decision \${decisionClass}\`;
+					decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
+					permissionContent.appendChild(decisionDiv);
+					
+					permissionMsg.classList.add('permission-decided', decisionClass);
+				}
 			}
 		}
 
@@ -2255,10 +2261,29 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
 		}
 
-		// Close permission menus when clicking outside
+		// New minimal dropdown function for Always Allow
+		function toggleAlwaysAllowDropdown(permissionId) {
+			const dropdown = document.getElementById(\`alwaysAllowDropdown-\${permissionId}\`);
+			const isVisible = dropdown.style.display !== 'none';
+			
+			// Close all other always-allow dropdowns
+			document.querySelectorAll('.always-allow-dropdown').forEach(d => {
+				d.style.display = 'none';
+			});
+			
+			// Toggle this dropdown
+			dropdown.style.display = isVisible ? 'none' : 'block';
+		}
+
+		// Close permission menus and dropdowns when clicking outside
 		document.addEventListener('click', function(event) {
 			if (!event.target.closest('.permission-menu')) {
 				document.querySelectorAll('.permission-menu-dropdown').forEach(dropdown => {
+					dropdown.style.display = 'none';
+				});
+			}
+			if (!event.target.closest('.allow-button-group')) {
+				document.querySelectorAll('.always-allow-dropdown').forEach(dropdown => {
 					dropdown.style.display = 'none';
 				});
 			}
