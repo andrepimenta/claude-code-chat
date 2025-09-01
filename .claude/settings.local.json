@@ -9,7 +9,8 @@
       "Bash(npm run watch:*)",
       "Bash(npm run lint)",
       "Bash(cat:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm run lint:*)"
     ],
     "deny": []
   },

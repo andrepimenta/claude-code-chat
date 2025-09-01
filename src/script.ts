@@ -3135,6 +3135,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 
-	</script>`
+	</script>`;
 
 export default getScript;

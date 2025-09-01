@@ -1,5 +1,5 @@
 import getScript from './script';
-import styles from './ui-styles'
+import styles from './ui-styles';
 
 
 const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>

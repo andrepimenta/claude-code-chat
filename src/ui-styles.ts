@@ -3331,6 +3331,6 @@ const styles = `
         overflow: hidden;
         text-overflow: ellipsis;
     }
-</style>`
+</style>`;
 
-export default styles
+export default styles;
