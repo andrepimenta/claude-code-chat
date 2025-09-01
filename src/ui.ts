@@ -71,12 +71,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				<div class="status-right">
 					<div class="status-indicator"></div>
 					<div class="status-text" id="statusText">Initializing...</div>
-					<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
-						<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-							<path d="M6 6h12v12H6z"/>
-						</svg>
-						Stop
-					</button>
 				</div>
 			</div>
 			<div class="textarea-container">
@@ -114,19 +108,25 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 							</svg>
 							</button>
 							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
-							<div>
-							<span>Send </span>
-							   <svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								width="11"
-								height="11"
-								>
-								<path
-									fill="currentColor"
-									d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"
-								></path>
-								</svg>
+								<div id="sendContent">
+									<span>Send </span>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 24 24"
+										width="11"
+										height="11"
+										>
+										<path
+											fill="currentColor"
+											d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"
+										></path>
+									</svg>
+								</div>
+								<div id="stopContent" style="display: none;">
+									<span>Stop </span>
+									<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+										<path d="M6 6h12v12H6z"/>
+									</svg>
 								</div>
 							</button>
 						</div>

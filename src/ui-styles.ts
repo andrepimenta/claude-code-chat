@@ -66,23 +66,6 @@ const styles = `
         border-color: var(--vscode-focusBorder);
     }
 
-    .btn.stop {
-        background-color: transparent;
-        color: #606060;
-        border: 1px solid rgba(255, 255, 255, 0.04);
-        padding: 2px 6px;
-        border-radius: 3px;
-        font-size: 10px;
-        font-weight: 400;
-        opacity: 0.5;
-    }
-
-    .btn.stop:hover {
-        background-color: rgba(255, 255, 255, 0.02);
-        color: #999999;
-        border-color: rgba(255, 255, 255, 0.06);
-        opacity: 1;
-    }
 
     /* Permission Request */
     .permission-request {
@@ -1531,6 +1514,17 @@ const styles = `
     .send-btn:disabled {
         opacity: 0.3;
         cursor: not-allowed;
+    }
+
+    .send-btn.stop-mode {
+        background-color: rgba(255, 99, 71, 0.1);
+        color: #ff6347;
+        border: 1px solid rgba(255, 99, 71, 0.2);
+    }
+
+    .send-btn.stop-mode:hover {
+        background-color: rgba(255, 99, 71, 0.2);
+        color: #ff6347;
     }
 
     .secondary-button {

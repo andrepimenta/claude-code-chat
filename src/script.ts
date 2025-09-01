@@ -1744,13 +1744,31 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 
-		// Stop button functions
-		function showStopButton() {
-			document.getElementById('stopBtn').style.display = 'flex';
+		// Send button transformation functions
+		function transformSendToStop() {
+			const sendBtn = document.getElementById('sendBtn');
+			const sendContent = document.getElementById('sendContent');
+			const stopContent = document.getElementById('stopContent');
+			
+			if (sendBtn && sendContent && stopContent) {
+				sendContent.style.display = 'none';
+				stopContent.style.display = 'flex';
+				sendBtn.onclick = stopRequest;
+				sendBtn.classList.add('stop-mode');
+			}
 		}
 
-		function hideStopButton() {
-			document.getElementById('stopBtn').style.display = 'none';
+		function transformStopToSend() {
+			const sendBtn = document.getElementById('sendBtn');
+			const sendContent = document.getElementById('sendContent');
+			const stopContent = document.getElementById('stopContent');
+			
+			if (sendBtn && sendContent && stopContent) {
+				stopContent.style.display = 'none';
+				sendContent.style.display = 'flex';
+				sendBtn.onclick = sendMessage;
+				sendBtn.classList.remove('stop-mode');
+			}
 		}
 
 		function stopRequest() {
@@ -1759,18 +1777,18 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			vscode.postMessage({
 				type: 'stopRequest'
 			});
-			hideStopButton();
+			transformStopToSend();
 		}
 
-		// Disable/enable buttons during processing
+		// Disable/enable buttons during processing - now just controls other buttons
 		function disableButtons() {
-			const sendBtn = document.getElementById('sendBtn');
-			if (sendBtn) sendBtn.disabled = true;
+			// Transform send button to stop button instead of disabling
+			transformSendToStop();
 		}
 
 		function enableButtons() {
-			const sendBtn = document.getElementById('sendBtn');
-			if (sendBtn) sendBtn.disabled = false;
+			// Transform stop button back to send button
+			transformStopToSend();
 		}
 
 		// Copy message content function
@@ -1889,11 +1907,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					isProcessing = message.data.isProcessing;
 					if (isProcessing) {
 						startRequestTimer(message.data.requestStartTime);
-						showStopButton();
 						disableButtons();
 					} else {
 						stopRequestTimer();
-						hideStopButton();
 						enableButtons();
 					}
 					updateStatusWithTotals();
