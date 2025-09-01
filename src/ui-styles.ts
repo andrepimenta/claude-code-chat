@@ -1281,7 +1281,7 @@ const styles = `
     }
 
     .input-container {
-        padding: 12px 16px;
+        padding: 0;
         border-top: 1px solid rgba(255, 255, 255, 0.06);
         background-color: #1a1a1a;
         display: flex;
@@ -1304,6 +1304,7 @@ const styles = `
         color: var(--vscode-foreground);
         opacity: 0.8;
         transition: opacity 0.2s ease;
+        font-size: 12px;
     }
 
     .mode-toggle span {
@@ -1321,10 +1322,10 @@ const styles = `
 
     .mode-switch {
         position: relative;
-        width: 26px;
-        height: 14px;
+        width: 22px;
+        height: 12px;
         background-color: var(--vscode-panel-border);
-        border-radius: 7px;
+        border-radius: 6px;
         cursor: pointer;
         transition: background-color 0.2s ease;
     }
@@ -1338,15 +1339,15 @@ const styles = `
         position: absolute;
         top: 2px;
         left: 2px;
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
         background-color: var(--vscode-foreground);
         border-radius: 50%;
         transition: transform 0.2s ease;
     }
 
     .mode-switch.active::after {
-        transform: translateX(10px);
+        transform: translateX(8px);
         background-color: var(--vscode-button-foreground);
     }
 
@@ -1354,6 +1355,7 @@ const styles = `
         display: flex;
         gap: 10px;
         align-items: flex-end;
+        padding: 6px 16px 12px 16px;
     }
 
     .textarea-wrapper {
@@ -2354,15 +2356,27 @@ const styles = `
     }
 
     .status {
-        padding: 6px 16px;
-        background: #1a1a1a;
+        padding: 12px 16px 6px 16px;
+        background: transparent;
         color: #808080;
-        font-size: 10px;
-        border-top: 1px solid rgba(255, 255, 255, 0.06);
+        font-size: 12px;
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-weight: 400;
+    }
+
+    .status-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .status-right {
         display: flex;
         align-items: center;
         gap: 6px;
-        font-weight: 400;
     }
 
     .status-indicator {

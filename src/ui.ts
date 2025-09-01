@@ -57,14 +57,26 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 		
 		<div class="input-container" id="inputContainer">
-			<div class="input-modes">
-				<div class="mode-toggle">
-					<span onclick="togglePlanMode()">Plan First</span>
-					<div class="mode-switch" id="planModeSwitch" onclick="togglePlanMode()"></div>
+			<div class="status ready" id="status">
+				<div class="status-left">
+					<div class="mode-toggle">
+						<span onclick="togglePlanMode()">Plan First</span>
+						<div class="mode-switch" id="planModeSwitch" onclick="togglePlanMode()"></div>
+					</div>
+					<div class="mode-toggle">
+						<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
+						<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
+					</div>
 				</div>
-				<div class="mode-toggle">
-					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
-					<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
+				<div class="status-right">
+					<div class="status-indicator"></div>
+					<div class="status-text" id="statusText">Initializing...</div>
+					<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
+						<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+							<path d="M6 6h12v12H6z"/>
+						</svg>
+						Stop
+					</button>
 				</div>
 			</div>
 			<div class="textarea-container">
@@ -124,16 +136,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 	</div>
 	
-	<div class="status ready" id="status">
-		<div class="status-indicator"></div>
-		<div class="status-text" id="statusText">Initializing...</div>
-		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
-			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-				<path d="M6 6h12v12H6z"/>
-			</svg>
-			Stop
-		</button>
-	</div>
 
 			<div id="yoloWarning" class="yolo-warning" style="display: none;">
 			⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.
