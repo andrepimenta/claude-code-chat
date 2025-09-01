@@ -748,11 +748,11 @@ const styles = `
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-bottom: 12px !important;
+        margin-bottom: 12px;
         font-weight: 500;
         font-size: 12px;
         color: #999999;
-        opacity: 0.9;
+        opacity: 1;
     }
 
     .tool-icon {

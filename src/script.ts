@@ -144,7 +144,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				// Add tool info at the top of the body
 				const toolInfoDiv = document.createElement('div');
 				toolInfoDiv.className = 'tool-info-body';
-				toolInfoDiv.innerHTML = '🔧 ';
 				
 				// Make filename clickable if this is a file-related tool
 				if (data.filePath && toolName.includes(' ')) {
@@ -211,7 +210,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				// Add tool info at the top of the body for fallback case too
 				const toolInfoDiv = document.createElement('div');
 				toolInfoDiv.className = 'tool-info-body';
-				toolInfoDiv.innerHTML = '🔧 ';
 				
 				// Make filename clickable if this is a file-related tool
 				if (data.filePath && toolName.includes(' ')) {
