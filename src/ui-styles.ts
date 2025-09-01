@@ -674,14 +674,14 @@ const styles = `
 
     .always-allow-dropdown {
         position: absolute;
-        top: 100%;
+        bottom: 100%;
         right: 0;
         background-color: var(--vscode-menu-background);
         border: 1px solid var(--vscode-menu-border);
         border-radius: 3px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         z-index: 1000;
-        margin-top: 2px;
+        margin-bottom: 2px;
     }
 
     .always-allow-option {
@@ -717,6 +717,220 @@ const styles = `
     .permission-minimal-decision.denied {
         color: #e74c3c;
         background-color: rgba(231, 76, 60, 0.1);
+    }
+
+    /* Combined Permission Request Styles */
+    .permission-request-combined {
+        margin: 3px 16px;
+        background-color: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(100, 149, 237, 0.4);
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        animation: slideUp 0.15s ease;
+    }
+
+    .permission-combined-content {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .tool-execution-preview {
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 4px;
+        padding: 6px 8px;
+        background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    .tool-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 4px;
+        font-weight: 500;
+    }
+
+    .tool-icon {
+        font-size: 14px;
+    }
+
+    .tool-title {
+        color: var(--vscode-foreground);
+    }
+
+    .tool-input {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        margin-top: 2px;
+    }
+
+    .tool-input code {
+        background-color: rgba(255, 255, 255, 0.08);
+        padding: 1px 4px;
+        border-radius: 2px;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 10px;
+    }
+
+    .tool-input strong {
+        color: var(--vscode-foreground);
+        font-weight: 500;
+    }
+
+    .permission-question {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .permission-text {
+        font-weight: 500;
+        color: var(--vscode-foreground);
+    }
+
+    .permission-buttons {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .btn-permission {
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 3px;
+        border: 1px solid;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        background: transparent;
+        font-weight: 500;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-permission.deny {
+        color: var(--vscode-descriptionForeground);
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .btn-permission.deny:hover {
+        background-color: rgba(255, 255, 255, 0.04);
+        border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-permission.allow {
+        color: var(--vscode-button-foreground);
+        background-color: var(--vscode-button-background);
+        border-color: var(--vscode-button-background);
+    }
+
+    .btn-permission.allow:hover {
+        background-color: var(--vscode-button-hoverBackground);
+        border-color: var(--vscode-button-hoverBackground);
+    }
+
+    .permission-request-combined .permission-decision {
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 3px;
+        text-align: center;
+        margin-left: auto;
+    }
+
+    .permission-request-combined .permission-decision.allowed {
+        color: #27ae60;
+        background-color: rgba(39, 174, 96, 0.1);
+    }
+
+    .permission-request-combined .permission-decision.denied {
+        color: #e74c3c;
+        background-color: rgba(231, 76, 60, 0.1);
+    }
+
+    .permission-request-combined.permission-decided {
+        border-color: rgba(255, 255, 255, 0.08);
+        opacity: 0.9;
+    }
+
+    .permission-request-combined.permission-decided.allowed {
+        border-color: rgba(39, 174, 96, 0.3);
+    }
+
+    .permission-request-combined.permission-decided.denied {
+        border-color: rgba(231, 76, 60, 0.3);
+    }
+
+    /* Tool Permission Styles */
+    .message.tool.requires-permission {
+        border-left: 3px solid rgba(255, 193, 7, 0.6);
+    }
+
+    .message.tool.permission-pending {
+        background-color: rgba(255, 193, 7, 0.03);
+    }
+
+    .message.tool.permission-decided.allowed {
+        border-left-color: rgba(39, 174, 96, 0.6);
+        background-color: rgba(39, 174, 96, 0.02);
+    }
+
+    .message.tool.permission-decided.denied,
+    .message.tool.tool-blocked {
+        border-left-color: rgba(231, 76, 60, 0.6);
+        background-color: rgba(231, 76, 60, 0.02);
+        opacity: 0.8;
+    }
+
+    .permission-status-indicator {
+        margin-left: auto;
+        font-size: 11px;
+        color: rgba(255, 193, 7, 0.8);
+        font-weight: 500;
+    }
+
+    .permission-status-indicator .status-text {
+        background-color: rgba(255, 193, 7, 0.1);
+        padding: 2px 6px;
+        border-radius: 3px;
+        border: 1px solid rgba(255, 193, 7, 0.3);
+    }
+
+    .tool-permission-controls {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .tool-permission-decision {
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 3px;
+        text-align: center;
+        margin: 0 auto;
+        display: inline-block;
+    }
+
+    .tool-permission-decision.allowed {
+        color: #27ae60;
+        background-color: rgba(39, 174, 96, 0.1);
+    }
+
+    .tool-permission-decision.denied {
+        color: #e74c3c;
+        background-color: rgba(231, 76, 60, 0.1);
+    }
+
+    /* Update tool header to use flexbox for permission indicator */
+    .tool-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-weight: 500;
     }
 
     /* WSL Alert */

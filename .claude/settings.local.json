@@ -8,7 +8,8 @@
       "Bash(npx tsc:*)",
       "Bash(npm run watch:*)",
       "Bash(npm run lint)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebSearch"
     ],
     "deny": []
   },

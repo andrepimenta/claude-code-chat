@@ -122,6 +122,14 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messageDiv = document.createElement('div');
 			messageDiv.className = 'message tool';
 			
+			// Add data attributes for tracking
+			if (data.toolName) {
+				messageDiv.setAttribute('data-tool-name', data.toolName);
+			}
+			if (data.toolUseId) {
+				messageDiv.setAttribute('data-tool-use-id', data.toolUseId);
+			}
+			
 			// Create modern header with icon
 			const headerDiv = document.createElement('div');
 			headerDiv.className = 'tool-header';
@@ -2118,6 +2126,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'permissionRequest':
 					addPermissionRequestMessage(message.data);
 					break;
+				case 'permissionResponse':
+					updateToolPermissionStatus(message.data);
+					break;
 				case 'mcpServers':
 					displayMCPServers(message.data);
 					break;
@@ -2135,15 +2146,49 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 		
-		// Permission request functions
+		// Permission request functions - now updates existing tool use card
 		function addPermissionRequestMessage(data) {
-			const messagesDiv = document.getElementById('messages');
-			const shouldScroll = shouldAutoScroll(messagesDiv);
-
-			const messageDiv = document.createElement('div');
-			messageDiv.className = 'message permission-request-minimal';
-			
 			const toolName = data.tool || 'Unknown Tool';
+			
+			// Find the existing tool use card for this tool
+			const toolCards = document.querySelectorAll('.message.tool');
+			let targetCard = null;
+			
+			// Find the most recent tool card for this tool name that doesn't already have permission controls
+			for (let i = toolCards.length - 1; i >= 0; i--) {
+				const card = toolCards[i];
+				if (card.getAttribute('data-tool-name') === toolName && 
+				    !card.querySelector('.tool-permission-controls')) {
+					targetCard = card;
+					break;
+				}
+			}
+			
+			if (!targetCard) {
+				console.warn('Could not find tool use card for permission request:', toolName);
+				return;
+			}
+			
+			// Mark the card as requiring permission
+			targetCard.classList.add('requires-permission', 'permission-pending');
+			
+			// Add permission status indicator to header
+			const headerDiv = targetCard.querySelector('.tool-header');
+			if (headerDiv && !headerDiv.querySelector('.permission-status-indicator')) {
+				const permissionStatus = document.createElement('div');
+				permissionStatus.className = 'permission-status-indicator';
+				permissionStatus.innerHTML = '<span class="status-text">Awaiting Permission</span>';
+				headerDiv.appendChild(permissionStatus);
+			}
+			
+			// Add or update the permission controls with the specific permission request ID
+			let permissionControls = targetCard.querySelector('.tool-permission-controls');
+			if (!permissionControls) {
+				// Create permission controls if they don't exist
+				permissionControls = document.createElement('div');
+				permissionControls.className = 'tool-permission-controls';
+				targetCard.appendChild(permissionControls);
+			}
 			
 			// Create always allow text with command styling for Bash
 			let alwaysAllowText = \`Always allow \${toolName}\`;
@@ -2155,30 +2200,73 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				alwaysAllowText = \`Always allow "\${truncatedPattern}"\`;
 			}
 			
-			messageDiv.innerHTML = \`
-				<div class="permission-minimal-content">
-					<div>Allow <strong>\${toolName}</strong> tool call?</div>
-					<div class="permission-minimal-buttons">
-						<button class="btn-minimal deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-						<div class="allow-button-group">
-							<button class="btn-minimal allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
-							<button class="allow-dropdown-btn" onclick="toggleAlwaysAllowDropdown('\${data.id}')" title="Always allow options">
-								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-									<path d="M1 2.5l3 3 3-3"></path>
-								</svg>
+			permissionControls.innerHTML = \`
+				<div class="permission-buttons">
+					<button class="btn-permission deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+					<div class="allow-button-group">
+						<button class="btn-permission allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+						<button class="allow-dropdown-btn" onclick="toggleAlwaysAllowDropdown('\${data.id}')" title="Always allow options">
+							<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+								<path d="M1 2.5l3 3 3-3"></path>
+							</svg>
+						</button>
+						<div class="always-allow-dropdown" id="alwaysAllowDropdown-\${data.id}" style="display: none;">
+							<button class="always-allow-option" onclick="respondToPermission('\${data.id}', true, true)">
+								\${alwaysAllowText}
 							</button>
-							<div class="always-allow-dropdown" id="alwaysAllowDropdown-\${data.id}" style="display: none;">
-								<button class="always-allow-option" onclick="respondToPermission('\${data.id}', true, true)">
-									\${alwaysAllowText}
-								</button>
-							</div>
 						</div>
 					</div>
 				</div>
 			\`;
 			
-			messagesDiv.appendChild(messageDiv);
-			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+		
+		// Handle permission response from extension (when resolved via MCP)
+		function updateToolPermissionStatus(data) {
+			const { id, approved, alwaysAllow } = data;
+			
+			// Find the tool card with pending permission for this request ID  
+			const toolCards = document.querySelectorAll('.message.tool.requires-permission.permission-pending');
+			let targetCard = null;
+			
+			// Look for the card that has buttons referencing this permission ID
+			for (const card of toolCards) {
+				const permissionButton = card.querySelector(\`[onclick*="\${id}"]\`);
+				if (permissionButton) {
+					targetCard = card;
+					break;
+				}
+			}
+			
+			if (targetCard) {
+				let decision = approved ? 'Allowed' : 'Denied';
+				if (alwaysAllow && approved) {
+					decision = 'Allowed (always)';
+				}
+				
+				const emoji = approved ? '✅' : '❌';
+				const decisionClass = approved ? 'allowed' : 'denied';
+				
+				// Update permission controls
+				const permissionControls = targetCard.querySelector('.tool-permission-controls');
+				if (permissionControls) {
+					permissionControls.innerHTML = \`<div class="tool-permission-decision \${decisionClass}">\${emoji} \${decision}</div>\`;
+				}
+				
+				// Update permission status indicator
+				const statusIndicator = targetCard.querySelector('.permission-status-indicator');
+				if (statusIndicator) {
+					statusIndicator.innerHTML = \`<span class="status-text">\${approved ? 'Permission Granted' : 'Permission Denied'}</span>\`;
+				}
+				
+				// Update tool card classes
+				targetCard.classList.remove('permission-pending');
+				targetCard.classList.add('permission-decided', decisionClass);
+				
+				if (!approved) {
+					targetCard.classList.add('tool-blocked');
+				}
+			}
 		}
 		
 		function respondToPermission(id, approved, alwaysAllow = false) {
@@ -2190,11 +2278,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				alwaysAllow: alwaysAllow
 			});
 			
-			// Update the UI to show the decision - handle both old and new UI styles
-			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`) || 
-								  document.querySelector(\`.permission-request-minimal:has([onclick*="\${id}"])\`);
+			// Update the tool use card to show the decision
+			const toolCard = document.querySelector(\`.message.tool.requires-permission:has([onclick*="\${id}"])\`);
 								  
-			if (permissionMsg) {
+			if (toolCard) {
 				let decision = approved ? 'Allowed' : 'Denied';
 				if (alwaysAllow && approved) {
 					decision = 'Allowed (always)';
@@ -2203,29 +2290,27 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const emoji = approved ? '✅' : '❌';
 				const decisionClass = approved ? 'allowed' : 'denied';
 				
-				// Handle new minimal UI
-				if (permissionMsg.classList.contains('permission-request-minimal')) {
-					const buttonsContainer = permissionMsg.querySelector('.permission-minimal-buttons');
-					if (buttonsContainer) {
-						// Replace buttons with decision
-						buttonsContainer.innerHTML = \`<span class="permission-minimal-decision \${decisionClass}">\${emoji} \${decision}</span>\`;
-					}
-				} 
-				// Handle old UI (for compatibility)
-				else if (permissionMsg.classList.contains('permission-request')) {
-					const buttons = permissionMsg.querySelector('.permission-buttons');
-					const permissionContent = permissionMsg.querySelector('.permission-content');
-					
-					// Hide buttons
-					buttons.style.display = 'none';
-					
-					// Add decision div to permission-content
-					const decisionDiv = document.createElement('div');
-					decisionDiv.className = \`permission-decision \${decisionClass}\`;
-					decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
-					permissionContent.appendChild(decisionDiv);
-					
-					permissionMsg.classList.add('permission-decided', decisionClass);
+				// Update permission controls in the tool card
+				const permissionControls = toolCard.querySelector('.tool-permission-controls');
+				if (permissionControls) {
+					// Replace buttons with decision
+					permissionControls.innerHTML = \`<div class="tool-permission-decision \${decisionClass}">\${emoji} \${decision}</div>\`;
+				}
+				
+				// Update permission status indicator
+				const statusIndicator = toolCard.querySelector('.permission-status-indicator');
+				if (statusIndicator) {
+					statusIndicator.innerHTML = \`<span class="status-text">\${approved ? 'Permission Granted' : 'Permission Denied'}</span>\`;
+				}
+				
+				// Update tool card classes
+				toolCard.classList.remove('permission-pending');
+				toolCard.classList.add('permission-decided', decisionClass);
+				
+				// If approved, the tool will execute and show result naturally
+				// If denied, we can add a visual indicator that the tool was blocked
+				if (!approved) {
+					toolCard.classList.add('tool-blocked');
 				}
 			}
 		}

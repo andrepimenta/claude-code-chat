@@ -719,7 +719,7 @@ class ClaudeChatProvider {
 								data: content.thinking.trim()
 							});
 						} else if (content.type === 'tool_use') {
-							// Show tool execution with better formatting
+							// Prepare tool execution information with better formatting
 							const toolInfo = `🔧 Executing: ${content.name}`;
 							let toolInput = '';
 
@@ -739,15 +739,18 @@ class ClaudeChatProvider {
 								}
 							}
 
-							// Show tool use and save to conversation
+							// Show tool use immediately - permission will be requested separately if needed
+							const toolUseData = {
+								toolInfo: toolInfo,
+								toolInput: toolInput,
+								rawInput: content.input,
+								toolName: content.name,
+								toolUseId: content.id
+							};
+							
 							this._sendAndSaveMessage({
 								type: 'toolUse',
-								data: {
-									toolInfo: toolInfo,
-									toolInput: toolInput,
-									rawInput: content.input,
-									toolName: content.name
-								}
+								data: toolUseData
 							});
 						}
 					}
@@ -1272,7 +1275,7 @@ class ClaudeChatProvider {
 			pattern = this.getCommandPattern(request.input.command);
 		}
 
-		// Send permission request to the UI
+		// Send simplified permission request to update existing tool use card
 		this._sendAndSaveMessage({
 			type: 'permissionRequest',
 			data: {
@@ -1297,6 +1300,16 @@ class ClaudeChatProvider {
 			if (resolver) {
 				resolver(approved);
 				this._pendingPermissionResolvers.delete(id);
+
+				// Send permission response to UI to update tool use card state
+				this._sendAndSaveMessage({
+					type: 'permissionResponse',
+					data: {
+						id: id,
+						approved: approved,
+						alwaysAllow: alwaysAllow
+					}
+				});
 
 				// Handle always allow setting
 				if (alwaysAllow && approved) {
@@ -1369,6 +1382,13 @@ class ClaudeChatProvider {
 		} catch (error) {
 			console.error('Error saving always-allow permission:', error);
 		}
+	}
+
+	private isPermissionSystemEnabled(): boolean {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const yoloMode = config.get<boolean>('permissions.yoloMode', false);
+		const mcpConfigPath = this.getMCPConfigPath();
+		return !yoloMode && !!mcpConfigPath;
 	}
 
 	private getCommandPattern(command: string): string {
