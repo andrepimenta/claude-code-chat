@@ -125,12 +125,24 @@ export const inputStyles = `
         padding: 4px 6px;
         border-top: 1px solid rgba(255, 255, 255, 0.03);
         background-color: transparent;
+        flex-wrap: nowrap;
+        min-height: 32px;
     }
 
     .left-controls {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: nowrap;
+        flex-shrink: 0;
+    }
+
+    .right-controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
+        flex-shrink: 0;
     }
 
     .model-selector {

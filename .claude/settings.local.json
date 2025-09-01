@@ -10,7 +10,8 @@
       "Bash(npm run lint)",
       "Bash(cat:*)",
       "WebSearch",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   },
