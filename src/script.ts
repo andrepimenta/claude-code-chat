@@ -2046,20 +2046,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
-					// Show detailed token breakdown for current message
-					const currentTotal = (message.data.currentInputTokens || 0) + (message.data.currentOutputTokens || 0);
-					if (currentTotal > 0) {
-						let tokenBreakdown = \`Tokens: \${currentTotal.toLocaleString()}\`;
-						
-						if (message.data.cacheCreationTokens || message.data.cacheReadTokens) {
-							const cacheInfo = [];
-							if (message.data.cacheCreationTokens) cacheInfo.push(\`\${message.data.cacheCreationTokens.toLocaleString()} cache created\`);
-							if (message.data.cacheReadTokens) cacheInfo.push(\`\${message.data.cacheReadTokens.toLocaleString()} cache read\`);
-							tokenBreakdown += \` • \${cacheInfo.join(' • ')}\`;
-						}
-						
-						addMessage(tokenBreakdown, 'system');
-					}
+					// Token breakdown display removed
 					break;
 					
 				case 'updateTotals':
@@ -2291,10 +2278,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				
 				// Update tool card classes
 				targetCard.classList.remove('permission-pending');
-				targetCard.classList.add('permission-decided', decisionClass);
+				targetCard.classList.add(decisionClass);
 				
 				if (!approved) {
-					targetCard.classList.add('tool-blocked');
+					targetCard.classList.add('permission-decided', 'tool-blocked');
 				}
 			}
 		}

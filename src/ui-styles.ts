@@ -748,7 +748,7 @@ const styles = `
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-bottom: 12px;
+        margin-bottom: 4px;
         font-weight: 500;
         font-size: 12px;
         color: #999999;
