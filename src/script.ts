@@ -2273,10 +2273,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const shortSha = data.sha ? data.sha.substring(0, 8) : 'unknown';
 			
 			restoreContainer.innerHTML = \`
+				<span class="restore-date">\${timeAgo}</span>
 				<button class="restore-btn dark" onclick="restoreToCommit('\${data.sha}')">
 					Restore checkpoint
 				</button>
-				<span class="restore-date">\${timeAgo}</span>
 			\`;
 			
 			messagesDiv.appendChild(restoreContainer);
