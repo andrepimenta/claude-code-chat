@@ -728,9 +728,10 @@ class ClaudeChatProvider {
 								if (content.name === 'TodoWrite' && content.input.todos) {
 									toolInput = '\nTodo List Update:';
 									for (const todo of content.input.todos) {
-										const status = todo.status === 'completed' ? '✅' :
-											todo.status === 'in_progress' ? '🔄' : '⏳';
-										toolInput += `\n${status} ${todo.content} (priority: ${todo.priority})`;
+										const status = todo.status === 'completed' ? '✓' :
+											todo.status === 'in_progress' ? '◌' : '○';
+										const strikethrough = todo.status === 'completed' ? '~~' : '';
+										toolInput += `\n${status} ${strikethrough}${todo.content}${strikethrough}${todo.priority ? ` (priority: ${todo.priority})` : ''}`;
 									}
 								} else {
 									// Send raw input to UI for formatting

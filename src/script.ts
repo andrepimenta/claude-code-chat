@@ -154,9 +154,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
 					let todoHtml = 'Todo List Update:';
 					for (const todo of data.rawInput.todos) {
-						const status = todo.status === 'completed' ? '✅' :
-							todo.status === 'in_progress' ? '🔄' : '⏳';
-						todoHtml += '\\n' + status + ' ' + todo.content;
+						const status = todo.status === 'completed' ? '✓' :
+							todo.status === 'in_progress' ? '◌' : '○';
+						if (todo.status === 'completed') {
+							todoHtml += '\\n' + status + ' <span style="text-decoration: line-through; text-decoration-color: #999;">' + todo.content + '</span>';
+						} else {
+							todoHtml += '\\n' + status + ' ' + todo.content;
+						}
 					}
 					contentDiv.innerHTML = todoHtml;
 				} else {
@@ -1991,7 +1995,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Show detailed token breakdown for current message
 					const currentTotal = (message.data.currentInputTokens || 0) + (message.data.currentOutputTokens || 0);
 					if (currentTotal > 0) {
-						let tokenBreakdown = \`📊 Tokens: \${currentTotal.toLocaleString()}\`;
+						let tokenBreakdown = \`Tokens: \${currentTotal.toLocaleString()}\`;
 						
 						if (message.data.cacheCreationTokens || message.data.cacheReadTokens) {
 							const cacheInfo = [];

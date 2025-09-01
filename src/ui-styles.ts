@@ -1058,6 +1058,19 @@ const styles = `
         opacity: 0.95;
     }
 
+    /* Todo list styling */
+    .tool-input-content span {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 12px;
+    }
+    
+    /* Completed todo strikethrough positioning */
+    .tool-input-content span[style*="line-through"] {
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.2em;
+        text-decoration-skip-ink: none;
+    }
+
     /* Diff display styles for Edit tool */
     .diff-container {
         border: 1px solid var(--vscode-panel-border);

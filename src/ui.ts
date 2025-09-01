@@ -23,7 +23,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		<div style="display: flex; gap: 8px; align-items: center;">
 			<div id="sessionStatus" class="session-status" style="display: none;">No session</div>
 			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
-			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 History</button>
+			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">History</button>
 			<button class="btn primary" id="newSessionBtn" onclick="newSession()">New Chat</button>
 		</div>
 	</div>
