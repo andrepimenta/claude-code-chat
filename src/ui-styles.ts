@@ -2392,9 +2392,9 @@ const styles = `
     }
 
     .status.processing .status-indicator {
-        background-color: rgba(255, 255, 255, 0.5);
-        box-shadow: none;
-        animation: pulse 1.5s ease-in-out infinite;
+        background-color: var(--vscode-charts-blue);
+        box-shadow: 0 0 4px rgba(0, 122, 204, 0.4);
+        animation: pulse 1.2s ease-in-out infinite;
     }
 
     .status.error .status-indicator {
@@ -2403,8 +2403,16 @@ const styles = `
     }
 
     @keyframes pulse {
-        0%, 100% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.7; transform: scale(1.1); }
+        0%, 100% { 
+            opacity: 0.6; 
+            transform: scale(1); 
+            box-shadow: 0 0 4px rgba(0, 122, 204, 0.4);
+        }
+        50% { 
+            opacity: 1; 
+            transform: scale(1.3); 
+            box-shadow: 0 0 8px rgba(0, 122, 204, 0.6);
+        }
     }
 
     .status-text {
