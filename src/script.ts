@@ -403,6 +403,22 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return ''; // Don't show anything since filename is already in header
 			}
 
+			// Special handling for Read tool to show human-readable descriptions
+			if (input.file_path && (input.limit || input.offset)) {
+				const hasLimit = input.limit !== undefined;
+				const hasOffset = input.offset !== undefined;
+				
+				if (hasLimit && hasOffset) {
+					const startLine = input.offset + 1; // Convert 0-based to 1-based line numbers
+					const endLine = input.offset + input.limit;
+					return \`Read lines \${startLine}-\${endLine}\`;
+				} else if (hasLimit) {
+					return \`Read first \${input.limit} lines\`;
+				} else if (hasOffset) {
+					return \`Read from line \${input.offset + 1}\`;
+				}
+			}
+
 			let result = '';
 			let isFirst = true;
 			for (const [key, value] of Object.entries(input)) {
@@ -2248,9 +2264,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			permissionControls.innerHTML = \`
 				<div class="permission-buttons">
-					<button class="btn-permission deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+					<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
 					<div class="allow-button-group">
-						<button class="btn-permission allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
 						<button class="allow-dropdown-btn" onclick="toggleAlwaysAllowDropdown('\${data.id}')" title="Always allow options">
 							<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
 								<path d="M1 2.5l3 3 3-3"></path>

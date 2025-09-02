@@ -11,7 +11,8 @@
       "Bash(cat:*)",
       "WebSearch",
       "Bash(npm run lint:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npm install)"
     ],
     "deny": []
   },

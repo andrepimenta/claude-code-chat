@@ -130,43 +130,44 @@ export const permissionStyles = `
     }
 
     .permission-buttons .btn {
-        font-size: 12px;
-        padding: 6px 12px;
-        min-width: 70px;
-        text-align: center;
+        background-color: transparent;
+        color: #808080;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 400;
+        transition: all 0.15s ease;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        height: 28px;
-        border-radius: 4px;
-        border: 1px solid;
-        cursor: pointer;
-        transition: all 0.2s ease;
+        gap: 4px;
+        min-width: 50px;
+        height: 26px;
         white-space: nowrap;
         box-sizing: border-box;
     }
 
-    .permission-buttons .btn.allow {
-        background-color: rgba(255, 255, 255, 0.08);
+    .permission-buttons .btn:hover {
+        background-color: rgba(255, 255, 255, 0.05);
         color: #cccccc;
-        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-color: rgba(255, 255, 255, 0.12);
+    }
+
+    .permission-buttons .btn.allow {
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border-color: var(--vscode-button-background);
     }
 
     .permission-buttons .btn.allow:hover {
-        background-color: rgba(255, 255, 255, 0.12);
-        border-color: rgba(255, 255, 255, 0.16);
+        background-color: var(--vscode-button-hoverBackground);
+        border-color: var(--vscode-button-hoverBackground);
     }
 
     .permission-buttons .btn.deny {
-        background-color: transparent;
-        color: #808080;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .permission-buttons .btn.deny:hover {
-        background-color: rgba(255, 255, 255, 0.04);
-        border-color: rgba(255, 255, 255, 0.12);
-        color: #999999;
+        /* Uses base styles from above */
     }
 
     .permission-buttons .btn.always-allow {
@@ -507,39 +508,42 @@ export const permissionStyles = `
     }
 
     .btn-minimal {
-        font-size: 11px;
-        padding: 4px 8px;
+        background-color: transparent;
+        color: #808080;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 4px 6px;
         border-radius: 3px;
-        border: 1px solid;
         cursor: pointer;
-        transition: all 0.15s ease;
-        background: transparent;
+        font-size: 11px;
         font-weight: 400;
+        transition: all 0.15s ease;
         height: 22px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 4px;
+        min-width: 40px;
     }
 
-    .btn-minimal.deny {
-        color: var(--vscode-descriptionForeground);
-        border-color: rgba(255, 255, 255, 0.08);
-    }
-
-    .btn-minimal.deny:hover {
-        background-color: rgba(255, 255, 255, 0.04);
+    .btn-minimal:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: #cccccc;
         border-color: rgba(255, 255, 255, 0.12);
     }
 
     .btn-minimal.allow {
-        color: var(--vscode-foreground);
-        border-color: rgba(255, 255, 255, 0.12);
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border-color: var(--vscode-button-background);
     }
 
     .btn-minimal.allow:hover {
-        background-color: rgba(255, 255, 255, 0.08);
-        border-color: rgba(255, 255, 255, 0.16);
+        background-color: var(--vscode-button-hoverBackground);
+        border-color: var(--vscode-button-hoverBackground);
+    }
+
+    .btn-minimal.deny {
+        /* Uses base styles from above */
     }
 
     .allow-button-group {

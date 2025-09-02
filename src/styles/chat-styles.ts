@@ -519,4 +519,42 @@ export const chatStyles = `
         margin-left: 6px;
         display: inline-block;
     }
+
+    /* Conversation History Styles */
+    #conversationHistory {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background-color: var(--vscode-editor-background);
+        height: 100%;
+        min-height: 0;
+    }
+
+    .history-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        overflow: hidden;
+        height: 100%;
+        min-height: 0;
+    }
+
+    .history-content h3 {
+        margin: 0 0 16px 0;
+        color: var(--vscode-foreground);
+        font-size: 16px;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    #conversationList {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+        height: 0;
+        padding-bottom: 16px;
+    }
+
 `;
