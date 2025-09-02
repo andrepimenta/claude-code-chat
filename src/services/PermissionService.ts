@@ -7,11 +7,16 @@ export class PermissionService {
 	private _permissionWatcher: vscode.FileSystemWatcher | undefined;
 	private _pendingPermissionResolvers: Map<string, (approved: boolean) => void> = new Map();
 	private _disposables: vscode.Disposable[] = [];
+	private _permissionRequestCallback: ((request: PermissionRequest) => void) | undefined;
 
 	constructor(
 		private readonly _context: vscode.ExtensionContext
 	) {
 		this._initializePermissions();
+	}
+
+	public setPermissionRequestCallback(callback: (request: PermissionRequest) => void): void {
+		this._permissionRequestCallback = callback;
 	}
 
 	private async _initializePermissions(): Promise<void> {
@@ -83,12 +88,21 @@ export class PermissionService {
 	}
 
 	private async _showPermissionDialog(request: PermissionRequest): Promise<boolean> {
-		// This method will need to be implemented by the calling code
-		// since it needs access to the webview message system
-		// For now, return a promise that can be resolved externally
-		return new Promise((resolve) => {
+		// Store the resolver for when the permission response comes back
+		const promise = new Promise<boolean>((resolve) => {
 			this._pendingPermissionResolvers.set(request.id, resolve);
 		});
+
+		// Send permission request to webview via callback
+		if (this._permissionRequestCallback) {
+			this._permissionRequestCallback(request);
+		} else {
+			console.error('No permission request callback set - permission dialog will not be shown');
+			// Default to deny if no callback is set
+			this.resolvePermissionRequest(request.id, false);
+		}
+
+		return promise;
 	}
 
 	public resolvePermissionRequest(id: string, approved: boolean): void {

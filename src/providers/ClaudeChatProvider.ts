@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { WebviewMessage } from '../types';
+import { WebviewMessage, PermissionRequest } from '../types';
 import { BackupService } from '../services/BackupService';
 import { ConversationService } from '../services/ConversationService';
 import { PermissionService } from '../services/PermissionService';
@@ -44,6 +44,11 @@ export class ClaudeChatProvider {
 
 		// Initialize MCP config and permissions
 		this._permissionService.initializeMCPConfig();
+
+		// Set up permission request callback
+		this._permissionService.setPermissionRequestCallback((request) => {
+			this._handlePermissionRequest(request);
+		});
 
 		// Resume session from latest conversation
 		const latestConversation = this._conversationService.getLatestConversation();
@@ -1011,6 +1016,26 @@ export class ClaudeChatProvider {
 				}
 			});
 		}
+	}
+
+	private _handlePermissionRequest(request: PermissionRequest): void {
+		// Generate pattern for Bash commands
+		let pattern: string | undefined;
+		if (request.tool === 'Bash' && request.input?.command) {
+			pattern = this._permissionService.getCommandPattern(request.input.command);
+		}
+
+		// Send permission request to webview to show permission dialog in tool card
+		this._sendAndSaveMessage({
+			type: 'permissionRequest',
+			data: {
+				id: request.id,
+				tool: request.tool,
+				input: request.input,
+				pattern: pattern,
+				timestamp: request.timestamp
+			}
+		});
 	}
 
 	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean): void {
