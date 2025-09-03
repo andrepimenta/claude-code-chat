@@ -43,8 +43,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messageDiv = document.createElement('div');
 			messageDiv.className = \`message \${type}\`;
 			
-			// Add header for main message types (excluding system)
-			if (type === 'user' || type === 'claude' || type === 'error') {
+			// Add header only for error messages
+			if (type === 'error') {
 				const headerDiv = document.createElement('div');
 				headerDiv.className = 'message-header';
 				
@@ -95,6 +95,17 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				contentDiv.appendChild(preElement);
 			}
 			
+			// Add copy button for user messages after content is set
+			if (type === 'user') {
+				contentDiv.style.position = 'relative';
+				const copyBtn = document.createElement('button');
+				copyBtn.className = 'user-copy-btn';
+				copyBtn.setAttribute('aria-label', 'Copy message');
+				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+				copyBtn.onclick = () => copyToClipboard(content.replace(/<[^>]*>/g, ''));
+				contentDiv.appendChild(copyBtn);
+			}
+			
 			messageDiv.appendChild(contentDiv);
 			
 			// Check if this is a permission-related error and add yolo mode button
@@ -122,41 +133,68 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messageDiv = document.createElement('div');
 			messageDiv.className = 'message tool';
 			
-			// Create modern header with icon
-			const headerDiv = document.createElement('div');
-			headerDiv.className = 'tool-header';
+			// Add data attributes for tracking
+			if (data.toolName) {
+				messageDiv.setAttribute('data-tool-name', data.toolName);
+			}
+			if (data.toolUseId) {
+				messageDiv.setAttribute('data-tool-use-id', data.toolUseId);
+			}
 			
-			const iconDiv = document.createElement('div');
-			iconDiv.className = 'tool-icon';
-			iconDiv.textContent = '🔧';
-			
-			const toolInfoElement = document.createElement('div');
-			toolInfoElement.className = 'tool-info';
+			// Prepare tool info for body (no separate header)
 			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
 			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
 				toolName = 'Update Todos';
 			}
-			toolInfoElement.textContent = toolName;
-			
-			headerDiv.appendChild(iconDiv);
-			headerDiv.appendChild(toolInfoElement);
-			messageDiv.appendChild(headerDiv);
 			
 			if (data.rawInput) {
 				const inputElement = document.createElement('div');
 				inputElement.className = 'tool-input';
+				
+				// Add tool info at the top of the body
+				const toolInfoDiv = document.createElement('div');
+				toolInfoDiv.className = 'tool-info-body';
+				
+				// Make filename clickable if this is a file-related tool
+				if (data.filePath && toolName.includes(' ')) {
+					const parts = toolName.split(' ');
+					const fileName = parts.slice(1).join(' ');
+					const toolType = parts[0];
+					
+					const fileSpan = document.createElement('span');
+					fileSpan.className = 'clickable-filename';
+					fileSpan.title = data.filePath;
+					fileSpan.textContent = fileName;
+					fileSpan.addEventListener('click', () => openFileInEditor(data.filePath));
+					
+					toolInfoDiv.appendChild(document.createTextNode(toolType + ' '));
+					toolInfoDiv.appendChild(fileSpan);
+				} else {
+					toolInfoDiv.appendChild(document.createTextNode(toolName));
+				}
+				
+				inputElement.appendChild(toolInfoDiv);
 				
 				const contentDiv = document.createElement('div');
 				contentDiv.className = 'tool-input-content';
 				
 				// Handle TodoWrite specially or format raw input
 				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
-					let todoHtml = 'Todo List Update:';
-					for (const todo of data.rawInput.todos) {
-						const status = todo.status === 'completed' ? '✅' :
-							todo.status === 'in_progress' ? '🔄' : '⏳';
-						todoHtml += '\\n' + status + ' ' + todo.content;
+					let todoHtml = '';
+					for (let i = 0; i < data.rawInput.todos.length; i++) {
+						const todo = data.rawInput.todos[i];
+						const status = todo.status === 'completed' ? '✓' :
+							todo.status === 'in_progress' ? '◌' : '○';
+						
+						// Add newline before each todo except the first one
+						const prefix = i > 0 ? '\\n' : '';
+						
+						if (todo.status === 'completed') {
+							todoHtml += prefix + status + ' <span style="text-decoration: line-through; text-decoration-color: #999;">' + todo.content + '</span>';
+						} else {
+							todoHtml += prefix + status + ' ' + todo.content;
+						}
 					}
 					contentDiv.innerHTML = todoHtml;
 				} else {
@@ -180,10 +218,29 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const inputElement = document.createElement('div');
 				inputElement.className = 'tool-input';
 				
-				const labelDiv = document.createElement('div');
-				labelDiv.className = 'tool-input-label';
-				labelDiv.textContent = 'INPUT';
-				inputElement.appendChild(labelDiv);
+				// Add tool info at the top of the body for fallback case too
+				const toolInfoDiv = document.createElement('div');
+				toolInfoDiv.className = 'tool-info-body';
+				
+				// Make filename clickable if this is a file-related tool
+				if (data.filePath && toolName.includes(' ')) {
+					const parts = toolName.split(' ');
+					const fileName = parts.slice(1).join(' ');
+					const toolType = parts[0];
+					
+					const fileSpan = document.createElement('span');
+					fileSpan.className = 'clickable-filename';
+					fileSpan.title = data.filePath;
+					fileSpan.textContent = fileName;
+					fileSpan.addEventListener('click', () => openFileInEditor(data.filePath));
+					
+					toolInfoDiv.appendChild(document.createTextNode(toolType + ' '));
+					toolInfoDiv.appendChild(fileSpan);
+				} else {
+					toolInfoDiv.appendChild(document.createTextNode(toolName));
+				}
+				
+				inputElement.appendChild(toolInfoDiv);
 				
 				const contentDiv = document.createElement('div');
 				contentDiv.className = 'tool-input-content';
@@ -340,10 +397,26 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return str;
 			}
 
-			// Special handling for Read tool with file_path
+			// Special handling for Read tool with file_path - since filename is now in header, 
+			// don't show redundant file path for single-parameter file tools
 			if (input.file_path && Object.keys(input).length === 1) {
-				const formattedPath = formatFilePath(input.file_path);
-				return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+				return ''; // Don't show anything since filename is already in header
+			}
+
+			// Special handling for Read tool to show human-readable descriptions
+			if (input.file_path && (input.limit || input.offset)) {
+				const hasLimit = input.limit !== undefined;
+				const hasOffset = input.offset !== undefined;
+				
+				if (hasLimit && hasOffset) {
+					const startLine = input.offset + 1; // Convert 0-based to 1-based line numbers
+					const endLine = input.offset + input.limit;
+					return \`Read lines \${startLine}-\${endLine}\`;
+				} else if (hasLimit) {
+					return \`Read first \${input.limit} lines\`;
+				} else if (hasOffset) {
+					return \`Read from line \${input.offset + 1}\`;
+				}
 			}
 
 			let result = '';
@@ -354,10 +427,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				if (!isFirst) result += '\\n';
 				isFirst = false;
 				
-				// Special formatting for file_path in Read tool context
+				// Skip file_path since it's now shown in the header
 				if (key === 'file_path') {
-					const formattedPath = formatFilePath(valueStr);
-					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
+					continue; // Skip displaying file_path in body
 				} else if (valueStr.length > 100) {
 					const truncated = valueStr.substring(0, 97) + '...';
 					const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -379,9 +451,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Create diff view
 			const oldLines = input.old_string.split('\\n');
@@ -448,9 +519,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Count total lines across all edits for truncation
 			let totalLines = 0;
@@ -562,9 +632,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return formatToolInputUI(input);
 			}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
+			// Skip file path display since it's now shown in the card header
+			let result = '';
 			
 			// Create diff view showing all content as additions
 			const contentLines = input.content.split('\\n');
@@ -1740,13 +1809,31 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 
-		// Stop button functions
-		function showStopButton() {
-			document.getElementById('stopBtn').style.display = 'flex';
+		// Send button transformation functions
+		function transformSendToStop() {
+			const sendBtn = document.getElementById('sendBtn');
+			const sendContent = document.getElementById('sendContent');
+			const stopContent = document.getElementById('stopContent');
+			
+			if (sendBtn && sendContent && stopContent) {
+				sendContent.style.display = 'none';
+				stopContent.style.display = 'flex';
+				sendBtn.onclick = stopRequest;
+				sendBtn.classList.add('stop-mode');
+			}
 		}
 
-		function hideStopButton() {
-			document.getElementById('stopBtn').style.display = 'none';
+		function transformStopToSend() {
+			const sendBtn = document.getElementById('sendBtn');
+			const sendContent = document.getElementById('sendContent');
+			const stopContent = document.getElementById('stopContent');
+			
+			if (sendBtn && sendContent && stopContent) {
+				stopContent.style.display = 'none';
+				sendContent.style.display = 'flex';
+				sendBtn.onclick = sendMessage;
+				sendBtn.classList.remove('stop-mode');
+			}
 		}
 
 		function stopRequest() {
@@ -1755,18 +1842,27 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			vscode.postMessage({
 				type: 'stopRequest'
 			});
-			hideStopButton();
+			transformStopToSend();
 		}
 
-		// Disable/enable buttons during processing
+		// Disable/enable buttons during processing - now just controls other buttons
 		function disableButtons() {
-			const sendBtn = document.getElementById('sendBtn');
-			if (sendBtn) sendBtn.disabled = true;
+			// Transform send button to stop button instead of disabling
+			transformSendToStop();
 		}
 
 		function enableButtons() {
-			const sendBtn = document.getElementById('sendBtn');
-			if (sendBtn) sendBtn.disabled = false;
+			// Transform stop button back to send button
+			transformStopToSend();
+		}
+
+		// Copy to clipboard function
+		function copyToClipboard(text) {
+			navigator.clipboard.writeText(text).then(() => {
+				console.log('Text copied to clipboard');
+			}).catch(err => {
+				console.error('Failed to copy text: ', err);
+			});
 		}
 
 		// Copy message content function
@@ -1885,11 +1981,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					isProcessing = message.data.isProcessing;
 					if (isProcessing) {
 						startRequestTimer(message.data.requestStartTime);
-						showStopButton();
 						disableButtons();
 					} else {
 						stopRequestTimer();
-						hideStopButton();
 						enableButtons();
 					}
 					updateStatusWithTotals();
@@ -1988,20 +2082,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
-					// Show detailed token breakdown for current message
-					const currentTotal = (message.data.currentInputTokens || 0) + (message.data.currentOutputTokens || 0);
-					if (currentTotal > 0) {
-						let tokenBreakdown = \`📊 Tokens: \${currentTotal.toLocaleString()}\`;
-						
-						if (message.data.cacheCreationTokens || message.data.cacheReadTokens) {
-							const cacheInfo = [];
-							if (message.data.cacheCreationTokens) cacheInfo.push(\`\${message.data.cacheCreationTokens.toLocaleString()} cache created\`);
-							if (message.data.cacheReadTokens) cacheInfo.push(\`\${message.data.cacheReadTokens.toLocaleString()} cache read\`);
-							tokenBreakdown += \` • \${cacheInfo.join(' • ')}\`;
-						}
-						
-						addMessage(tokenBreakdown, 'system');
-					}
+					// Token breakdown display removed
 					break;
 					
 				case 'updateTotals':
@@ -2033,7 +2114,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
 					hideSessionInfo();
-					addMessage('🆕 Started new session', 'system');
+					addMessage('Started new session', 'system');
 					// Reset totals
 					totalCost = 0;
 					totalTokensInput = 0;
@@ -2091,12 +2172,24 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					currentModel = message.model;
 					selectModel(message.model, true);
 					break;
+				case 'workspaceInfo':
+					// Update the UI with workspace information
+					const workspaceElement = document.getElementById('workspaceName');
+					const workspaceContainer = document.getElementById('workspaceInfo');
+					if (workspaceElement && workspaceContainer && message.data?.name) {
+						workspaceElement.textContent = message.data.name;
+						workspaceContainer.style.display = 'block';
+					}
+					break;
 				case 'terminalOpened':
 					// Display notification about checking the terminal
 					addMessage(message.data, 'system');
 					break;
 				case 'permissionRequest':
 					addPermissionRequestMessage(message.data);
+					break;
+				case 'permissionResponse':
+					updateToolPermissionStatus(message.data);
 					break;
 				case 'mcpServers':
 					displayMCPServers(message.data);
@@ -2115,57 +2208,127 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 		
-		// Permission request functions
+		// Permission request functions - now updates existing tool use card
 		function addPermissionRequestMessage(data) {
-			const messagesDiv = document.getElementById('messages');
-			const shouldScroll = shouldAutoScroll(messagesDiv);
-
-			const messageDiv = document.createElement('div');
-			messageDiv.className = 'message permission-request';
-			
 			const toolName = data.tool || 'Unknown Tool';
 			
-			// Create always allow button text with command styling for Bash
+			// Find the existing tool use card for this tool
+			const toolCards = document.querySelectorAll('.message.tool');
+			let targetCard = null;
+			
+			// Find the most recent tool card for this tool name that doesn't already have permission controls
+			for (let i = toolCards.length - 1; i >= 0; i--) {
+				const card = toolCards[i];
+				if (card.getAttribute('data-tool-name') === toolName && 
+				    !card.querySelector('.tool-permission-controls')) {
+					targetCard = card;
+					break;
+				}
+			}
+			
+			if (!targetCard) {
+				console.warn('Could not find tool use card for permission request:', toolName);
+				return;
+			}
+			
+			// Mark the card as requiring permission
+			targetCard.classList.add('requires-permission', 'permission-pending');
+			
+			// Add permission status indicator to tool info in body
+			const toolInfoDiv = targetCard.querySelector('.tool-info-body');
+			if (toolInfoDiv && !toolInfoDiv.querySelector('.permission-status-indicator')) {
+				const permissionStatus = document.createElement('div');
+				permissionStatus.className = 'permission-status-indicator';
+				permissionStatus.innerHTML = '<span class="status-text">Awaiting Permission</span>';
+				toolInfoDiv.appendChild(permissionStatus);
+			}
+			
+			// Add or update the permission controls with the specific permission request ID
+			let permissionControls = targetCard.querySelector('.tool-permission-controls');
+			if (!permissionControls) {
+				// Create permission controls if they don't exist
+				permissionControls = document.createElement('div');
+				permissionControls.className = 'tool-permission-controls';
+				targetCard.appendChild(permissionControls);
+			}
+			
+			// Create always allow text with command styling for Bash
 			let alwaysAllowText = \`Always allow \${toolName}\`;
-			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
-				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+				const truncatedPattern = displayPattern.length > 25 ? displayPattern.substring(0, 25) + '...' : displayPattern;
+				alwaysAllowText = \`Always allow "\${truncatedPattern}"\`;
 			}
 			
-			messageDiv.innerHTML = \`
-				<div class="permission-header">
-					<span class="icon">🔐</span>
-					<span>Permission Required</span>
-					<div class="permission-menu">
-						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
-						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
-							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
-								<span class="menu-icon">⚡</span>
-								<div class="menu-content">
-									<span class="menu-title">Enable YOLO Mode</span>
-									<span class="menu-subtitle">Auto-allow all permissions</span>
-								</div>
+			permissionControls.innerHTML = \`
+				<div class="permission-buttons">
+					<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+					<div class="allow-button-group">
+						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+						<button class="allow-dropdown-btn" onclick="toggleAlwaysAllowDropdown('\${data.id}')" title="Always allow options">
+							<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
+								<path d="M1 2.5l3 3 3-3"></path>
+							</svg>
+						</button>
+						<div class="always-allow-dropdown" id="alwaysAllowDropdown-\${data.id}" style="display: none;">
+							<button class="always-allow-option" onclick="respondToPermission('\${data.id}', true, true)">
+								\${alwaysAllowText}
 							</button>
 						</div>
 					</div>
 				</div>
-				<div class="permission-content">
-					<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-					<div class="permission-buttons">
-						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-						<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
-					</div>
-				</div>
 			\`;
 			
-			messagesDiv.appendChild(messageDiv);
-			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+		
+		// Handle permission response from extension (when resolved via MCP)
+		function updateToolPermissionStatus(data) {
+			const { id, approved, alwaysAllow } = data;
+			
+			// Find the tool card with pending permission for this request ID  
+			const toolCards = document.querySelectorAll('.message.tool.requires-permission.permission-pending');
+			let targetCard = null;
+			
+			// Look for the card that has buttons referencing this permission ID
+			for (const card of toolCards) {
+				const permissionButton = card.querySelector(\`[onclick*="\${id}"]\`);
+				if (permissionButton) {
+					targetCard = card;
+					break;
+				}
+			}
+			
+			if (targetCard) {
+				let decision = approved ? 'Allowed' : 'Denied';
+				if (alwaysAllow && approved) {
+					decision = 'Allowed (always)';
+				}
+				
+				const emoji = approved ? '✅' : '❌';
+				const decisionClass = approved ? 'allowed' : 'denied';
+				
+				// Update permission controls
+				const permissionControls = targetCard.querySelector('.tool-permission-controls');
+				if (permissionControls) {
+					permissionControls.innerHTML = \`<div class="tool-permission-decision \${decisionClass}">\${emoji} \${decision}</div>\`;
+				}
+				
+				// Update permission status indicator
+				const statusIndicator = targetCard.querySelector('.permission-status-indicator');
+				if (statusIndicator) {
+					statusIndicator.innerHTML = \`<span class="status-text">\${approved ? 'Permission Granted' : 'Permission Denied'}</span>\`;
+				}
+				
+				// Update tool card classes
+				targetCard.classList.remove('permission-pending');
+				targetCard.classList.add(decisionClass);
+				
+				if (!approved) {
+					targetCard.classList.add('permission-decided', 'tool-blocked');
+				}
+			}
 		}
 		
 		function respondToPermission(id, approved, alwaysAllow = false) {
@@ -2177,30 +2340,40 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				alwaysAllow: alwaysAllow
 			});
 			
-			// Update the UI to show the decision
-			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`);
-			if (permissionMsg) {
-				const buttons = permissionMsg.querySelector('.permission-buttons');
-				const permissionContent = permissionMsg.querySelector('.permission-content');
-				let decision = approved ? 'You allowed this' : 'You denied this';
-				
+			// Update the tool use card to show the decision
+			const toolCard = document.querySelector(\`.message.tool.requires-permission:has([onclick*="\${id}"])\`);
+								  
+			if (toolCard) {
+				let decision = approved ? 'Allowed' : 'Denied';
 				if (alwaysAllow && approved) {
-					decision = 'You allowed this and set it to always allow';
+					decision = 'Allowed (always)';
 				}
 				
 				const emoji = approved ? '✅' : '❌';
 				const decisionClass = approved ? 'allowed' : 'denied';
 				
-				// Hide buttons
-				buttons.style.display = 'none';
+				// Update permission controls in the tool card
+				const permissionControls = toolCard.querySelector('.tool-permission-controls');
+				if (permissionControls) {
+					// Replace buttons with decision
+					permissionControls.innerHTML = \`<div class="tool-permission-decision \${decisionClass}">\${emoji} \${decision}</div>\`;
+				}
 				
-				// Add decision div to permission-content
-				const decisionDiv = document.createElement('div');
-				decisionDiv.className = \`permission-decision \${decisionClass}\`;
-				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
-				permissionContent.appendChild(decisionDiv);
+				// Update permission status indicator
+				const statusIndicator = toolCard.querySelector('.permission-status-indicator');
+				if (statusIndicator) {
+					statusIndicator.innerHTML = \`<span class="status-text">\${approved ? 'Permission Granted' : 'Permission Denied'}</span>\`;
+				}
 				
-				permissionMsg.classList.add('permission-decided', decisionClass);
+				// Update tool card classes
+				toolCard.classList.remove('permission-pending');
+				toolCard.classList.add('permission-decided', decisionClass);
+				
+				// If approved, the tool will execute and show result naturally
+				// If denied, we can add a visual indicator that the tool was blocked
+				if (!approved) {
+					toolCard.classList.add('tool-blocked');
+				}
 			}
 		}
 
@@ -2235,10 +2408,29 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
 		}
 
-		// Close permission menus when clicking outside
+		// New minimal dropdown function for Always Allow
+		function toggleAlwaysAllowDropdown(permissionId) {
+			const dropdown = document.getElementById(\`alwaysAllowDropdown-\${permissionId}\`);
+			const isVisible = dropdown.style.display !== 'none';
+			
+			// Close all other always-allow dropdowns
+			document.querySelectorAll('.always-allow-dropdown').forEach(d => {
+				d.style.display = 'none';
+			});
+			
+			// Toggle this dropdown
+			dropdown.style.display = isVisible ? 'none' : 'block';
+		}
+
+		// Close permission menus and dropdowns when clicking outside
 		document.addEventListener('click', function(event) {
 			if (!event.target.closest('.permission-menu')) {
 				document.querySelectorAll('.permission-menu-dropdown').forEach(dropdown => {
+					dropdown.style.display = 'none';
+				});
+			}
+			if (!event.target.closest('.allow-button-group')) {
+				document.querySelectorAll('.always-allow-dropdown').forEach(dropdown => {
 					dropdown.style.display = 'none';
 				});
 			}
@@ -2273,10 +2465,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const shortSha = data.sha ? data.sha.substring(0, 8) : 'unknown';
 			
 			restoreContainer.innerHTML = \`
+				<span class="restore-date">\${timeAgo}</span>
 				<button class="restore-btn dark" onclick="restoreToCommit('\${data.sha}')">
 					Restore checkpoint
 				</button>
-				<span class="restore-date">\${timeAgo}</span>
 			\`;
 			
 			messagesDiv.appendChild(restoreContainer);
@@ -2959,6 +3151,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 
-	</script>`
+	</script>`;
 
 export default getScript;

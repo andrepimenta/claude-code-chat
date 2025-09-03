@@ -5,7 +5,14 @@
       "Bash(grep:*)",
       "Bash(sed:*)",
       "Bash(rg:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm run watch:*)",
+      "Bash(npm run lint)",
+      "Bash(cat:*)",
+      "WebSearch",
+      "Bash(npm run lint:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm install)"
     ],
     "deny": []
   },
