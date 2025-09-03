@@ -66,6 +66,10 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
 					<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
 				</div>
+				<div class="mode-toggle" id="longContextToggle" style="display: none;">
+					<span onclick="toggleLongContext()">Long Context</span>
+					<div class="mode-switch" id="longContextSwitch" onclick="toggleLongContext()"></div>
+				</div>
 			</div>
 			<div class="textarea-container">
 				<div class="textarea-wrapper">
