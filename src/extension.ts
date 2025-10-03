@@ -250,7 +250,7 @@ class ClaudeChatProvider {
 	private _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
+				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.longContext);
 				return;
 			case 'newSession':
 				this._newSession();
@@ -405,7 +405,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean) {
+	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, longContext?: boolean) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -496,7 +496,12 @@ class ClaudeChatProvider {
 
 		// Add model selection if not using default
 		if (this._selectedModel && this._selectedModel !== 'default') {
-			args.push('--model', this._selectedModel);
+			let modelName = this._selectedModel;
+			// Add [1m] suffix for long context when enabled and supported
+			if (longContext && this._selectedModel === 'sonnet') {
+				modelName = 'sonnet[1m]';
+			}
+			args.push('--model', modelName);
 		}
 
 		// Add session resume if we have a current session

@@ -15,6 +15,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let selectedFileIndex = -1;
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
+		let longContextEnabled = false;
 
 		function shouldAutoScroll(messagesDiv) {
 			const threshold = 100; // pixels from bottom
@@ -719,7 +720,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					type: 'sendMessage',
 					text: text,
 					planMode: planModeEnabled,
-					thinkingMode: thinkingModeEnabled
+					thinkingMode: thinkingModeEnabled,
+					longContext: longContextEnabled
 				});
 				
 				messageInput.value = '';
@@ -755,6 +757,16 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				if (toggleLabel) {
 					toggleLabel.textContent = 'Thinking Mode';
 				}
+			}
+		}
+
+		function toggleLongContext() {
+			longContextEnabled = !longContextEnabled;
+			const switchElement = document.getElementById('longContextSwitch');
+			if (longContextEnabled) {
+				switchElement.classList.add('active');
+			} else {
+				switchElement.classList.remove('active');
 			}
 		}
 
@@ -1703,6 +1715,22 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				'default': 'Model'
 			};
 			document.getElementById('selectedModel').textContent = displayNames[model] || model;
+			
+			// Show/hide Long Context toggle based on model selection
+			const longContextToggle = document.getElementById('longContextToggle');
+			if (longContextToggle) {
+				if (model === 'sonnet' || model === 'default') {
+					longContextToggle.style.display = 'flex';
+				} else {
+					longContextToggle.style.display = 'none';
+					// Reset long context when hidden
+					longContextEnabled = false;
+					const switchElement = document.getElementById('longContextSwitch');
+					if (switchElement) {
+						switchElement.classList.remove('active');
+					}
+				}
+			}
 			
 			// Only send model selection to VS Code extension if not from backend
 			if (!fromBackend) {
