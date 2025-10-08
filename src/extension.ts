@@ -3,12 +3,23 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import getHtml from './ui';
+import { FrameworkManager } from './framework/FrameworkManager';
 
 const exec = util.promisify(cp.exec);
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Claude Code Chat extension is being activated!');
-	const provider = new ClaudeChatProvider(context.extensionUri, context);
+
+	// Inicializar Framework Manager JurisAnalytica
+	const frameworkManager = new FrameworkManager(context);
+
+	// Carregar framework automaticamente
+	const config = vscode.workspace.getConfiguration('jurisanalytica');
+	if (config.get('autoLoadFramework', true)) {
+		frameworkManager.loadFramework();
+	}
+
+	const provider = new ClaudeChatProvider(context.extensionUri, context, frameworkManager);
 
 	const disposable = vscode.commands.registerCommand('claude-code-chat.openChat', (column?: vscode.ViewColumn) => {
 		console.log('Claude Code Chat command executed!');
@@ -22,6 +33,25 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register webview view provider for sidebar chat (using shared provider instance)
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, context, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
+
+	// Registrar comandos JurisAnalytica
+	context.subscriptions.push(
+		vscode.commands.registerCommand('jurisanalytica.showAgents', () => {
+			const agents = frameworkManager.getAgents();
+			const items = agents.map(agent => ({
+				label: `$(organization) ${agent.name}`,
+				description: agent.specialization,
+				detail: `Template: ${agent.template}`
+			}));
+			vscode.window.showQuickPick(items, {
+				placeHolder: 'Agentes Especializados JurisAnalytica'
+			});
+		}),
+		vscode.commands.registerCommand('jurisanalytica.resetFramework', async () => {
+			await frameworkManager.loadFramework();
+			vscode.window.showInformationMessage('✅ Framework JurisAnalytica reiniciado!');
+		})
+	);
 
 	// Listen for configuration changes
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
@@ -131,7 +161,8 @@ class ClaudeChatProvider {
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
-		private readonly _context: vscode.ExtensionContext
+		private readonly _context: vscode.ExtensionContext,
+		private readonly _frameworkManager: FrameworkManager
 	) {
 
 		// Initialize backup repository and conversations
@@ -413,10 +444,51 @@ class ClaudeChatProvider {
 		const configThink = vscode.workspace.getConfiguration('claudeCodeChat');
 		const thinkingIntensity = configThink.get<string>('thinking.intensity', 'think');
 
+		// ===== JURISANALYTICA FRAMEWORK INJECTION =====
+		let frameworkPrompt = '';
+		const jurisConfig = vscode.workspace.getConfiguration('jurisanalytica');
+		const enableFramework = jurisConfig.get<boolean>('enableFramework', true);
+
+		if (enableFramework && this._frameworkManager.isFrameworkLoaded()) {
+			// Identificar tipo de processo
+			const agent = this._frameworkManager.identifyProcessType(message);
+
+			if (agent) {
+				this._postMessage({
+					type: 'output',
+					data: `🏛️ **JurisAnalytica Framework Ativado**\n\n📌 **Tipo identificado:** ${agent.name}\n🎯 **Agente:** ${agent.id}\n📋 **Template:** ${agent.template}\n\n`
+				});
+
+				// Construir system prompt do framework
+				frameworkPrompt = `🏛️ JURISANALYTICA FRAMEWORK - Sistema Especializado TJBA
+
+**AGENTE ATIVADO:** ${agent.name}
+**ESPECIALIZAÇÃO:** ${agent.specialization}
+**TEMPLATE APLICÁVEL:** ${agent.template}
+
+${this._frameworkManager.getAgentInstructions(agent.id)}
+
+**INSTRUÇÕES GERAIS:**
+1. Analise o documento jurídico de forma integral e sistemática
+2. Identifique: partes, pedidos, fundamentos, questões jurídicas
+3. Aplique jurisprudência relevante do STF/STJ quando aplicável
+4. Estruture a resposta de forma clara e profissional
+5. Use formatação markdown para melhor legibilidade
+6. Siga rigorosamente o template aplicável quando apropriado
+
+**IMPORTANTE:** Você está operando no contexto do Tribunal de Justiça da Bahia (TJBA).
+
+---
+
+`;
+			}
+		}
+		// ===== FIM DA INTEGRAÇÃO JURISANALYTICA =====
+
 		// Prepend mode instructions if enabled
-		let actualMessage = message;
+		let actualMessage = frameworkPrompt + message;
 		if (planMode) {
-			actualMessage = 'PLAN FIRST FOR THIS MESSAGE ONLY: Plan first before making any changes. Show me in detail what you will change and wait for my explicit approval in a separate message before proceeding. Do not implement anything until I confirm. This planning requirement applies ONLY to this current message. \n\n' + message;
+			actualMessage = 'PLAN FIRST FOR THIS MESSAGE ONLY: Plan first before making any changes. Show me in detail what you will change and wait for my explicit approval in a separate message before proceeding. Do not implement anything until I confirm. This planning requirement applies ONLY to this current message. \n\n' + actualMessage;
 		}
 		if (thinkingMode) {
 			let thinkingPrompt = '';

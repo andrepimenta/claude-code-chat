@@ -57,6 +57,18 @@
         "title": "Open Claude Code Chat",
         "category": "Claude Code Chat",
         "icon": "icon.png"
+      },
+      {
+        "command": "jurisanalytica.showAgents",
+        "title": "Show JurisAnalytica Agents",
+        "category": "JurisAnalytica",
+        "icon": "$(organization)"
+      },
+      {
+        "command": "jurisanalytica.resetFramework",
+        "title": "Reset JurisAnalytica Framework",
+        "category": "JurisAnalytica",
+        "icon": "$(refresh)"
       }
     ],
     "keybindings": [
@@ -185,6 +197,21 @@
           "type": "boolean",
           "default": false,
           "description": "Enable Yolo Mode to skip all permission checks. Use with caution as Claude can execute any command without asking."
+        },
+        "jurisanalytica.frameworkPath": {
+          "type": "string",
+          "default": "C:\\git-hub\\assessoria-multiIA",
+          "description": "Caminho base do framework JurisAnalytica"
+        },
+        "jurisanalytica.autoLoadFramework": {
+          "type": "boolean",
+          "default": true,
+          "description": "Carregar framework JurisAnalytica automaticamente ao iniciar"
+        },
+        "jurisanalytica.enableFramework": {
+          "type": "boolean",
+          "default": true,
+          "description": "Habilitar integração com framework JurisAnalytica (detecção automática de tipos de processo)"
         }
       }
     }

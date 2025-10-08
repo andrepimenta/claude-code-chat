@@ -1,0 +1,34 @@
+{
+  // ========================================
+  // JurisAnalytica Framework Configuration
+  // ========================================
+
+  // Caminho para o framework JurisAnalytica
+  // IMPORTANTE: Ajuste este caminho para seu sistema!
+  "jurisanalytica.frameworkPath": "C:\\git-hub\\assessoria-multiIA",
+
+  // Carrega framework automaticamente ao iniciar
+  "jurisanalytica.autoLoadFramework": true,
+
+  // Habilita detecção automática de tipos de processo
+  "jurisanalytica.enableFramework": true,
+
+  // ========================================
+  // Claude Code Chat Configuration
+  // ========================================
+
+  // Modo de pensamento (think, think-hard, think-harder, ultrathink)
+  "claudeCodeChat.thinking.intensity": "think",
+
+  // YOLO Mode - pula todas as permissões (use com cuidado!)
+  "claudeCodeChat.permissions.yoloMode": false,
+
+  // ========================================
+  // WSL Configuration (se usar WSL)
+  // ========================================
+
+  "claudeCodeChat.wsl.enabled": false,
+  "claudeCodeChat.wsl.distro": "Ubuntu",
+  "claudeCodeChat.wsl.nodePath": "/usr/bin/node",
+  "claudeCodeChat.wsl.claudePath": "/usr/local/bin/claude"
+}
