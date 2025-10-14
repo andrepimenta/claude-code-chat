@@ -6,6 +6,61 @@ import getHtml from './ui';
 
 const exec = util.promisify(cp.exec);
 
+/**
+ * Escapes a command-line argument for safe use in Windows cmd.exe shell.
+ * Handles spaces, quotes, and special characters properly.
+ *
+ * @param arg - The argument to escape
+ * @returns The escaped argument, wrapped in quotes if necessary
+ *
+ * @example
+ * escapeShellArg('C:\\Users\\John Doe\\file.txt')
+ * // Returns: '"C:\\Users\\John Doe\\file.txt"'
+ *
+ * escapeShellArg('simple')
+ * // Returns: 'simple'
+ *
+ * escapeShellArg('path with "quotes"')
+ * // Returns: '"path with \\"quotes\\""'
+ */
+function escapeShellArg(arg: string): string {
+	// If the argument contains spaces, quotes, or other special characters, wrap it in quotes
+	if (/[\s"&<>|^]/.test(arg)) {
+		// Escape any existing double quotes by doubling them (Windows cmd.exe style)
+		// Then wrap the entire argument in double quotes
+		return `"${arg.replace(/"/g, '""')}"`;
+	}
+	return arg;
+}
+
+/**
+ * Escapes a command-line argument for safe use in bash/sh shells (including WSL).
+ * Handles spaces, quotes, and special characters properly.
+ *
+ * @param arg - The argument to escape
+ * @returns The escaped argument, wrapped in single quotes if necessary
+ *
+ * @example
+ * escapeBashArg('/mnt/c/Users/John Doe/file.txt')
+ * // Returns: "'/mnt/c/Users/John Doe/file.txt'"
+ *
+ * escapeBashArg('simple')
+ * // Returns: 'simple'
+ *
+ * escapeBashArg("path with 'quotes'")
+ * // Returns: "'path with '\\''quotes'\\'''"
+ */
+function escapeBashArg(arg: string): string {
+	// If the argument contains spaces or special shell characters, wrap it in single quotes
+	// Single quotes preserve everything literally in bash, except single quotes themselves
+	if (/[\s"'`$\\!*?&|;<>(){}[\]]/.test(arg)) {
+		// Escape single quotes by ending the quoted string, adding an escaped quote, and starting a new quoted string
+		// 'can'\''t' becomes: 'can' + \' + 't' which bash interprets as: can't
+		return `'${arg.replace(/'/g, "'\\''")}'`;
+	}
+	return arg;
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Claude Code Chat extension is being activated!');
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
@@ -518,7 +573,9 @@ class ClaudeChatProvider {
 		if (wslEnabled) {
 			// Use WSL with bash -ic for proper environment loading
 			console.log('Using WSL configuration:', { wslDistro, nodePath, claudePath });
-			const wslCommand = `"${nodePath}" --no-warnings --enable-source-maps "${claudePath}" ${args.join(' ')}`;
+			// Escape arguments for bash shell to handle spaces and special characters
+			const escapedArgs = args.map(arg => escapeBashArg(arg));
+			const wslCommand = `${escapeBashArg(nodePath)} --no-warnings --enable-source-maps ${escapeBashArg(claudePath)} ${escapedArgs.join(' ')}`;
 
 			claudeProcess = cp.spawn('wsl', ['-d', wslDistro, 'bash', '-ic', wslCommand], {
 				cwd: cwd,
@@ -532,7 +589,13 @@ class ClaudeChatProvider {
 		} else {
 			// Use native claude command
 			console.log('Using native Claude command');
-			claudeProcess = cp.spawn('claude', args, {
+			// On Windows with shell: true, we need to manually escape arguments containing spaces
+			// because windowsVerbatimArguments is automatically set to true when shell is used
+			const processedArgs = process.platform === 'win32'
+				? args.map(arg => escapeShellArg(arg))
+				: args;
+
+			claudeProcess = cp.spawn('claude', processedArgs, {
 				shell: process.platform === 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -948,7 +1011,8 @@ class ClaudeChatProvider {
 		// Open terminal and run claude login
 		const terminal = vscode.window.createTerminal('Claude Login');
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath}`);
+			// Escape paths for bash in case they contain spaces
+			terminal.sendText(`wsl -d ${wslDistro} ${escapeBashArg(nodePath)} --no-warnings --enable-source-maps ${escapeBashArg(claudePath)}`);
 		} else {
 			terminal.sendText('claude');
 		}
@@ -2247,7 +2311,9 @@ class ClaudeChatProvider {
 		// Create terminal with the claude /model command
 		const terminal = vscode.window.createTerminal('Claude Model Selection');
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
+			// Escape paths and arguments for bash in case they contain spaces
+			const escapedArgs = args.map(arg => escapeBashArg(arg));
+			terminal.sendText(`wsl -d ${wslDistro} ${escapeBashArg(nodePath)} --no-warnings --enable-source-maps ${escapeBashArg(claudePath)} ${escapedArgs.join(' ')}`);
 		} else {
 			terminal.sendText(`claude ${args.join(' ')}`);
 		}
@@ -2284,7 +2350,9 @@ class ClaudeChatProvider {
 		// Create terminal with the claude command
 		const terminal = vscode.window.createTerminal(`Claude /${command}`);
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
+			// Escape paths and arguments for bash in case they contain spaces
+			const escapedArgs = args.map(arg => escapeBashArg(arg));
+			terminal.sendText(`wsl -d ${wslDistro} ${escapeBashArg(nodePath)} --no-warnings --enable-source-maps ${escapeBashArg(claudePath)} ${escapedArgs.join(' ')}`);
 		} else {
 			terminal.sendText(`claude ${args.join(' ')}`);
 		}
