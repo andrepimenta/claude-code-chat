@@ -532,7 +532,15 @@ class ClaudeChatProvider {
 		} else {
 			// Use native claude command
 			console.log('Using native Claude command');
-			claudeProcess = cp.spawn('claude', args, {
+			// On Windows with shell:true, we need to properly quote arguments with spaces
+			const quotedArgs = args.map(arg => {
+				// Quote arguments that contain spaces
+				if (arg.includes(' ') && !arg.startsWith('"')) {
+					return `"${arg}"`;
+				}
+				return arg;
+			});
+			claudeProcess = cp.spawn('claude', quotedArgs, {
 				shell: process.platform === 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
