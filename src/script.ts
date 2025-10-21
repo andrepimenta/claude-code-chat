@@ -15,6 +15,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let selectedFileIndex = -1;
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
+		let isComposing = false;
+		let lastEnterTime = 0;
+		const ENTER_THROTTLE_MS = 50;
 
 		function shouldAutoScroll(messagesDiv) {
 			const threshold = 100; // pixels from bottom
@@ -873,9 +876,31 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				});
 			}, 500); // Save after 500ms of no typing
 		});
-		
+
+		// Handle IME composition events (Korean, Japanese, Chinese input)
+		messageInput.addEventListener('compositionstart', () => {
+			isComposing = true;
+		});
+
+		messageInput.addEventListener('compositionend', () => {
+			isComposing = false;
+		});
+
 		messageInput.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
+				// Prevent duplicate submission during IME composition (Korean, Japanese, Chinese)
+				if (isComposing || e.isComposing) {
+					return;
+				}
+
+				// Throttle rapid Enter presses (safety net)
+				const now = Date.now();
+				if (now - lastEnterTime < ENTER_THROTTLE_MS) {
+					e.preventDefault();
+					return;
+				}
+				lastEnterTime = now;
+
 				e.preventDefault();
 				const sendBtn = document.getElementById('sendBtn');
 				if (sendBtn.disabled){
