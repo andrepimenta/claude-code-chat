@@ -1955,7 +1955,9 @@ class ClaudeChatProvider {
 				result.forEach(uri => {
 					this._postMessage({
 						type: 'imagePath',
-						path: uri.fsPath
+						data: {
+							filePath: uri.fsPath
+						}
 					});
 				});
 			}
