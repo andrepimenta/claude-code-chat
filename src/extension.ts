@@ -24,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
 	// Listen for configuration changes
-	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
+	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration((event: vscode.ConfigurationChangeEvent) => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
 			console.log('WSL configuration changed, starting new session');
 			provider.newSessionOnConfigChange();
@@ -56,6 +56,17 @@ interface ConversationData {
 	};
 	messages: Array<{ timestamp: string, messageType: string, data: any }>;
 	filename: string;
+}
+
+interface WebviewMessage {
+	type: 'sendMessage' | 'newSession' | 'restoreCommit' | 'getConversationList' | 'getWorkspaceFiles' | 'selectImageFile' | 'loadConversation' | 'stopRequest' | 'getSettings' | 'updateSettings' | 'getClipboardText' | 'selectModel' | 'openModelTerminal' | 'executeSlashCommand' | 'dismissWSLAlert' | 'openFile' | 'createImageFile' | 'permissionResponse' | 'getPermissions' | 'removePermission' | 'addPermission' | 'loadMCPServers' | 'saveMCPServer' | 'deleteMCPServer' | 'getCustomSnippets' | 'saveCustomSnippet' | 'deleteCustomSnippet' | 'enableYoloMode' | 'saveInputText';
+	text?: string;
+	planMode?: boolean;
+	thinkingMode?: string;
+	commitSha?: string;
+	searchTerm?: string;
+	filename?: string;
+	[key: string]: any; // Allow additional properties
 }
 
 class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
@@ -247,16 +258,16 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private _handleWebviewMessage(message: any) {
+	private _handleWebviewMessage(message: WebviewMessage) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
+				this._sendMessageToClaude(message.text || '', message.planMode, message.thinkingMode === undefined ? undefined : Boolean(message.thinkingMode));
 				return;
 			case 'newSession':
 				this._newSession();
 				return;
 			case 'restoreCommit':
-				this._restoreToCommit(message.commitSha);
+				this._restoreToCommit(message.commitSha || '');
 				return;
 			case 'getConversationList':
 				this._sendConversationList();
@@ -268,7 +279,7 @@ class ClaudeChatProvider {
 				this._selectImageFile();
 				return;
 			case 'loadConversation':
-				this.loadConversation(message.filename);
+				this.loadConversation(message.filename || '');
 				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
@@ -334,7 +345,7 @@ class ClaudeChatProvider {
 				this._enableYoloMode();
 				return;
 			case 'saveInputText':
-				this._saveInputText(message.text);
+				this._saveInputText(message.text || '');
 				return;
 		}
 	}
@@ -347,7 +358,7 @@ class ClaudeChatProvider {
 
 		// Set up new message handler
 		this._messageHandlerDisposable = webview.onDidReceiveMessage(
-			message => this._handleWebviewMessage(message),
+			(message: WebviewMessage) => this._handleWebviewMessage(message),
 			null,
 			this._disposables
 		);
@@ -527,11 +538,16 @@ class ClaudeChatProvider {
 					...process.env,
 					FORCE_COLOR: '0',
 					NO_COLOR: '1'
-				}
+				},
+				// Create a new process group on Unix systems for easier cleanup
+				detached: false
 			});
 		} else {
 			// Use native claude command
 			console.log('Using native Claude command');
+
+			// On Windows, we need shell to find claude.cmd, but we want better process control
+			// Use shell: true but we'll handle process tree killing properly in _stopClaudeProcess
 			claudeProcess = cp.spawn('claude', args, {
 				shell: process.platform === 'win32',
 				cwd: cwd,
@@ -540,7 +556,13 @@ class ClaudeChatProvider {
 					...process.env,
 					FORCE_COLOR: '0',
 					NO_COLOR: '1'
-				}
+				},
+				// On Windows with shell:true, detached doesn't help much
+				// We'll use taskkill /T to kill the entire process tree
+				detached: false,
+				// On Windows, create a new console window group for better isolation
+				// This helps taskkill /T work more reliably
+				windowsHide: true
 			});
 		}
 
@@ -655,6 +677,12 @@ class ClaudeChatProvider {
 	}
 
 	private _processJsonStreamData(jsonData: any) {
+		// Guard: Don't process data if we've stopped the process
+		if (!this._currentClaudeProcess || !this._isProcessing) {
+			console.log('Ignoring stream data - process stopped');
+			return;
+		}
+
 		switch (jsonData.type) {
 			case 'system':
 				if (jsonData.subtype === 'init') {
@@ -879,8 +907,30 @@ class ClaudeChatProvider {
 		// Try graceful termination first
 		if (this._currentClaudeProcess) {
 			const processToKill = this._currentClaudeProcess;
+			const pid = processToKill.pid;
 			this._currentClaudeProcess = undefined;
-			processToKill.kill('SIGTERM');
+
+			// Kill the process tree
+			if (pid) {
+				try {
+					if (process.platform === 'win32') {
+						// On Windows, use taskkill to kill the entire process tree
+						cp.exec(`taskkill /pid ${pid} /T /F`);
+					} else {
+						// On Unix-like systems, try to kill the process group
+						try {
+							process.kill(-pid, 'SIGTERM');
+						} catch (e) {
+							processToKill.kill('SIGTERM');
+						}
+					}
+				} catch (error) {
+					console.error('Error terminating process in newSession:', error);
+				}
+			} else {
+				// Fallback if no PID
+				processToKill.kill('SIGTERM');
+			}
 		}
 
 		// Clear current session
@@ -1212,7 +1262,7 @@ class ClaudeChatProvider {
 				new vscode.RelativePattern(this._permissionRequestsPath, '*.request')
 			);
 
-			this._permissionWatcher.onDidCreate(async (uri) => {
+			this._permissionWatcher.onDidCreate(async (uri: vscode.Uri) => {
 				// Only handle file scheme URIs, ignore vscode-userdata scheme
 				if (uri.scheme === 'file') {
 					await this._handlePermissionRequest(uri);
@@ -1896,7 +1946,7 @@ class ClaudeChatProvider {
 				500 // Reasonable limit for filtering
 			);
 
-			let fileList = files.map(file => {
+			let fileList = files.map((file: vscode.Uri) => {
 				const relativePath = vscode.workspace.asRelativePath(file);
 				return {
 					name: file.path.split('/').pop() || '',
@@ -1908,20 +1958,20 @@ class ClaudeChatProvider {
 			// Filter results based on search term
 			if (searchTerm && searchTerm.trim()) {
 				const term = searchTerm.toLowerCase();
-				fileList = fileList.filter(file => {
+				fileList = fileList.filter((file: { name: string, path: string, fsPath: string }) => {
 					const fileName = file.name.toLowerCase();
 					const filePath = file.path.toLowerCase();
 
 					// Check if term matches filename or any part of the path
 					return fileName.includes(term) ||
 						filePath.includes(term) ||
-						filePath.split('/').some(segment => segment.includes(term));
+						filePath.split('/').some((segment: string) => segment.includes(term));
 				});
 			}
 
 			// Sort and limit results
 			fileList = fileList
-				.sort((a, b) => a.name.localeCompare(b.name))
+				.sort((a: { name: string, path: string, fsPath: string }, b: { name: string, path: string, fsPath: string }) => a.name.localeCompare(b.name))
 				.slice(0, 50);
 
 			this._postMessage({
@@ -1952,7 +2002,7 @@ class ClaudeChatProvider {
 
 			if (result && result.length > 0) {
 				// Send the selected file paths back to webview
-				result.forEach(uri => {
+				result.forEach((uri: vscode.Uri) => {
 					this._postMessage({
 						type: 'imagePath',
 						path: uri.fsPath
@@ -1968,7 +2018,7 @@ class ClaudeChatProvider {
 	private _stopClaudeProcess(): void {
 		console.log('Stop request received');
 
-		this._isProcessing = false
+		this._isProcessing = false;
 
 		// Update UI state
 		this._postMessage({
@@ -1979,18 +2029,82 @@ class ClaudeChatProvider {
 		if (this._currentClaudeProcess) {
 			console.log('Terminating Claude process...');
 
+			// Store reference before clearing
+			const processToKill = this._currentClaudeProcess;
+			const pid = processToKill.pid;
+
+			// DON'T clear process reference yet - wait until process is actually dead
+			// This allows the 'close' event handler to run properly
+			// this._currentClaudeProcess = undefined;  // MOVED to 'close' handler
+
+			// Remove all event listeners to prevent further processing
+			if (processToKill.stdout) {
+				processToKill.stdout.removeAllListeners('data');
+			}
+			if (processToKill.stderr) {
+				processToKill.stderr.removeAllListeners('data');
+			}
+
 			// Try graceful termination first
-			this._currentClaudeProcess.kill('SIGTERM');
+			if (pid) {
+				try {
+					if (process.platform === 'win32') {
+						// On Windows, use taskkill to kill the entire process tree
+						// Use synchronous execution to ensure the process is killed before continuing
+						console.log(`Killing process tree for PID ${pid}...`);
+						try {
+							cp.execSync(`taskkill /pid ${pid} /T /F`, { timeout: 5000 });
+							console.log('Process tree killed successfully');
+						} catch (killError: any) {
+							// Process might already be dead, check the error
+							if (killError.status === 128 || killError.message.includes('not found')) {
+								console.log('Process already terminated');
+							} else {
+								console.error('Error killing process tree:', killError.message);
+								// Try direct kill as fallback
+								try {
+									processToKill.kill('SIGKILL');
+								} catch (e) {
+									console.error('Fallback kill also failed:', e);
+								}
+							}
+						}
+					} else {
+						// On Unix-like systems, kill the process group
+						// Negative PID kills the process group
+						try {
+							process.kill(-pid, 'SIGTERM');
+							console.log('Sent SIGTERM to process group');
+						} catch (e) {
+							// Fallback to killing just the process
+							processToKill.kill('SIGTERM');
+							console.log('Sent SIGTERM to process');
+						}
 
-			// Force kill after 2 seconds if still running
-			setTimeout(() => {
-				if (this._currentClaudeProcess && !this._currentClaudeProcess.killed) {
-					console.log('Force killing Claude process...');
-					this._currentClaudeProcess.kill('SIGKILL');
+						// Force kill after 2 seconds if still running
+						setTimeout(() => {
+							if (!processToKill.killed && pid) {
+								console.log('Force killing process...');
+								try {
+									process.kill(-pid, 'SIGKILL');
+									console.log('Sent SIGKILL to process group');
+								} catch (e) {
+									processToKill.kill('SIGKILL');
+									console.log('Sent SIGKILL to process');
+								}
+							}
+						}, 2000);
+					}
+				} catch (error) {
+					console.error('Error terminating process:', error);
 				}
-			}, 2000);
+			} else {
+				// Fallback if no PID
+				console.log('No PID available, using fallback kill');
+				processToKill.kill('SIGKILL');
+			}
 
-			// Clear process reference
+			// Clear the reference now that we've killed the process
 			this._currentClaudeProcess = undefined;
 
 			this._postMessage({
@@ -2003,7 +2117,7 @@ class ClaudeChatProvider {
 				data: '⏹️ Claude code was stopped.'
 			});
 
-			console.log('Claude process termination initiated');
+			console.log('Claude process termination completed');
 		} else {
 			console.log('No Claude process running to stop');
 		}
