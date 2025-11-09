@@ -125,6 +125,9 @@ class ClaudeChatProvider {
 		lastUserMessage: string
 	}> = [];
 	private _currentClaudeProcess: cp.ChildProcess | undefined;
+	private _abortController: AbortController | undefined;
+	private _processEventListeners: { event: string, listener: (...args: any[]) => void }[] = [];
+	private _saveConversationAborted: boolean = false;
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
@@ -409,6 +412,10 @@ class ClaudeChatProvider {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
+		// Create new AbortController for this operation
+		this._abortController = new AbortController();
+		this._saveConversationAborted = false;
+
 		// Get thinking intensity setting
 		const configThink = vscode.workspace.getConfiguration('claudeCodeChat');
 		const thinkingIntensity = configThink.get<string>('thinking.intensity', 'think');
@@ -556,8 +563,11 @@ class ClaudeChatProvider {
 		let rawOutput = '';
 		let errorOutput = '';
 
+		// Clear previous event listeners tracking
+		this._processEventListeners = [];
+
 		if (claudeProcess.stdout) {
-			claudeProcess.stdout.on('data', (data) => {
+			const stdoutListener = (data: Buffer) => {
 				rawOutput += data.toString();
 
 				// Process JSON stream line by line
@@ -574,16 +584,20 @@ class ClaudeChatProvider {
 						}
 					}
 				}
-			});
+			};
+			claudeProcess.stdout.on('data', stdoutListener);
+			this._processEventListeners.push({ event: 'stdout-data', listener: stdoutListener });
 		}
 
 		if (claudeProcess.stderr) {
-			claudeProcess.stderr.on('data', (data) => {
+			const stderrListener = (data: Buffer) => {
 				errorOutput += data.toString();
-			});
+			};
+			claudeProcess.stderr.on('data', stderrListener);
+			this._processEventListeners.push({ event: 'stderr-data', listener: stderrListener });
 		}
 
-		claudeProcess.on('close', (code) => {
+		const closeListener = (code: number | null) => {
 			console.log('Claude process closed with code:', code);
 			console.log('Claude stderr output:', errorOutput);
 
@@ -591,8 +605,10 @@ class ClaudeChatProvider {
 				return;
 			}
 
-			// Clear process reference
+			// Clear process reference and event listeners
+			this._cleanupProcessListeners();
 			this._currentClaudeProcess = undefined;
+			this._abortController = undefined;
 
 			// Clear loading indicator and set processing to false
 			this._postMessage({
@@ -615,17 +631,19 @@ class ClaudeChatProvider {
 					data: errorOutput.trim()
 				});
 			}
-		});
+		};
 
-		claudeProcess.on('error', (error) => {
+		const errorListener = (error: Error) => {
 			console.log('Claude process error:', error.message);
 
 			if (!this._currentClaudeProcess) {
 				return;
 			}
 
-			// Clear process reference
+			// Clear process reference and event listeners
+			this._cleanupProcessListeners();
 			this._currentClaudeProcess = undefined;
+			this._abortController = undefined;
 
 			this._postMessage({
 				type: 'clearLoading'
@@ -651,7 +669,13 @@ class ClaudeChatProvider {
 					data: `Error running Claude: ${error.message}`
 				});
 			}
-		});
+		};
+
+		claudeProcess.on('close', closeListener);
+		this._processEventListeners.push({ event: 'close', listener: closeListener });
+
+		claudeProcess.on('error', errorListener);
+		this._processEventListeners.push({ event: 'error', listener: errorListener });
 	}
 
 	private _processJsonStreamData(jsonData: any) {
@@ -867,8 +891,30 @@ class ClaudeChatProvider {
 
 
 	private _newSession() {
+		console.log('Starting new session - cleaning up current session...');
 
-		this._isProcessing = false
+		// Abort all pending operations
+		if (this._abortController) {
+			this._abortController.abort();
+			this._abortController = undefined;
+		}
+
+		// Stop auto-save
+		this._saveConversationAborted = true;
+
+		// Reject pending permissions
+		if (this._pendingPermissionResolvers && this._pendingPermissionResolvers.size > 0) {
+			for (const [id, resolver] of this._pendingPermissionResolvers.entries()) {
+				try {
+					resolver(false);
+				} catch (error) {
+					console.error(`Error rejecting permission ${id}:`, error);
+				}
+			}
+			this._pendingPermissionResolvers.clear();
+		}
+
+		this._isProcessing = false;
 
 		// Update UI state
 		this._postMessage({
@@ -879,6 +925,7 @@ class ClaudeChatProvider {
 		// Try graceful termination first
 		if (this._currentClaudeProcess) {
 			const processToKill = this._currentClaudeProcess;
+			this._cleanupProcessListeners();
 			this._currentClaudeProcess = undefined;
 			processToKill.kill('SIGTERM');
 		}
@@ -901,6 +948,8 @@ class ClaudeChatProvider {
 		this._postMessage({
 			type: 'sessionCleared'
 		});
+
+		console.log('New session cleanup completed');
 	}
 
 	public newSessionOnConfigChange() {
@@ -1830,6 +1879,12 @@ class ClaudeChatProvider {
 		if (!this._conversationsPath || this._currentConversation.length === 0) { return; }
 		if (!this._currentSessionId) { return; }
 
+		// Check if save was aborted
+		if (this._saveConversationAborted) {
+			console.log('Conversation save aborted due to stop request');
+			return;
+		}
+
 		try {
 			// Create filename from first user message and timestamp
 			const firstUserMessage = this._currentConversation.find(m => m.messageType === 'userInput');
@@ -1965,47 +2020,136 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private _cleanupProcessListeners(): void {
+		if (!this._currentClaudeProcess) {
+			return;
+		}
+
+		console.log('Cleaning up process event listeners...');
+
+		// Remove all tracked event listeners
+		for (const { event, listener } of this._processEventListeners) {
+			try {
+				if (event === 'stdout-data' && this._currentClaudeProcess.stdout) {
+					this._currentClaudeProcess.stdout.removeListener('data', listener);
+				} else if (event === 'stderr-data' && this._currentClaudeProcess.stderr) {
+					this._currentClaudeProcess.stderr.removeListener('data', listener);
+				} else if (event === 'close') {
+					this._currentClaudeProcess.removeListener('close', listener);
+				} else if (event === 'error') {
+					this._currentClaudeProcess.removeListener('error', listener);
+				}
+			} catch (error) {
+				console.error('Error removing event listener:', error);
+			}
+		}
+
+		// Clear the tracking array
+		this._processEventListeners = [];
+
+		console.log('Process event listeners cleaned up');
+	}
+
 	private _stopClaudeProcess(): void {
-		console.log('Stop request received');
+		console.log('Stop request received - initiating comprehensive cleanup...');
 
-		this._isProcessing = false
+		// 1. Abort all pending async operations
+		if (this._abortController) {
+			console.log('Aborting async operations...');
+			this._abortController.abort();
+			this._abortController = undefined;
+		}
 
-		// Update UI state
+		// 2. Stop auto-save operations
+		this._saveConversationAborted = true;
+
+		// 3. Reject all pending permission promises
+		if (this._pendingPermissionResolvers && this._pendingPermissionResolvers.size > 0) {
+			console.log(`Rejecting ${this._pendingPermissionResolvers.size} pending permission requests...`);
+			for (const [id, resolver] of this._pendingPermissionResolvers.entries()) {
+				try {
+					resolver(false); // Reject with false (denied)
+					console.log(`Rejected permission request: ${id}`);
+				} catch (error) {
+					console.error(`Error rejecting permission ${id}:`, error);
+				}
+			}
+			this._pendingPermissionResolvers.clear();
+		}
+
+		// 4. Set processing state to false
+		this._isProcessing = false;
+
+		// 5. Update UI state immediately
 		this._postMessage({
 			type: 'setProcessing',
 			data: { isProcessing: false }
 		});
 
+		this._postMessage({
+			type: 'clearLoading'
+		});
+
+		// 6. Terminate Claude process if running
 		if (this._currentClaudeProcess) {
 			console.log('Terminating Claude process...');
 
+			const processToKill = this._currentClaudeProcess;
+
+			// Clean up event listeners first to prevent further processing
+			this._cleanupProcessListeners();
+
 			// Try graceful termination first
-			this._currentClaudeProcess.kill('SIGTERM');
+			try {
+				processToKill.kill('SIGTERM');
+				console.log('SIGTERM sent to Claude process');
+			} catch (error) {
+				console.error('Error sending SIGTERM:', error);
+			}
 
 			// Force kill after 2 seconds if still running
-			setTimeout(() => {
-				if (this._currentClaudeProcess && !this._currentClaudeProcess.killed) {
-					console.log('Force killing Claude process...');
-					this._currentClaudeProcess.kill('SIGKILL');
+			const forceKillTimeout = setTimeout(() => {
+				if (processToKill && !processToKill.killed) {
+					console.log('Process did not terminate gracefully, force killing...');
+					try {
+						processToKill.kill('SIGKILL');
+						console.log('SIGKILL sent to Claude process');
+					} catch (error) {
+						console.error('Error sending SIGKILL:', error);
+					}
+				} else {
+					console.log('Process terminated successfully');
 				}
 			}, 2000);
 
-			// Clear process reference
+			// Validate termination after 3 seconds
+			setTimeout(() => {
+				if (processToKill && !processToKill.killed) {
+					console.warn('WARNING: Process may still be running after termination attempts');
+				} else {
+					console.log('Process termination confirmed');
+				}
+				clearTimeout(forceKillTimeout);
+			}, 3000);
+
+			// Clear process reference immediately to prevent further use
 			this._currentClaudeProcess = undefined;
 
-			this._postMessage({
-				type: 'clearLoading'
-			});
-
-			// Send stop confirmation message directly to UI and save
+			// Send stop confirmation message
 			this._sendAndSaveMessage({
 				type: 'error',
-				data: '⏹️ Claude code was stopped.'
+				data: '⏹️ Claude Code was stopped. All operations have been cancelled.'
 			});
 
-			console.log('Claude process termination initiated');
+			console.log('Stop request completed - all cleanup operations initiated');
 		} else {
 			console.log('No Claude process running to stop');
+
+			// Still send confirmation even if no process was running
+			this._sendAndSaveMessage({
+				type: 'error',
+				data: '⏹️ Claude Code stopped.'
+			});
 		}
 	}
 
