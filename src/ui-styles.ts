@@ -834,29 +834,30 @@ const styles = `
     .message.tool {
         background-color: transparent;
         border: none;
-        color: rgba(255, 255, 255, 0.7);
+        color: var(--vscode-descriptionForeground);
         padding: 0;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
+        margin-top: 8px;
     }
 
 
     .message.tool-result {
         background-color: transparent;
         border: none;
-        color: rgba(255, 255, 255, 0.8);
+        color: var(--vscode-foreground);
         font-family: var(--vscode-editor-font-family);
         white-space: pre-wrap;
         padding: 0;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
         margin-top: 4px;
     }
 
     .message.tool-result.success {
-        color: rgba(46, 204, 113, 0.9);
+        color: var(--vscode-foreground);
     }
 
     .message.tool-result.success .message-header::before {
-        background-color: rgba(46, 204, 113, 0.8);
+        display: none;
     }
 
     /* Terminal Output Styling - Real Terminal Look */
@@ -1087,60 +1088,65 @@ const styles = `
 
     /* File Write Container - Streaming Code Display */
     .message.file-write-container {
-        background-color: var(--vscode-editor-background);
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: 8px;
+        background-color: transparent;
+        border: none;
+        border-radius: 0;
         padding: 0;
-        margin-bottom: 20px;
-        margin-top: 12px;
-        overflow: hidden;
-        transition: all 0.2s ease;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 12px;
+        margin-top: 8px;
+        overflow: visible;
+        transition: none;
+        box-shadow: none;
     }
 
     .message.file-write-container:hover {
-        border-color: var(--vscode-focusBorder);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        border-color: transparent;
+        box-shadow: none;
     }
 
     .message.file-write-container .tool-header {
-        background-color: var(--vscode-editor-background);
-        border-bottom: 1px solid var(--vscode-panel-border);
-        padding: 10px 14px;
-        margin: 0;
+        background-color: transparent;
+        border-bottom: none;
+        padding: 0;
+        margin: 0 0 6px 0;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
     }
 
     .message.file-write-container .tool-icon {
-        background-color: var(--vscode-textLink-foreground);
-        color: var(--vscode-editor-background);
-        width: 20px;
-        height: 20px;
-        border-radius: 4px;
+        background-color: transparent;
+        color: var(--vscode-descriptionForeground);
+        width: 14px;
+        height: 14px;
+        border-radius: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
+        opacity: 0.6;
     }
 
     .message.file-write-container .tool-info {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 500;
-        color: var(--vscode-foreground);
-        opacity: 0.9;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.6;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
     .file-write-content {
-        padding: 12px 14px;
-        background-color: var(--vscode-editor-background);
+        padding: 8px 10px;
+        background-color: var(--vscode-textCodeBlock-background);
+        border-radius: 4px;
+        border: 1px solid var(--vscode-panel-border);
     }
 
     .file-write-path {
-        margin-bottom: 10px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--vscode-panel-border);
+        margin-bottom: 8px;
+        padding-bottom: 0;
+        border-bottom: none;
         font-size: 12px;
         display: flex;
         align-items: center;
@@ -1160,7 +1166,7 @@ const styles = `
         color: var(--vscode-textLink-foreground);
         cursor: pointer;
         font-size: 12px;
-        font-weight: 500;
+        font-weight: 400;
         transition: all 0.15s ease;
         padding: 0;
         border-radius: 0;
@@ -1175,14 +1181,14 @@ const styles = `
     }
 
     .file-write-streaming {
-        background-color: var(--vscode-textCodeBlock-background);
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: 4px;
-        padding: 10px 12px;
+        background-color: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 0;
         overflow-x: auto;
         max-height: 400px;
         overflow-y: auto;
-        margin-top: 6px;
+        margin-top: 4px;
     }
 
     .file-write-code {
@@ -1233,35 +1239,40 @@ const styles = `
     .tool-header {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 8px;
+        gap: 6px;
+        margin-bottom: 6px;
         padding-bottom: 0;
         border-bottom: none;
-        opacity: 0.8;
-        font-size: 12px;
+        opacity: 0.6;
+        font-size: 11px;
         position: relative;
         font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
     .tool-header::before {
-        content: '';
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
+        content: '▶';
+        width: auto;
+        height: auto;
+        border-radius: 0;
         flex-shrink: 0;
-        background-color: rgba(46, 204, 113, 0.8);
+        background-color: transparent;
+        font-size: 8px;
+        opacity: 0.5;
+        color: var(--vscode-descriptionForeground);
     }
 
     .tool-icon {
         width: 14px;
         height: 14px;
-        border-radius: 3px;
+        border-radius: 0;
         background: transparent;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 10px;
-        color: rgba(124, 139, 237, 0.7);
+        color: var(--vscode-descriptionForeground);
         font-weight: 500;
         flex-shrink: 0;
         margin-left: 0;
@@ -1269,16 +1280,18 @@ const styles = `
     }
 
     .tool-icon svg {
-        width: 12px;
-        height: 12px;
+        width: 14px;
+        height: 14px;
         stroke-width: 2;
     }
 
     .tool-info {
         font-weight: 500;
-        font-size: 13px;
-        color: var(--vscode-editor-foreground);
-        opacity: 0.8;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.6;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
     }
 
     .message-header {
