@@ -15,30 +15,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let selectedFileIndex = -1;
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
-		let messageIndex = 0; // Track message index for branching
-
-		// Icon helper functions
-		const icons = {
-			user: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
-			claude: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>',
-			error: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
-			success: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
-			info: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
-			warning: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
-			lock: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
-			history: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
-			computer: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>',
-			zap: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
-			chart: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"></line><line x1="18" x2="18" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="16"></line></svg>',
-			branch: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>',
-			restore: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>'
-		};
-
-		function getStatusBadge(type, text) {
-			const badgeClass = \`status-badge \${type}\`;
-			const icon = icons[type] || icons.info;
-			return \`<span class="\${badgeClass}">\${icon}\${text}</span>\`;
-		}
 
 		function shouldAutoScroll(messagesDiv) {
 			const threshold = 100; // pixels from bottom
@@ -60,18 +36,12 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		}
 
-		function addMessage(content, type = 'claude', msgIndex = null) {
+		function addMessage(content, type = 'claude') {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
 			const messageDiv = document.createElement('div');
 			messageDiv.className = \`message \${type}\`;
-			
-			// Assign message index if not provided
-			if (msgIndex === null) {
-				msgIndex = messageIndex++;
-			}
-			messageDiv.setAttribute('data-message-index', msgIndex);
 			
 			// Add header for main message types (excluding system)
 			if (type === 'user' || type === 'claude' || type === 'error') {
@@ -87,15 +57,15 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				// Set icon and label based on type
 				switch(type) {
 					case 'user':
-						iconDiv.innerHTML = icons.user;
+						iconDiv.textContent = '👤';
 						labelDiv.textContent = 'You';
 						break;
 					case 'claude':
-						iconDiv.innerHTML = icons.claude;
+						iconDiv.textContent = '🤖';
 						labelDiv.textContent = 'Claude';
 						break;
 					case 'error':
-						iconDiv.innerHTML = icons.error;
+						iconDiv.textContent = '⚠️';
 						labelDiv.textContent = 'Error';
 						break;
 				}
@@ -110,37 +80,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				headerDiv.appendChild(iconDiv);
 				headerDiv.appendChild(labelDiv);
 				headerDiv.appendChild(copyBtn);
-				
-				// Add restore and branch buttons for user messages - grouped together
-				if (type === 'user') {
-					const buttonGroup = document.createElement('div');
-					buttonGroup.className = 'message-action-buttons';
-					
-					// Restore button - restores message to input field
-					const restoreBtn = document.createElement('button');
-					restoreBtn.className = 'restore-btn';
-					restoreBtn.title = 'Restore to input';
-					restoreBtn.onclick = (e) => {
-						e.stopPropagation();
-						restoreMessageToInput(content);
-					};
-					restoreBtn.innerHTML = icons.restore;
-					buttonGroup.appendChild(restoreBtn);
-					
-					// Branch button - branches conversation from this point
-					const branchBtn = document.createElement('button');
-					branchBtn.className = 'branch-btn';
-					branchBtn.title = 'Branch from here';
-					branchBtn.onclick = (e) => {
-						e.stopPropagation();
-						branchFromMessage(msgIndex, content);
-					};
-					branchBtn.innerHTML = icons.branch;
-					buttonGroup.appendChild(branchBtn);
-					
-					headerDiv.appendChild(buttonGroup);
-				}
-				
 				messageDiv.appendChild(headerDiv);
 			}
 			
@@ -151,14 +90,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			if(type == 'user' || type === 'claude' || type === 'thinking'){
 				contentDiv.innerHTML = content;
 			} else {
-				// Check if content contains HTML (like SVG icons)
-				if (content.includes('<svg') || content.includes('<') && content.includes('>')) {
-					contentDiv.innerHTML = content;
-				} else {
-					const preElement = document.createElement('pre');
-					preElement.textContent = content;
-					contentDiv.appendChild(preElement);
-				}
+				const preElement = document.createElement('pre');
+				preElement.textContent = content;
+				contentDiv.appendChild(preElement);
 			}
 			
 			messageDiv.appendChild(contentDiv);
@@ -169,7 +103,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
 					</div>
 					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
 				\`;
@@ -185,15 +119,8 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
-			// Check if this is a terminal command (Bash, Shell, etc.)
-			const isTerminalCommand = data.toolName === 'Bash' || data.toolName === 'Shell' || data.toolName === 'Terminal' || 
-									  (data.toolName && (data.toolName.toLowerCase().includes('bash') || data.toolName.toLowerCase().includes('shell') || data.toolName.toLowerCase().includes('terminal')));
-			
 			const messageDiv = document.createElement('div');
 			messageDiv.className = 'message tool';
-			if (isTerminalCommand) {
-				messageDiv.classList.add('terminal-command-waiting');
-			}
 			
 			// Create modern header with icon
 			const headerDiv = document.createElement('div');
@@ -201,11 +128,11 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			const iconDiv = document.createElement('div');
 			iconDiv.className = 'tool-icon';
-			iconDiv.innerHTML = icons.zap;
+			iconDiv.textContent = '🔧';
 			
 			const toolInfoElement = document.createElement('div');
 			toolInfoElement.className = 'tool-info';
-			let toolName = data.toolInfo ? data.toolInfo.replace('🔧 Executing: ', '').replace('⚡ Executing: ', '') : data.toolName || 'Tool';
+			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
 			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
 				toolName = 'Update Todos';
@@ -214,54 +141,25 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			headerDiv.appendChild(iconDiv);
 			headerDiv.appendChild(toolInfoElement);
-			
-			
 			messageDiv.appendChild(headerDiv);
 			
-			// Store tool name for later reference
-			messageDiv.setAttribute('data-tool-name', data.toolName || '');
-			
 			if (data.rawInput) {
-				// Handle TodoWrite specially - always show, no collapse, checklist style
-				const isTodoWrite = (data.toolName === 'TodoWrite' || toolName === 'Update Todos');
-				const todos = data.rawInput.todos || null;
+				const inputElement = document.createElement('div');
+				inputElement.className = 'tool-input';
 				
-				if (isTodoWrite && todos && Array.isArray(todos) && todos.length > 0) {
-					const todoContainer = document.createElement('div');
-					todoContainer.className = 'todo-list-container';
-					
-					let todoHtml = '<ul class="todo-list">';
-					for (const todo of todos) {
-						const status = todo.status || 'pending';
-						const statusClass = status === 'completed' ? 'completed' :
-							status === 'in_progress' ? 'in-progress' : 'pending';
-						const priority = todo.priority ? '<span class="todo-priority priority-' + todo.priority + '">' + todo.priority + '</span>' : '';
-						
-						// Smaller checkbox icons
-						const checkboxIcon = status === 'completed' 
-							? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>'
-							: status === 'in_progress'
-							? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>'
-							: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>';
-						
-						todoHtml += '<li class="todo-item ' + statusClass + '"><div class="todo-checkbox-wrapper">' + checkboxIcon + '</div><div class="todo-content-wrapper"><span class="todo-content">' + escapeHtml(todo.content) + '</span>' + priority + '</div></li>';
+				const contentDiv = document.createElement('div');
+				contentDiv.className = 'tool-input-content';
+				
+				// Handle TodoWrite specially or format raw input
+				if (data.toolName === 'TodoWrite' && data.rawInput.todos) {
+					let todoHtml = 'Todo List Update:';
+					for (const todo of data.rawInput.todos) {
+						const status = todo.status === 'completed' ? '✅' :
+							todo.status === 'in_progress' ? '🔄' : '⏳';
+						todoHtml += '\\n' + status + ' ' + todo.content;
 					}
-					todoHtml += '</ul>';
-					todoContainer.innerHTML = todoHtml;
-					messageDiv.appendChild(todoContainer);
+					contentDiv.innerHTML = todoHtml;
 				} else {
-					// Regular tool input with collapse
-					const inputElement = document.createElement('div');
-					inputElement.className = 'tool-input collapsed';
-					
-					const labelDiv = document.createElement('div');
-					labelDiv.className = 'tool-input-label';
-					labelDiv.textContent = 'INPUT';
-					labelDiv.onclick = () => inputElement.classList.toggle('collapsed');
-					inputElement.appendChild(labelDiv);
-					
-					const contentDiv = document.createElement('div');
-					contentDiv.className = 'tool-input-content';
 					// Format raw input with expandable content for long values
 					// Use diff format for Edit, MultiEdit, and Write tools, regular format for others
 					if (data.toolName === 'Edit') {
@@ -273,19 +171,18 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					} else {
 						contentDiv.innerHTML = formatToolInputUI(data.rawInput);
 					}
-					
-					inputElement.appendChild(contentDiv);
-					messageDiv.appendChild(inputElement);
 				}
+				
+				inputElement.appendChild(contentDiv);
+				messageDiv.appendChild(inputElement);
 			} else if (data.toolInput) {
 				// Fallback for pre-formatted input
 				const inputElement = document.createElement('div');
-				inputElement.className = 'tool-input collapsed';
+				inputElement.className = 'tool-input';
 				
 				const labelDiv = document.createElement('div');
 				labelDiv.className = 'tool-input-label';
 				labelDiv.textContent = 'INPUT';
-				labelDiv.onclick = () => inputElement.classList.toggle('collapsed');
 				inputElement.appendChild(labelDiv);
 				
 				const contentDiv = document.createElement('div');
@@ -329,7 +226,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
-			
 			// For Read and Edit tools with hidden flag, just hide loading state and show completion message
 			if (data.hidden && (data.toolName === 'Read' || data.toolName === 'Edit' || data.toolName === 'TodoWrite' || data.toolName === 'MultiEdit') && !data.isError) {				
 				return	
@@ -337,13 +233,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const toolName = data.toolName;
 				let completionText;
 				if (toolName === 'Read') {
-					completionText = 'Read completed';
+					completionText = '✅ Read completed';
 				} else if (toolName === 'Edit') {
-					completionText = 'Edit completed';
+					completionText = '✅ Edit completed';
 				} else if (toolName === 'TodoWrite') {
-					completionText = 'Update Todos completed';
+					completionText = '✅ Update Todos completed';
 				} else {
-					completionText = toolName + ' completed';
+					completionText = '✅ ' + toolName + ' completed';
 				}
 				addMessage(completionText, 'system');
 				return; // Don't show the result message
@@ -353,36 +249,23 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return addMessage("File has not been read yet. Let me read it first before writing to it.", 'system');
 			}
 
-			// Check if this is terminal output (Bash, Shell, etc.)
-			const isTerminalOutput = isTerminalCommand;
-
 			const messageDiv = document.createElement('div');
-			if (isTerminalOutput) {
-				messageDiv.className = data.isError ? 'message terminal-output error' : 'message terminal-output';
-			} else {
-				messageDiv.className = data.isError ? 'message error' : 'message tool-result success';
-			}
+			messageDiv.className = data.isError ? 'message error' : 'message tool-result';
 			
 			// Create header
 			const headerDiv = document.createElement('div');
 			headerDiv.className = 'message-header';
 			
 			const iconDiv = document.createElement('div');
-			if (isTerminalOutput) {
-				iconDiv.className = 'message-icon terminal';
-				iconDiv.innerHTML = icons.computer;
-			} else {
-				iconDiv.className = data.isError ? 'message-icon error' : 'message-icon success';
-				iconDiv.innerHTML = data.isError ? icons.error : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
-			}
+			iconDiv.className = data.isError ? 'message-icon error' : 'message-icon';
+			iconDiv.style.background = data.isError ? 
+				'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)' : 
+				'linear-gradient(135deg, #1cc08c 0%, #16a974 100%)';
+			iconDiv.textContent = data.isError ? '❌' : '✅';
 			
 			const labelDiv = document.createElement('div');
 			labelDiv.className = 'message-label';
-			if (isTerminalOutput) {
-				labelDiv.textContent = data.isError ? 'Terminal Error' : 'Terminal Output';
-			} else {
-				labelDiv.textContent = data.isError ? 'Error' : (data.toolName || 'Result');
-			}
+			labelDiv.textContent = data.isError ? 'Error' : 'Result';
 			
 			headerDiv.appendChild(iconDiv);
 			headerDiv.appendChild(labelDiv);
@@ -390,20 +273,16 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			// Add content
 			const contentDiv = document.createElement('div');
-			contentDiv.className = isTerminalOutput ? 'terminal-content' : 'message-content';
+			contentDiv.className = 'message-content';
 			
-			// Check if it's a tool result and truncate appropriately - always collapse long content
+			// Check if it's a tool result and truncate appropriately
 			let content = data.content;
-			const shouldCollapse = !isTerminalOutput && (content.length > 100 || content.split('\\n').length > 5);
-			
-			if (shouldCollapse && !data.isError) {
-				const truncateAt = Math.min(97, content.length);
+			if (content.length > 200 && !data.isError) {
+				const truncateAt = 197;
 				const truncated = content.substring(0, truncateAt);
 				const resultId = 'result_' + Math.random().toString(36).substr(2, 9);
 				
 				const preElement = document.createElement('pre');
-				preElement.style.margin = '0';
-				preElement.style.fontSize = '12px';
 				preElement.innerHTML = '<span id="' + resultId + '_visible">' + escapeHtml(truncated) + '</span>' +
 									   '<span id="' + resultId + '_ellipsis">...</span>' +
 									   '<span id="' + resultId + '_hidden" style="display: none;">' + escapeHtml(content.substring(truncateAt)) + '</span>';
@@ -420,9 +299,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				contentDiv.appendChild(expandContainer);
 			} else {
 				const preElement = document.createElement('pre');
-				preElement.className = isTerminalOutput ? 'terminal-output-text' : '';
-				preElement.style.margin = '0';
-				preElement.style.fontSize = isTerminalOutput ? '13px' : '12px';
 				preElement.textContent = content;
 				contentDiv.appendChild(preElement);
 			}
@@ -435,7 +311,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				yoloSuggestion.className = 'yolo-suggestion';
 				yoloSuggestion.innerHTML = \`
 					<div class="yolo-suggestion-text">
-						<span>This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
+						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
 					</div>
 					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
 				\`;
@@ -518,7 +394,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const visibleLines = shouldTruncate ? allLines.slice(0, maxLines) : allLines;
 			const hiddenLines = shouldTruncate ? allLines.slice(maxLines) : [];
 			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+			result += '<div class="diff-container">';
 			result += '<div class="diff-header">Changes:</div>';
 			
 			// Create a unique ID for this diff
@@ -589,7 +465,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const maxLines = 6;
 			const shouldTruncate = totalLines > maxLines;
 			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+			result += '<div class="diff-container">';
 			result += '<div class="diff-header">Changes (' + input.edits.length + ' edit' + (input.edits.length > 1 ? 's' : '') + '):</div>';
 			
 			// Create a unique ID for this diff
@@ -698,7 +574,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const visibleLines = shouldTruncate ? contentLines.slice(0, maxLines) : contentLines;
 			const hiddenLines = shouldTruncate ? contentLines.slice(maxLines) : [];
 			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+			result += '<div class="diff-container">';
 			result += '<div class="diff-header">New file content:</div>';
 			
 			// Create a unique ID for this diff
@@ -1208,7 +1084,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				updateSettings();
 				
 				// Show confirmation message
-				addMessage('Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
+				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
 				
 				// Update the warning banner
 				updateYoloWarning();
@@ -1772,13 +1648,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				snippetElement.onclick = () => usePromptSnippet(snippet.id);
 				
 				snippetElement.innerHTML = \`
-					
+					<div class="slash-command-icon">📝</div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/\${snippet.name}</div>
 						<div class="slash-command-description">\${snippet.prompt}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">Delete</button>
+						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">🗑️</button>
 					</div>
 				\`;
 				
@@ -1917,82 +1793,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				});
 			}
 		}
-
-		function restoreMessageToInput(content) {
-			// Get plain text content (strip HTML)
-			const tempDiv = document.createElement('div');
-			tempDiv.innerHTML = content;
-			const plainText = tempDiv.innerText || tempDiv.textContent || content;
-			
-			// Restore to input field
-			messageInput.value = plainText;
-			messageInput.focus();
-			
-			// Auto-resize the textarea
-			messageInput.style.height = 'auto';
-			messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
-			
-			// Scroll input into view if needed
-			messageInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-		}
-
-
-		function branchFromMessage(msgIndex, originalContent) {
-			// Get plain text content (strip HTML)
-			const tempDiv = document.createElement('div');
-			tempDiv.innerHTML = originalContent;
-			const plainText = tempDiv.innerText || tempDiv.textContent || originalContent;
-			
-			// Pre-fill the input with the original message
-			messageInput.value = plainText;
-			messageInput.focus();
-			
-			// Auto-resize the textarea
-			messageInput.style.height = 'auto';
-			messageInput.style.height = Math.min(messageInput.scrollHeight, 200) + 'px';
-			
-			// Send branch request to backend
-			vscode.postMessage({
-				type: 'branchFromMessage',
-				messageIndex: msgIndex,
-				originalMessage: plainText
-			});
-			
-			// Remove all messages after this one
-			const messagesDiv = document.getElementById('messages');
-			const allMessages = Array.from(messagesDiv.children);
-			let foundIndex = false;
-			let lastKeptIndex = -1;
-			
-			allMessages.forEach(msg => {
-				const index = parseInt(msg.getAttribute('data-message-index') || '-1');
-				if (foundIndex || index > msgIndex) {
-					foundIndex = true;
-					msg.remove();
-				} else if (index === msgIndex) {
-					foundIndex = true;
-					lastKeptIndex = index;
-				} else if (index <= msgIndex) {
-					lastKeptIndex = Math.max(lastKeptIndex, index);
-				}
-			});
-			
-			// Reset message index counter to continue from the branch point
-			// Count user messages up to the branch point to set the counter correctly
-			let userMsgCount = 0;
-			const remainingMessages = Array.from(messagesDiv.children);
-			remainingMessages.forEach(msg => {
-				if (msg.classList.contains('user')) {
-					userMsgCount++;
-				}
-			});
-			messageIndex = userMsgCount;
-		}
 		
-		function toggleCodeBlock(container) {
-			container.classList.toggle('collapsed');
-		}
-
 		function copyCodeBlock(codeId) {
 			const codeElement = document.getElementById(codeId);
 			if (codeElement) {
@@ -2071,12 +1872,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						const msgIdx = message.messageIndex !== undefined ? message.messageIndex : null;
-						addMessage(parseSimpleMarkdown(message.data), 'user', msgIdx);
-						// Update messageIndex counter to ensure it's always ahead of loaded messages
-						if (msgIdx !== null && msgIdx >= messageIndex) {
-							messageIndex = msgIdx + 1;
-						}
+						addMessage(parseSimpleMarkdown(message.data), 'user');
 					}
 					break;
 					
@@ -2147,9 +1943,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						showSessionInfo(message.data.sessionId);
 						// Show detailed session information
 						const sessionDetails = [
-							\`Session ID: \${message.data.sessionId}\`,
+							\`🆔 Session ID: \${message.data.sessionId}\`,
 							\`🔧 Tools Available: \${message.data.tools.length}\`,
-							\`MCP Servers: \${message.data.mcpServers ? message.data.mcpServers.length : 0}\`
+							\`🖥️ MCP Servers: \${message.data.mcpServers ? message.data.mcpServers.length : 0}\`
 						];
 						//addMessage(sessionDetails.join('\\n'), 'system');
 					}
@@ -2195,7 +1991,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Show detailed token breakdown for current message
 					const currentTotal = (message.data.currentInputTokens || 0) + (message.data.currentOutputTokens || 0);
 					if (currentTotal > 0) {
-						let tokenBreakdown = \`\${icons.chart} Tokens: \${currentTotal.toLocaleString()}\`;
+						let tokenBreakdown = \`📊 Tokens: \${currentTotal.toLocaleString()}\`;
 						
 						if (message.data.cacheCreationTokens || message.data.cacheReadTokens) {
 							const cacheInfo = [];
@@ -2229,7 +2025,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'sessionResumed':
 					console.log('Session resumed:', message.data);
 					showSessionInfo(message.data.sessionId);
-					addMessage(\`Resumed previous session\\nSession ID: \${message.data.sessionId}\\nYour conversation history is preserved\`, 'system');
+					addMessage(\`📝 Resumed previous session\\n🆔 Session ID: \${message.data.sessionId}\\n💡 Your conversation history is preserved\`, 'system');
 					break;
 					
 				case 'sessionCleared':
@@ -2243,16 +2039,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
 					requestCount = 0;
-					// Don't reset messageIndex - keep it persistent for restore/branch functionality
-					// messageIndex = 0; // Keep message index persistent
 					updateStatusWithTotals();
-					break;
-					
-				case 'setMessageIndex':
-					// Set message index counter (used when loading conversation history)
-					if (message.data && message.data.messageIndex !== undefined) {
-						messageIndex = message.data.messageIndex;
-					}
 					break;
 					
 				case 'loginRequired':
@@ -2360,13 +2147,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			messageDiv.innerHTML = \`
 				<div class="permission-header">
-					<span class="icon">\${icons.lock}</span>
+					<span class="icon">🔐</span>
 					<span>Permission Required</span>
 					<div class="permission-menu">
 						<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
 						<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
 							<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
-								<span class="menu-icon">\${icons.zap}</span>
+								<span class="menu-icon">⚡</span>
 								<div class="menu-content">
 									<span class="menu-title">Enable YOLO Mode</span>
 									<span class="menu-subtitle">Auto-allow all permissions</span>
@@ -2403,36 +2190,25 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			if (permissionMsg) {
 				const buttons = permissionMsg.querySelector('.permission-buttons');
 				const permissionContent = permissionMsg.querySelector('.permission-content');
-				const headerDiv = permissionMsg.querySelector('.permission-header');
+				let decision = approved ? 'You allowed this' : 'You denied this';
+				
+				if (alwaysAllow && approved) {
+					decision = 'You allowed this and set it to always allow';
+				}
+				
+				const emoji = approved ? '✅' : '❌';
+				const decisionClass = approved ? 'allowed' : 'denied';
 				
 				// Hide buttons
-				if (buttons) {
-					buttons.style.display = 'none';
-				}
+				buttons.style.display = 'none';
 				
-				// Hide menu button
-				if (headerDiv) {
-					const menuBtn = headerDiv.querySelector('.permission-menu');
-					if (menuBtn) {
-						menuBtn.style.display = 'none';
-					}
-				}
+				// Add decision div to permission-content
+				const decisionDiv = document.createElement('div');
+				decisionDiv.className = \`permission-decision \${decisionClass}\`;
+				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
+				permissionContent.appendChild(decisionDiv);
 				
-				// Update content with approval message
-				if (permissionContent) {
-					let approvalText = approved ? 'Approved You allowed this' : 'Denied';
-					if (alwaysAllow && approved) {
-						approvalText = 'Approved You allowed this and set it to always allow';
-					}
-					permissionContent.innerHTML = \`<p style="color: rgba(76, 175, 80, 0.9); margin: 0;">\${approvalText}</p>\`;
-				}
-				
-				// Add class for styling
-				if (approved) {
-					permissionMsg.classList.add('approved');
-				} else {
-					permissionMsg.classList.add('denied');
-				}
+				permissionMsg.classList.add('permission-decided', decisionClass);
 			}
 		}
 
@@ -2464,7 +2240,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			respondToPermission(permissionId, true);
 			
 			// Show notification
-			addMessage(\`\${icons.zap} YOLO Mode enabled! All future permissions will be automatically allowed.\`, 'system');
+			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
 		}
 
 		// Close permission menus when clicking outside
@@ -2502,21 +2278,21 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			restoreContainer.id = \`restore-\${data.sha}\`;
 
 			const date = new Date(data.timestamp);
-			const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-			const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-			const shortSha = data.sha ? data.sha.substring(0, 7) : 'unknown';
+			const timeStr = date.toLocaleTimeString();
+			const dateStr = date.toLocaleDateString();
+			const shortSha = data.sha ? data.sha.substring(0, 8) : 'unknown';
 
 			restoreContainer.innerHTML = \`
 				<div class="checkpoint-header">
-					<span class="checkpoint-label">Checkpoint</span>
-					<span class="checkpoint-sha">\${shortSha}</span>
+					<span class="checkpoint-label">CHECKPOINT</span>
+					<span class="checkpoint-sha">#\${shortSha}</span>
 				</div>
 				<div class="checkpoint-info">
 					<div class="checkpoint-message">\${data.message}</div>
 					<div class="checkpoint-time">\${dateStr} at \${timeStr}</div>
 				</div>
 				<button class="checkpoint-restore-btn" onclick="restoreToCommit('\${data.sha}')">
-					Restore
+					Restore to this point
 				</button>
 			\`;
 
@@ -2549,9 +2325,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			undoContainer.id = 'undo-restore-container';
 
 			undoContainer.innerHTML = \`
-				<div class="undo-message">Workspace restored. You can undo this action.</div>
+				<div class="undo-message">Restore successful. You can undo this action if needed.</div>
 				<button class="checkpoint-undo-btn" onclick="undoRestore()">
-					Undo
+					Undo Restore
 				</button>
 			\`;
 
@@ -2646,7 +2422,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
 				const escapedCode = escapeHtml(code);
 				
-				const codeBlockHtml = '<div class="code-block-container collapsed" onclick="toggleCodeBlock(this)"><div class="code-block-header"><span class="code-block-language">' + language + '</span><button class="code-copy-btn" onclick="event.stopPropagation(); copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button></div><pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre></div>';
+				const codeBlockHtml = '<div class="code-block-container"><div class="code-block-header"><span class="code-block-language">' + language + '</span><button class="code-copy-btn" onclick="copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button></div><pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre></div>';
 				
 				// Store the code block and return a placeholder
 				const placeholder = '__CODEBLOCK_' + codeBlockPlaceholders.length + '__';
@@ -2807,11 +2583,11 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'html': case 'htm': return '🌐';
 				case 'css': case 'scss': case 'sass': return '🎨';
 				case 'json': return '📋';
-				case 'md': return '';
+				case 'md': return '📝';
 				case 'py': return '🐍';
 				case 'java': return '☕';
-				case 'cpp': case 'c': case 'h': return '';
-				case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': return '';
+				case 'cpp': case 'c': case 'h': return '⚙️';
+				case 'png': case 'jpg': case 'jpeg': case 'gif': case 'svg': return '🖼️';
 				case 'pdf': return '📄';
 				case 'zip': case 'tar': case 'gz': return '📦';
 				default: return '📄';

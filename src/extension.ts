@@ -108,6 +108,7 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
+	private _preRestoreCommit: { sha: string, message: string } | undefined;
 	private _conversationsPath: string | undefined;
 	private _permissionRequestsPath: string | undefined;
 	private _permissionWatcher: vscode.FileSystemWatcher | undefined;
@@ -252,11 +253,17 @@ class ClaudeChatProvider {
 			case 'sendMessage':
 				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
 				return;
+			case 'branchFromMessage':
+				this._branchFromMessage(message.messageIndex);
+				return;
 			case 'newSession':
 				this._newSession();
 				return;
 			case 'restoreCommit':
 				this._restoreToCommit(message.commitSha);
+				return;
+			case 'undoRestore':
+				this._undoRestore();
 				return;
 			case 'getConversationList':
 				this._sendConversationList();
@@ -720,8 +727,8 @@ class ClaudeChatProvider {
 								if (content.name === 'TodoWrite' && content.input.todos) {
 									toolInput = '\nTodo List Update:';
 									for (const todo of content.input.todos) {
-										const status = todo.status === 'completed' ? '✅' :
-											todo.status === 'in_progress' ? '🔄' : '⏳';
+										const status = todo.status === 'completed' ? '[Done]' :
+											todo.status === 'in_progress' ? '[Active]' : '[Pending]';
 										toolInput += `\n${status} ${todo.content} (priority: ${todo.priority})`;
 									}
 								} else {
@@ -919,7 +926,7 @@ class ClaudeChatProvider {
 		// Send message to webview about the config change
 		this._sendAndSaveMessage({
 			type: 'configChanged',
-			data: '⚙️ WSL configuration changed. Started a new session.'
+			data: 'WSL configuration changed. Started a new session.'
 		});
 	}
 
@@ -1086,8 +1093,19 @@ class ClaudeChatProvider {
 				data: 'Restoring files from backup...'
 			});
 
-			// Restore files directly to workspace using git checkout
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
+			// Save current state before restoring
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			const { stdout: currentSha } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "Pre-restore snapshot"`);
+			const shaMatch = currentSha.match(/\[.*?([a-f0-9]+)\]/);
+			if (shaMatch) {
+				this._preRestoreCommit = {
+					sha: shaMatch[1],
+					message: 'State before restore'
+				};
+			}
+
+			// Restore files directly to workspace using git reset hard
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" reset --hard ${commitSha}`);
 
 			vscode.window.showInformationMessage(`Restored to commit: ${commit.message}`);
 
@@ -1095,7 +1113,8 @@ class ClaudeChatProvider {
 				type: 'restoreSuccess',
 				data: {
 					message: `Successfully restored to: ${commit.message}`,
-					commitSha: commitSha
+					commitSha: commitSha,
+					canUndo: true
 				}
 			});
 
@@ -1105,6 +1124,51 @@ class ClaudeChatProvider {
 			this._postMessage({
 				type: 'restoreError',
 				data: `Failed to restore: ${error.message}`
+			});
+		}
+	}
+
+	private async _undoRestore(): Promise<void> {
+		try {
+			if (!this._preRestoreCommit) {
+				vscode.window.showErrorMessage('No previous state available to restore.');
+				return;
+			}
+
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder || !this._backupRepoPath) {
+				vscode.window.showErrorMessage('No workspace folder or backup repository available.');
+				return;
+			}
+
+			const workspacePath = workspaceFolder.uri.fsPath;
+
+			this._postMessage({
+				type: 'restoreProgress',
+				data: 'Undoing restore...'
+			});
+
+			// Restore to the pre-restore state using git reset hard
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" reset --hard ${this._preRestoreCommit.sha}`);
+
+			vscode.window.showInformationMessage('Successfully undone restore operation.');
+
+			this._sendAndSaveMessage({
+				type: 'undoRestoreSuccess',
+				data: {
+					message: 'Successfully undone restore operation'
+				}
+			});
+
+			// Clear the pre-restore commit since we've used it
+			this._preRestoreCommit = undefined;
+
+		} catch (error: any) {
+			console.error('Failed to undo restore:', error.message);
+			vscode.window.showErrorMessage(`Failed to undo restore: ${error.message}`);
+			this._postMessage({
+				type: 'restoreError',
+				data: `Failed to undo restore: ${error.message}`
 			});
 		}
 	}
@@ -1826,6 +1890,36 @@ class ClaudeChatProvider {
 		void this._saveCurrentConversation();
 	}
 
+	private _branchFromMessage(messageIndex: number): void {
+		// Find the user message at the specified index
+		// We need to count user messages to find the right one
+		let userMessageCount = 0;
+		let targetIndex = -1;
+		
+		for (let i = 0; i < this._currentConversation.length; i++) {
+			if (this._currentConversation[i].messageType === 'userInput') {
+				if (userMessageCount === messageIndex) {
+					targetIndex = i;
+					break;
+				}
+				userMessageCount++;
+			}
+		}
+		
+		if (targetIndex === -1) {
+			console.error(`Could not find user message at index ${messageIndex}`);
+			return;
+		}
+		
+		// Truncate conversation to keep only messages up to and including the target user message
+		this._currentConversation = this._currentConversation.slice(0, targetIndex + 1);
+		
+		// Clear the current session ID to start a new branch
+		this._currentSessionId = undefined;
+		
+		console.log(`Branched conversation from message index ${messageIndex}, kept ${this._currentConversation.length} messages`);
+	}
+
 	private async _saveCurrentConversation(): Promise<void> {
 		if (!this._conversationsPath || this._currentConversation.length === 0) { return; }
 		if (!this._currentSessionId) { return; }
@@ -2000,7 +2094,7 @@ class ClaudeChatProvider {
 			// Send stop confirmation message directly to UI and save
 			this._sendAndSaveMessage({
 				type: 'error',
-				data: '⏹️ Claude code was stopped.'
+				data: 'Claude code was stopped.'
 			});
 
 			console.log('Claude process termination initiated');
@@ -2082,6 +2176,9 @@ class ClaudeChatProvider {
 				// Small delay to ensure messages are cleared before loading new ones
 				setTimeout(() => {
 					const messages = this._currentConversation;
+					let userMessageIndex = 0; // Track user message index for branching
+					let maxUserMessageIndex = -1; // Track the highest user message index
+					
 					for (let i = 0; i < messages.length; i++) {
 
 						const message = messages[i];
@@ -2093,17 +2190,32 @@ class ClaudeChatProvider {
 							}
 						}
 
-						this._postMessage({
+						const postMessage: any = {
 							type: message.messageType,
 							data: message.data
-						});
+						};
+						
+						// Add message index for user messages to enable branching
 						if (message.messageType === 'userInput') {
+							postMessage.messageIndex = userMessageIndex;
+							maxUserMessageIndex = userMessageIndex;
+							userMessageIndex++;
 							try {
 								requestStartTime = new Date(message.timestamp).getTime()
 							} catch (e) {
 								console.log(e)
 							}
 						}
+						
+						this._postMessage(postMessage);
+					}
+					
+					// Send message to set the messageIndex counter correctly after loading
+					if (maxUserMessageIndex >= 0) {
+						this._postMessage({
+							type: 'setMessageIndex',
+							data: { messageIndex: maxUserMessageIndex + 1 }
+						});
 					}
 
 					// Send updated totals
