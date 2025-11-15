@@ -2835,6 +2835,12 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 			const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 			const shortSha = data.sha ? data.sha.substring(0, 7) : 'unknown';
+			
+			// Remove "User: " prefix from message if it exists
+			let displayMessage = data.message || '';
+			if (displayMessage.startsWith('User: ')) {
+				displayMessage = displayMessage.substring(6);
+			}
 
 			restoreContainer.innerHTML = \`
 				<div class="checkpoint-header">
@@ -2842,7 +2848,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					<span class="checkpoint-sha">\${shortSha}</span>
 				</div>
 				<div class="checkpoint-info">
-					<div class="checkpoint-message">\${data.message}</div>
+					<div class="checkpoint-message">\${escapeHtml(displayMessage)}</div>
 					<div class="checkpoint-time">\${dateStr} at \${timeStr}</div>
 				</div>
 				<button class="checkpoint-restore-btn" onclick="restoreToCommit('\${data.sha}')">
