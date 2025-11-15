@@ -131,21 +131,12 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 								</g>
 							</svg>
 							</button>
-							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
-							<div>
-							<span>Send </span>
-							   <svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								width="11"
-								height="11"
-								>
-								<path
-									fill="currentColor"
-									d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"
-								></path>
+							<button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send message (Enter)">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<line x1="22" y1="2" x2="11" y2="13"></line>
+									<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
 								</svg>
-								</div>
+								<span>Send</span>
 							</button>
 						</div>
 					</div>
@@ -157,11 +148,11 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div class="status ready" id="status">
 		<div class="status-indicator"></div>
 		<div class="status-text" id="statusText">Initializing...</div>
-		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
-			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-				<path d="M6 6h12v12H6z"/>
+		<button class="stop-btn" id="stopBtn" onclick="stopRequest()" style="display: none;" title="Stop request">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+				<rect x="6" y="6" width="12" height="12" rx="2"></rect>
 			</svg>
-			Stop
+			<span>Stop</span>
 		</button>
 	</div>
 

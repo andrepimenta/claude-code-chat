@@ -20,7 +20,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		// Icon helper functions
 		const icons = {
 			user: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
-			claude: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>',
+			claude: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="none" stroke-width="0"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" fill="#D97757"></path><text x="12" y="13.5" text-anchor="middle" font-size="7" font-weight="700" fill="#FFFFFF" font-family="system-ui, -apple-system, sans-serif">CC</text></svg>',
 			error: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
 			success: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>',
 			info: '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>',
@@ -73,95 +73,78 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 			messageDiv.setAttribute('data-message-index', msgIndex);
 			
-			// Add header for main message types (excluding system)
-			if (type === 'user' || type === 'claude' || type === 'error') {
-				const headerDiv = document.createElement('div');
-				headerDiv.className = 'message-header';
+			// For user messages, only show restore button box (content already in input)
+			if (type === 'user') {
+				const restoreBox = document.createElement('div');
+				restoreBox.className = 'user-restore-box';
 				
-				const iconDiv = document.createElement('div');
-				iconDiv.className = \`message-icon \${type}\`;
+				const restoreBtn = document.createElement('button');
+				restoreBtn.className = 'user-restore-btn';
+				restoreBtn.onclick = (e) => {
+					e.stopPropagation();
+					restoreMessageToInput(content);
+				};
+				restoreBtn.innerHTML = \`<span class="restore-icon">\${icons.restore}</span><span class="restore-text">Restore</span>\`;
 				
-				const labelDiv = document.createElement('div');
-				labelDiv.className = 'message-label';
-				
-				// Set icon and label based on type
-				switch(type) {
-					case 'user':
-						iconDiv.innerHTML = icons.user;
-						labelDiv.textContent = 'You';
-						break;
-					case 'claude':
-						iconDiv.innerHTML = icons.claude;
-						labelDiv.textContent = 'Claude';
-						break;
-					case 'error':
-						iconDiv.innerHTML = icons.error;
-						labelDiv.textContent = 'Error';
-						break;
-				}
-				
-				// Add copy button
-				const copyBtn = document.createElement('button');
-				copyBtn.className = 'copy-btn';
-				copyBtn.title = 'Copy message';
-				copyBtn.onclick = () => copyMessageContent(messageDiv);
-				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
-				
-				headerDiv.appendChild(iconDiv);
-				headerDiv.appendChild(labelDiv);
-				headerDiv.appendChild(copyBtn);
-				
-				// Add restore and branch buttons for user messages - grouped together
-				if (type === 'user') {
-					const buttonGroup = document.createElement('div');
-					buttonGroup.className = 'message-action-buttons';
-					
-					// Restore button - restores message to input field
-					const restoreBtn = document.createElement('button');
-					restoreBtn.className = 'restore-btn';
-					restoreBtn.title = 'Restore to input';
-					restoreBtn.onclick = (e) => {
-						e.stopPropagation();
-						restoreMessageToInput(content);
-					};
-					restoreBtn.innerHTML = icons.restore;
-					buttonGroup.appendChild(restoreBtn);
-					
-					// Branch button - branches conversation from this point
-					const branchBtn = document.createElement('button');
-					branchBtn.className = 'branch-btn';
-					branchBtn.title = 'Branch from here';
-					branchBtn.onclick = (e) => {
-						e.stopPropagation();
-						branchFromMessage(msgIndex, content);
-					};
-					branchBtn.innerHTML = icons.branch;
-					buttonGroup.appendChild(branchBtn);
-					
-					headerDiv.appendChild(buttonGroup);
-				}
-				
-				messageDiv.appendChild(headerDiv);
-			}
-			
-			// Add content
-			const contentDiv = document.createElement('div');
-			contentDiv.className = 'message-content';
-			
-			if(type == 'user' || type === 'claude' || type === 'thinking'){
-				contentDiv.innerHTML = content;
+				restoreBox.appendChild(restoreBtn);
+				messageDiv.appendChild(restoreBox);
 			} else {
-				// Check if content contains HTML (like SVG icons)
-				if (content.includes('<svg') || content.includes('<') && content.includes('>')) {
+				// Add header for other message types (claude, error)
+				if (type === 'claude' || type === 'error') {
+					const headerDiv = document.createElement('div');
+					headerDiv.className = 'message-header';
+					
+					const iconDiv = document.createElement('div');
+					iconDiv.className = \`message-icon \${type}\`;
+					
+					const labelDiv = document.createElement('div');
+					labelDiv.className = 'message-label';
+					
+					// Set icon and label based on type
+					switch(type) {
+						case 'claude':
+							iconDiv.innerHTML = icons.claude;
+							labelDiv.textContent = 'Claude';
+							break;
+						case 'error':
+							iconDiv.innerHTML = icons.error;
+							labelDiv.textContent = 'Error';
+							break;
+					}
+					
+					// Add copy button
+					const copyBtn = document.createElement('button');
+					copyBtn.className = 'copy-btn';
+					copyBtn.title = 'Copy message';
+					copyBtn.onclick = () => copyMessageContent(messageDiv);
+					copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+					
+					headerDiv.appendChild(iconDiv);
+					headerDiv.appendChild(labelDiv);
+					headerDiv.appendChild(copyBtn);
+					
+					messageDiv.appendChild(headerDiv);
+				}
+				
+				// Add content for non-user messages
+				const contentDiv = document.createElement('div');
+				contentDiv.className = 'message-content';
+				
+				if(type === 'claude' || type === 'thinking'){
 					contentDiv.innerHTML = content;
 				} else {
-					const preElement = document.createElement('pre');
-					preElement.textContent = content;
-					contentDiv.appendChild(preElement);
+					// Check if content contains HTML (like SVG icons)
+					if (content.includes('<svg') || content.includes('<') && content.includes('>')) {
+						contentDiv.innerHTML = content;
+					} else {
+						const preElement = document.createElement('pre');
+						preElement.textContent = content;
+						contentDiv.appendChild(preElement);
+					}
 				}
+				
+				messageDiv.appendChild(contentDiv);
 			}
-			
-			messageDiv.appendChild(contentDiv);
 			
 			// Check if this is a permission-related error and add yolo mode button
 			if (type === 'error' && isPermissionError(content)) {
@@ -189,10 +172,18 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const isTerminalCommand = data.toolName === 'Bash' || data.toolName === 'Shell' || data.toolName === 'Terminal' || 
 									  (data.toolName && (data.toolName.toLowerCase().includes('bash') || data.toolName.toLowerCase().includes('shell') || data.toolName.toLowerCase().includes('terminal')));
 			
+			// Check if this is a file write operation
+			const isFileWrite = data.toolName === 'Write' || data.toolName === 'Edit' || data.toolName === 'MultiEdit';
+			
 			const messageDiv = document.createElement('div');
 			messageDiv.className = 'message tool';
 			if (isTerminalCommand) {
 				messageDiv.classList.add('terminal-command-waiting');
+				// Create terminal-style container
+				messageDiv.classList.add('terminal-container');
+			}
+			if (isFileWrite) {
+				messageDiv.classList.add('file-write-container');
 			}
 			
 			// Create modern header with icon
@@ -201,7 +192,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			const iconDiv = document.createElement('div');
 			iconDiv.className = 'tool-icon';
-			iconDiv.innerHTML = icons.zap;
+			if (isTerminalCommand) {
+				iconDiv.innerHTML = icons.computer;
+			} else if (isFileWrite) {
+				iconDiv.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>';
+			} else {
+				iconDiv.innerHTML = icons.zap;
+			}
 			
 			const toolInfoElement = document.createElement('div');
 			toolInfoElement.className = 'tool-info';
@@ -220,35 +217,98 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			// Store tool name for later reference
 			messageDiv.setAttribute('data-tool-name', data.toolName || '');
+			messageDiv.setAttribute('data-tool-use-id', data.toolUseId || Math.random().toString(36).substr(2, 9));
 			
 			if (data.rawInput) {
 				// Handle TodoWrite specially - always show, no collapse, checklist style
-				const isTodoWrite = (data.toolName === 'TodoWrite' || toolName === 'Update Todos');
-				const todos = data.rawInput.todos || null;
+				const isTodoWrite = (data.toolName === 'TodoWrite' || toolName === 'Update Todos' || toolName === 'TodoWrite');
+				// Check for todos in multiple possible locations
+				const todos = data.rawInput.todos || data.rawInput.todo_list || data.rawInput.items || 
+					(data.rawInput && Array.isArray(data.rawInput) ? data.rawInput : null) || null;
 				
+				// Debug logging
+				if (isTodoWrite) {
+					console.log('TodoWrite detected:', { toolName: data.toolName, displayName: toolName, rawInput: data.rawInput, todos: todos, isArray: Array.isArray(todos) });
+				}
+				
+				// Show todos if TodoWrite tool and todos array exists
 				if (isTodoWrite && todos && Array.isArray(todos) && todos.length > 0) {
 					const todoContainer = document.createElement('div');
 					todoContainer.className = 'todo-list-container';
 					
 					let todoHtml = '<ul class="todo-list">';
 					for (const todo of todos) {
-						const status = todo.status || 'pending';
-						const statusClass = status === 'completed' ? 'completed' :
-							status === 'in_progress' ? 'in-progress' : 'pending';
-						const priority = todo.priority ? '<span class="todo-priority priority-' + todo.priority + '">' + todo.priority + '</span>' : '';
+						// Handle both object format and string format
+						let todoContent = '';
+						let todoStatus = 'pending';
+						let todoPriority = null;
 						
-						// Smaller checkbox icons
-						const checkboxIcon = status === 'completed' 
+						if (typeof todo === 'string') {
+							todoContent = todo;
+						} else if (typeof todo === 'object' && todo !== null) {
+							todoContent = todo.content || todo.text || todo.task || todo.item || String(todo);
+							todoStatus = todo.status || todo.state || 'pending';
+							todoPriority = todo.priority || null;
+						} else {
+							todoContent = String(todo);
+						}
+						
+						const statusClass = todoStatus === 'completed' ? 'completed' :
+							todoStatus === 'in_progress' || todoStatus === 'in-progress' ? 'in-progress' : 'pending';
+						const priority = todoPriority ? '<span class="todo-priority priority-' + todoPriority + '">' + todoPriority + '</span>' : '';
+						
+						// Checkbox icons - slim design
+						const checkboxIcon = statusClass === 'completed' 
 							? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"></path></svg>'
-							: status === 'in_progress'
+							: statusClass === 'in-progress'
 							? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>'
 							: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>';
 						
-						todoHtml += '<li class="todo-item ' + statusClass + '"><div class="todo-checkbox-wrapper">' + checkboxIcon + '</div><div class="todo-content-wrapper"><span class="todo-content">' + escapeHtml(todo.content) + '</span>' + priority + '</div></li>';
+						todoHtml += '<li class="todo-item ' + statusClass + '"><div class="todo-checkbox-wrapper">' + checkboxIcon + '</div><div class="todo-content-wrapper"><span class="todo-content">' + escapeHtml(todoContent) + '</span>' + priority + '</div></li>';
 					}
 					todoHtml += '</ul>';
 					todoContainer.innerHTML = todoHtml;
 					messageDiv.appendChild(todoContainer);
+				} else if (isTerminalCommand && data.rawInput.command) {
+					// Terminal command - show command prompt style
+					const terminalContent = document.createElement('div');
+					terminalContent.className = 'terminal-content';
+					terminalContent.setAttribute('data-streaming', 'true');
+					
+					const command = String(data.rawInput.command || '');
+					const prompt = '$ ';
+					const commandLine = document.createElement('div');
+					commandLine.className = 'terminal-command-line';
+					commandLine.innerHTML = '<span class="terminal-prompt">' + escapeHtml(prompt) + '</span><span class="terminal-command">' + escapeHtml(command) + '</span>';
+					terminalContent.appendChild(commandLine);
+					
+					// Create output area for streaming
+					const outputArea = document.createElement('div');
+					outputArea.className = 'terminal-output-area';
+					outputArea.innerHTML = '<span class="terminal-cursor">▋</span>';
+					terminalContent.appendChild(outputArea);
+					
+					messageDiv.appendChild(terminalContent);
+				} else if (isFileWrite) {
+					// File write operation - show file path and streaming content area
+					const fileWriteContent = document.createElement('div');
+					fileWriteContent.className = 'file-write-content';
+					fileWriteContent.setAttribute('data-streaming', 'true');
+					
+					if (data.rawInput.file_path) {
+						const filePathDiv = document.createElement('div');
+						filePathDiv.className = 'file-write-path';
+						filePathDiv.innerHTML = '<span class="file-write-label">Writing to:</span> <span class="file-write-path-text" onclick="openFileInEditor(\\\'' + escapeHtml(String(data.rawInput.file_path)) + '\\\')">' + escapeHtml(String(data.rawInput.file_path)) + '</span>';
+						fileWriteContent.appendChild(filePathDiv);
+					}
+					
+					// Create streaming content area
+					const contentArea = document.createElement('div');
+					contentArea.className = 'file-write-streaming';
+					contentArea.innerHTML = '<pre class="file-write-code"><span class="file-write-cursor">▋</span></pre>';
+					fileWriteContent.appendChild(contentArea);
+					
+					messageDiv.appendChild(fileWriteContent);
 				} else {
 					// Regular tool input with collapse
 					const inputElement = document.createElement('div');
@@ -329,23 +389,23 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
+			// Check if this is terminal output (Bash, Shell, etc.) - check toolName from data
+			const isTerminalOutput = data.toolName === 'Bash' || data.toolName === 'Shell' || data.toolName === 'Terminal' || 
+									  (data.toolName && (data.toolName.toLowerCase().includes('bash') || data.toolName.toLowerCase().includes('shell') || data.toolName.toLowerCase().includes('terminal')));
+			
+			// Check if this is a file write operation
+			const isFileWrite = data.toolName === 'Write' || data.toolName === 'Edit' || data.toolName === 'MultiEdit';
 			
 			// For Read and Edit tools with hidden flag, just hide loading state and show completion message
-			if (data.hidden && (data.toolName === 'Read' || data.toolName === 'Edit' || data.toolName === 'TodoWrite' || data.toolName === 'MultiEdit') && !data.isError) {				
-				return	
-				// Show completion message
-				const toolName = data.toolName;
-				let completionText;
-				if (toolName === 'Read') {
-					completionText = 'Read completed';
-				} else if (toolName === 'Edit') {
-					completionText = 'Edit completed';
-				} else if (toolName === 'TodoWrite') {
-					completionText = 'Update Todos completed';
-				} else {
-					completionText = toolName + ' completed';
+			if (data.hidden && (data.toolName === 'Read' || data.toolName === 'Edit' || data.toolName === 'TodoWrite' || data.toolName === 'MultiEdit') && !data.isError) {
+				// Hide loading state by finding and removing the tool use message
+				const toolMessages = messagesDiv.querySelectorAll('[data-tool-name="' + data.toolName + '"]');
+				if (toolMessages.length > 0) {
+					const lastToolMessage = toolMessages[toolMessages.length - 1];
+					if (lastToolMessage) {
+						lastToolMessage.remove();
+					}
 				}
-				addMessage(completionText, 'system');
 				return; // Don't show the result message
 			}
 			
@@ -353,9 +413,109 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				return addMessage("File has not been read yet. Let me read it first before writing to it.", 'system');
 			}
 
-			// Check if this is terminal output (Bash, Shell, etc.)
-			const isTerminalOutput = isTerminalCommand;
+			// Try to find existing terminal/file-write container to append to
+			let existingContainer = null;
+			if (isTerminalOutput || isFileWrite) {
+				const toolUseId = data.toolUseId;
+				if (toolUseId) {
+					existingContainer = messagesDiv.querySelector('[data-tool-use-id="' + toolUseId + '"]');
+				} else {
+					// Fallback: find by tool name
+					const toolMessages = messagesDiv.querySelectorAll('[data-tool-name="' + data.toolName + '"]');
+					if (toolMessages.length > 0) {
+						existingContainer = toolMessages[toolMessages.length - 1];
+					}
+				}
+			}
 
+			// If we found an existing container, append to it (streaming)
+			if (existingContainer && (isTerminalOutput || isFileWrite)) {
+				let content = data.content || '';
+				if (typeof content !== 'string') {
+					try {
+						content = JSON.stringify(content, null, 2);
+					} catch (error) {
+						content = '[Unable to display result]';
+					}
+				}
+
+				if (isTerminalOutput) {
+					// Append to terminal output area
+					const outputArea = existingContainer.querySelector('.terminal-output-area');
+					if (outputArea) {
+						// Remove cursor
+						const cursor = outputArea.querySelector('.terminal-cursor');
+						if (cursor) cursor.remove();
+						
+						// Append content (preserve newlines)
+						if (content) {
+							// Split by newlines and add each line
+							const lines = content.split('\\n');
+							lines.forEach((line, index) => {
+								if (index > 0) {
+									outputArea.appendChild(document.createElement('br'));
+								}
+								if (line) {
+									const lineSpan = document.createElement('span');
+									lineSpan.textContent = line;
+									outputArea.appendChild(lineSpan);
+								}
+							});
+						}
+						
+						// Only add cursor if not complete (not an error and content might continue)
+						// Also remove cursor if complete or error
+						if (data.complete || data.isError) {
+							// Cursor already removed above, don't add it back
+						} else if (!data.isError && !data.complete) {
+							const newCursor = document.createElement('span');
+							newCursor.className = 'terminal-cursor';
+							newCursor.textContent = '▋';
+							outputArea.appendChild(newCursor);
+						}
+						
+						// Update error state if needed
+						if (data.isError) {
+							existingContainer.classList.add('error');
+							const header = existingContainer.querySelector('.tool-header');
+							if (header) {
+								header.classList.add('error');
+							}
+						}
+						
+						scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+						return;
+					}
+				} else if (isFileWrite) {
+					// Append to file write streaming area
+					const streamingArea = existingContainer.querySelector('.file-write-streaming pre');
+					if (streamingArea) {
+						// Remove cursor
+						const cursor = streamingArea.querySelector('.file-write-cursor');
+						if (cursor) cursor.remove();
+						
+						// Append content (preserve formatting)
+						if (content) {
+							const codeContent = document.createElement('span');
+							codeContent.textContent = content;
+							streamingArea.appendChild(codeContent);
+						}
+						
+						// Only add cursor if not complete
+						if (!data.isError && !data.complete) {
+							const newCursor = document.createElement('span');
+							newCursor.className = 'file-write-cursor';
+							newCursor.textContent = '▋';
+							streamingArea.appendChild(newCursor);
+						}
+						
+						scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+						return;
+					}
+				}
+			}
+
+			// Otherwise, create new result message (fallback)
 			const messageDiv = document.createElement('div');
 			if (isTerminalOutput) {
 				messageDiv.className = data.isError ? 'message terminal-output error' : 'message terminal-output';
@@ -393,8 +553,15 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			contentDiv.className = isTerminalOutput ? 'terminal-content' : 'message-content';
 			
 			// Check if it's a tool result and truncate appropriately - always collapse long content
-			let content = data.content;
-			const shouldCollapse = !isTerminalOutput && (content.length > 100 || content.split('\\n').length > 5);
+			let content = data.content || '';
+			if (typeof content !== 'string') {
+				try {
+					content = JSON.stringify(content, null, 2);
+				} catch (error) {
+					content = '[Unable to display result]';
+				}
+			}
+			const shouldCollapse = !isTerminalOutput && content && (content.length > 100 || content.split('\\n').length > 5);
 			
 			if (shouldCollapse && !data.isError) {
 				const truncateAt = Math.min(97, content.length);
@@ -447,295 +614,362 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		}
 
 		function formatToolInputUI(input) {
-			if (!input || typeof input !== 'object') {
-				const str = String(input);
-				if (str.length > 100) {
-					const truncateAt = 97;
-					const truncated = str.substring(0, truncateAt);
-					const inputId = 'input_' + Math.random().toString(36).substr(2, 9);
+			try {
+				if (!input || typeof input !== 'object') {
+					const str = String(input || '');
+					if (str.length > 100) {
+						const truncateAt = 97;
+						const truncated = str.substring(0, truncateAt);
+						const inputId = 'input_' + Math.random().toString(36).substr(2, 9);
+						
+						return '<span id="' + inputId + '_visible">' + escapeHtml(truncated) + '</span>' +
+							   '<span id="' + inputId + '_ellipsis">...</span>' +
+							   '<span id="' + inputId + '_hidden" style="display: none;">' + escapeHtml(str.substring(truncateAt)) + '</span>' +
+							   '<div class="diff-expand-container">' +
+							   '<button class="diff-expand-btn" onclick="toggleResultExpansion(\\\'' + inputId + '\\\')">Show more</button>' +
+							   '</div>';
+					}
+					return escapeHtml(str);
+				}
+
+				// Special handling for Read tool with file_path
+				if (input.file_path && Object.keys(input).length === 1) {
+					const formattedPath = formatFilePath(input.file_path);
+					return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(String(input.file_path)) + '\\\')">' + formattedPath + '</div>';
+				}
+
+				let result = '';
+				let isFirst = true;
+				for (const [key, value] of Object.entries(input)) {
+					if (!key) continue;
 					
-					return '<span id="' + inputId + '_visible">' + escapeHtml(truncated) + '</span>' +
-						   '<span id="' + inputId + '_ellipsis">...</span>' +
-						   '<span id="' + inputId + '_hidden" style="display: none;">' + escapeHtml(str.substring(truncateAt)) + '</span>' +
-						   '<div class="diff-expand-container">' +
-						   '<button class="diff-expand-btn" onclick="toggleResultExpansion(\\\'' + inputId + '\\\')">Show more</button>' +
-						   '</div>';
+					let valueStr;
+					try {
+						if (value === null || value === undefined) {
+							valueStr = String(value);
+						} else if (typeof value === 'string') {
+							valueStr = value;
+						} else {
+							valueStr = JSON.stringify(value, null, 2);
+						}
+					} catch (error) {
+						valueStr = '[Unable to format value]';
+					}
+					
+					if (!isFirst) result += '\\n';
+					isFirst = false;
+					
+					// Special formatting for file_path in Read tool context
+					if (key === 'file_path') {
+						const formattedPath = formatFilePath(valueStr);
+						result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
+					} else if (valueStr && valueStr.length > 100) {
+						const truncated = escapeHtml(valueStr.substring(0, 97)) + '...';
+						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+						result += '<span class="expandable-item"><strong>' + escapeHtml(key) + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + escapeHtml(key) + '" data-value="' + escapedValue + '" onclick="toggleExpand(this)">expand</span></span>';
+					} else {
+						result += '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr || '');
+					}
 				}
-				return str;
+				return result || '[Empty input]';
+			} catch (error) {
+				console.error('Error formatting tool input:', error);
+				return '[Error formatting input]';
 			}
-
-			// Special handling for Read tool with file_path
-			if (input.file_path && Object.keys(input).length === 1) {
-				const formattedPath = formatFilePath(input.file_path);
-				return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
-			}
-
-			let result = '';
-			let isFirst = true;
-			for (const [key, value] of Object.entries(input)) {
-				const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-				
-				if (!isFirst) result += '\\n';
-				isFirst = false;
-				
-				// Special formatting for file_path in Read tool context
-				if (key === 'file_path') {
-					const formattedPath = formatFilePath(valueStr);
-					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
-				} else if (valueStr.length > 100) {
-					const truncated = valueStr.substring(0, 97) + '...';
-					const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-					result += '<span class="expandable-item"><strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + escapedValue + '" onclick="toggleExpand(this)">expand</span></span>';
-				} else {
-					result += '<strong>' + key + ':</strong> ' + valueStr;
-				}
-			}
-			return result;
 		}
 
 		function formatEditToolDiff(input) {
-			if (!input || typeof input !== 'object') {
-				return formatToolInputUI(input);
-			}
+			try {
+				if (!input || typeof input !== 'object') {
+					return formatToolInputUI(input);
+				}
 
-			// Check if this is an Edit tool (has file_path, old_string, new_string)
-			if (!input.file_path || !input.old_string || !input.new_string) {
-				return formatToolInputUI(input);
-			}
+				// Check if this is an Edit tool (has file_path, old_string, new_string)
+				if (!input.file_path || input.old_string === undefined || input.new_string === undefined) {
+					return formatToolInputUI(input);
+				}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
-			
-			// Create diff view
-			const oldLines = input.old_string.split('\\n');
-			const newLines = input.new_string.split('\\n');
-			const allLines = [...oldLines.map(line => ({type: 'removed', content: line})), 
-							 ...newLines.map(line => ({type: 'added', content: line}))];
-			
-			const maxLines = 6;
-			const shouldTruncate = allLines.length > maxLines;
-			const visibleLines = shouldTruncate ? allLines.slice(0, maxLines) : allLines;
-			const hiddenLines = shouldTruncate ? allLines.slice(maxLines) : [];
-			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
-			result += '<div class="diff-header">Changes:</div>';
-			
-			// Create a unique ID for this diff
-			const diffId = 'diff_' + Math.random().toString(36).substr(2, 9);
-			
-			// Show visible lines
-			result += '<div id="' + diffId + '_visible">';
-			for (const line of visibleLines) {
-				const prefix = line.type === 'removed' ? '- ' : '+ ';
-				const cssClass = line.type === 'removed' ? 'removed' : 'added';
-				result += '<div class="diff-line ' + cssClass + '">' + prefix + escapeHtml(line.content) + '</div>';
-			}
-			result += '</div>';
-			
-			// Show hidden lines (initially hidden)
-			if (shouldTruncate) {
-				result += '<div id="' + diffId + '_hidden" style="display: none;">';
-				for (const line of hiddenLines) {
-					const prefix = line.type === 'removed' ? '- ' : '+ ';
-					const cssClass = line.type === 'removed' ? 'removed' : 'added';
-					result += '<div class="diff-line ' + cssClass + '">' + prefix + escapeHtml(line.content) + '</div>';
+				// Format file path with better display
+				const formattedPath = formatFilePath(String(input.file_path));
+				let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(String(input.file_path)) + '\\\')">' + formattedPath + '</div>\\n';
+				
+				// Create diff view - handle null/undefined strings
+				const oldString = String(input.old_string || '');
+				const newString = String(input.new_string || '');
+				const oldLines = oldString.split('\\n');
+				const newLines = newString.split('\\n');
+				const allLines = [...oldLines.map(line => ({type: 'removed', content: line || ''})), 
+								 ...newLines.map(line => ({type: 'added', content: line || ''}))];
+				
+				const maxLines = 6;
+				const shouldTruncate = allLines.length > maxLines;
+				const visibleLines = shouldTruncate ? allLines.slice(0, maxLines) : allLines;
+				const hiddenLines = shouldTruncate ? allLines.slice(maxLines) : [];
+				
+				result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+				result += '<div class="diff-header">Changes:</div>';
+				
+				// Create a unique ID for this diff
+				const diffId = 'diff_' + Math.random().toString(36).substr(2, 9);
+				
+				// Show visible lines
+				result += '<div id="' + diffId + '_visible">';
+				for (const line of visibleLines) {
+					if (line && line.content !== undefined) {
+						const cssClass = line.type === 'removed' ? 'removed' : 'added';
+						result += '<div class="diff-line ' + cssClass + '">' + escapeHtml(String(line.content)) + '</div>';
+					}
 				}
 				result += '</div>';
 				
-				// Add expand button
-				result += '<div class="diff-expand-container">';
-				result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenLines.length + ' more lines</button>';
-				result += '</div>';
-			}
-			
-			result += '</div>';
-			
-			// Add other properties if they exist
-			for (const [key, value] of Object.entries(input)) {
-				if (key !== 'file_path' && key !== 'old_string' && key !== 'new_string') {
-					const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-					result += '\\n<strong>' + key + ':</strong> ' + valueStr;
+				// Show hidden lines (initially hidden)
+				if (shouldTruncate && hiddenLines.length > 0) {
+					result += '<div id="' + diffId + '_hidden" style="display: none;">';
+					for (const line of hiddenLines) {
+						if (line && line.content !== undefined) {
+							const cssClass = line.type === 'removed' ? 'removed' : 'added';
+							result += '<div class="diff-line ' + cssClass + '">' + escapeHtml(String(line.content)) + '</div>';
+						}
+					}
+					result += '</div>';
+					
+					// Add expand button
+					result += '<div class="diff-expand-container">';
+					result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenLines.length + ' more lines</button>';
+					result += '</div>';
 				}
+				
+				result += '</div>';
+				
+				// Add other properties if they exist
+				for (const [key, value] of Object.entries(input)) {
+					if (key !== 'file_path' && key !== 'old_string' && key !== 'new_string') {
+						try {
+							const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr);
+						} catch (error) {
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> [Unable to format]';
+						}
+					}
+				}
+				
+				return result;
+			} catch (error) {
+				console.error('Error formatting Edit tool diff:', error);
+				return formatToolInputUI(input);
 			}
-			
-			return result;
 		}
 
 		function formatMultiEditToolDiff(input) {
-			if (!input || typeof input !== 'object') {
-				return formatToolInputUI(input);
-			}
-
-			// Check if this is a MultiEdit tool (has file_path and edits array)
-			if (!input.file_path || !input.edits || !Array.isArray(input.edits)) {
-				return formatToolInputUI(input);
-			}
-
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
-			
-			// Count total lines across all edits for truncation
-			let totalLines = 0;
-			for (const edit of input.edits) {
-				if (edit.old_string && edit.new_string) {
-					const oldLines = edit.old_string.split('\\n');
-					const newLines = edit.new_string.split('\\n');
-					totalLines += oldLines.length + newLines.length;
+			try {
+				if (!input || typeof input !== 'object') {
+					return formatToolInputUI(input);
 				}
-			}
 
-			const maxLines = 6;
-			const shouldTruncate = totalLines > maxLines;
-			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
-			result += '<div class="diff-header">Changes (' + input.edits.length + ' edit' + (input.edits.length > 1 ? 's' : '') + '):</div>';
-			
-			// Create a unique ID for this diff
-			const diffId = 'multiedit_' + Math.random().toString(36).substr(2, 9);
-			
-			let currentLineCount = 0;
-			let visibleEdits = [];
-			let hiddenEdits = [];
-			
-			// Determine which edits to show/hide based on line count
-			for (let i = 0; i < input.edits.length; i++) {
-				const edit = input.edits[i];
-				if (!edit.old_string || !edit.new_string) continue;
-				
-				const oldLines = edit.old_string.split('\\n');
-				const newLines = edit.new_string.split('\\n');
-				const editLines = oldLines.length + newLines.length;
-				
-				if (shouldTruncate && currentLineCount + editLines > maxLines && visibleEdits.length > 0) {
-					hiddenEdits.push(edit);
-				} else {
-					visibleEdits.push(edit);
-					currentLineCount += editLines;
+				// Check if this is a MultiEdit tool (has file_path and edits array)
+				if (!input.file_path || !input.edits || !Array.isArray(input.edits) || input.edits.length === 0) {
+					return formatToolInputUI(input);
 				}
-			}
-			
-			// Show visible edits
-			result += '<div id="' + diffId + '_visible">';
-			for (let i = 0; i < visibleEdits.length; i++) {
-				const edit = visibleEdits[i];
-				if (i > 0) result += '<div class="diff-edit-separator"></div>';
-				result += formatSingleEdit(edit, i + 1);
-			}
-			result += '</div>';
-			
-			// Show hidden edits (initially hidden)
-			if (hiddenEdits.length > 0) {
-				result += '<div id="' + diffId + '_hidden" style="display: none;">';
-				for (let i = 0; i < hiddenEdits.length; i++) {
-					const edit = hiddenEdits[i];
-					result += '<div class="diff-edit-separator"></div>';
-					result += formatSingleEdit(edit, visibleEdits.length + i + 1);
+
+				// Format file path with better display
+				const formattedPath = formatFilePath(String(input.file_path));
+				let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(String(input.file_path)) + '\\\')">' + formattedPath + '</div>\\n';
+				
+				// Count total lines across all edits for truncation
+				let totalLines = 0;
+				for (const edit of input.edits) {
+					if (edit && typeof edit === 'object') {
+						const oldStr = String(edit.old_string || '');
+						const newStr = String(edit.new_string || '');
+						const oldLines = oldStr.split('\\n');
+						const newLines = newStr.split('\\n');
+						totalLines += oldLines.length + newLines.length;
+					}
+				}
+
+				const maxLines = 6;
+				const shouldTruncate = totalLines > maxLines;
+				
+				result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+				result += '<div class="diff-header">Changes (' + input.edits.length + ' edit' + (input.edits.length > 1 ? 's' : '') + '):</div>';
+				
+				// Create a unique ID for this diff
+				const diffId = 'multiedit_' + Math.random().toString(36).substr(2, 9);
+				
+				let currentLineCount = 0;
+				let visibleEdits = [];
+				let hiddenEdits = [];
+				
+				// Determine which edits to show/hide based on line count
+				for (let i = 0; i < input.edits.length; i++) {
+					const edit = input.edits[i];
+					if (!edit || typeof edit !== 'object' || edit.old_string === undefined || edit.new_string === undefined) {
+						continue;
+					}
+					
+					const oldStr = String(edit.old_string || '');
+					const newStr = String(edit.new_string || '');
+					const oldLines = oldStr.split('\\n');
+					const newLines = newStr.split('\\n');
+					const editLines = oldLines.length + newLines.length;
+					
+					if (shouldTruncate && currentLineCount + editLines > maxLines && visibleEdits.length > 0) {
+						hiddenEdits.push(edit);
+					} else {
+						visibleEdits.push(edit);
+						currentLineCount += editLines;
+					}
+				}
+				
+				// Show visible edits
+				result += '<div id="' + diffId + '_visible">';
+				for (let i = 0; i < visibleEdits.length; i++) {
+					const edit = visibleEdits[i];
+					if (i > 0) result += '<div class="diff-edit-separator"></div>';
+					result += formatSingleEdit(edit, i + 1);
 				}
 				result += '</div>';
 				
-				// Add expand button
-				result += '<div class="diff-expand-container">';
-				result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenEdits.length + ' more edit' + (hiddenEdits.length > 1 ? 's' : '') + '</button>';
-				result += '</div>';
-			}
-			
-			result += '</div>';
-			
-			// Add other properties if they exist
-			for (const [key, value] of Object.entries(input)) {
-				if (key !== 'file_path' && key !== 'edits') {
-					const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-					result += '\\n<strong>' + key + ':</strong> ' + valueStr;
+				// Show hidden edits (initially hidden)
+				if (hiddenEdits.length > 0) {
+					result += '<div id="' + diffId + '_hidden" style="display: none;">';
+					for (let i = 0; i < hiddenEdits.length; i++) {
+						const edit = hiddenEdits[i];
+						result += '<div class="diff-edit-separator"></div>';
+						result += formatSingleEdit(edit, visibleEdits.length + i + 1);
+					}
+					result += '</div>';
+					
+					// Add expand button
+					result += '<div class="diff-expand-container">';
+					result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenEdits.length + ' more edit' + (hiddenEdits.length > 1 ? 's' : '') + '</button>';
+					result += '</div>';
 				}
+				
+				result += '</div>';
+				
+				// Add other properties if they exist
+				for (const [key, value] of Object.entries(input)) {
+					if (key !== 'file_path' && key !== 'edits') {
+						try {
+							const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr);
+						} catch (error) {
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> [Unable to format]';
+						}
+					}
+				}
+				
+				return result;
+			} catch (error) {
+				console.error('Error formatting MultiEdit tool diff:', error);
+				return formatToolInputUI(input);
 			}
-			
-			return result;
 		}
 
 		function formatSingleEdit(edit, editNumber) {
-			let result = '<div class="single-edit">';
-			result += '<div class="edit-number">Edit #' + editNumber + '</div>';
-			
-			// Create diff view for this single edit
-			const oldLines = edit.old_string.split('\\n');
-			const newLines = edit.new_string.split('\\n');
-			
-			// Show removed lines
-			for (const line of oldLines) {
-				result += '<div class="diff-line removed">- ' + escapeHtml(line) + '</div>';
+			try {
+				if (!edit || typeof edit !== 'object') {
+					return '<div class="single-edit"><div class="edit-number">Edit #' + editNumber + '</div><div class="diff-line">[Invalid edit]</div></div>';
+				}
+				
+				let result = '<div class="single-edit">';
+				result += '<div class="edit-number">Edit #' + editNumber + '</div>';
+				
+				// Create diff view for this single edit - handle null/undefined
+				const oldString = String(edit.old_string || '');
+				const newString = String(edit.new_string || '');
+				const oldLines = oldString.split('\\n');
+				const newLines = newString.split('\\n');
+				
+				// Show removed lines
+				for (const line of oldLines) {
+					result += '<div class="diff-line removed">' + escapeHtml(String(line || '')) + '</div>';
+				}
+				
+				// Show added lines
+				for (const line of newLines) {
+					result += '<div class="diff-line added">' + escapeHtml(String(line || '')) + '</div>';
+				}
+				
+				result += '</div>';
+				return result;
+			} catch (error) {
+				console.error('Error formatting single edit:', error);
+				return '<div class="single-edit"><div class="edit-number">Edit #' + editNumber + '</div><div class="diff-line">[Error formatting edit]</div></div>';
 			}
-			
-			// Show added lines
-			for (const line of newLines) {
-				result += '<div class="diff-line added">+ ' + escapeHtml(line) + '</div>';
-			}
-			
-			result += '</div>';
-			return result;
 		}
 
 		function formatWriteToolDiff(input) {
-			if (!input || typeof input !== 'object') {
-				return formatToolInputUI(input);
-			}
+			try {
+				if (!input || typeof input !== 'object') {
+					return formatToolInputUI(input);
+				}
 
-			// Check if this is a Write tool (has file_path and content)
-			if (!input.file_path || !input.content) {
-				return formatToolInputUI(input);
-			}
+				// Check if this is a Write tool (has file_path and content)
+				if (!input.file_path || input.content === undefined || input.content === null) {
+					return formatToolInputUI(input);
+				}
 
-			// Format file path with better display
-			const formattedPath = formatFilePath(input.file_path);
-			let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>\\n';
-			
-			// Create diff view showing all content as additions
-			const contentLines = input.content.split('\\n');
-			
-			const maxLines = 6;
-			const shouldTruncate = contentLines.length > maxLines;
-			const visibleLines = shouldTruncate ? contentLines.slice(0, maxLines) : contentLines;
-			const hiddenLines = shouldTruncate ? contentLines.slice(maxLines) : [];
-			
-			result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
-			result += '<div class="diff-header">New file content:</div>';
-			
-			// Create a unique ID for this diff
-			const diffId = 'write_' + Math.random().toString(36).substr(2, 9);
-			
-			// Show visible lines (all as additions)
-			result += '<div id="' + diffId + '_visible">';
-			for (const line of visibleLines) {
-				result += '<div class="diff-line added">+ ' + escapeHtml(line) + '</div>';
-			}
-			result += '</div>';
-			
-			// Show hidden lines (initially hidden)
-			if (shouldTruncate) {
-				result += '<div id="' + diffId + '_hidden" style="display: none;">';
-				for (const line of hiddenLines) {
-					result += '<div class="diff-line added">+ ' + escapeHtml(line) + '</div>';
+				// Format file path with better display
+				const formattedPath = formatFilePath(String(input.file_path));
+				let result = '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(String(input.file_path)) + '\\\')">' + formattedPath + '</div>\\n';
+				
+				// Create diff view showing all content as additions - handle null/undefined
+				const contentString = String(input.content || '');
+				const contentLines = contentString.split('\\n');
+				
+				const maxLines = 6;
+				const shouldTruncate = contentLines.length > maxLines;
+				const visibleLines = shouldTruncate ? contentLines.slice(0, maxLines) : contentLines;
+				const hiddenLines = shouldTruncate ? contentLines.slice(maxLines) : [];
+				
+				result += '<div class="diff-container collapsed" onclick="this.classList.toggle(\\'collapsed\\')">';
+				result += '<div class="diff-header">New file content:</div>';
+				
+				// Create a unique ID for this diff
+				const diffId = 'write_' + Math.random().toString(36).substr(2, 9);
+				
+				// Show visible lines (all as additions)
+				result += '<div id="' + diffId + '_visible">';
+				for (const line of visibleLines) {
+					result += '<div class="diff-line added">' + escapeHtml(String(line || '')) + '</div>';
 				}
 				result += '</div>';
 				
-				// Add expand button
-				result += '<div class="diff-expand-container">';
-				result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenLines.length + ' more lines</button>';
-				result += '</div>';
-			}
-			
-			result += '</div>';
-			
-			// Add other properties if they exist
-			for (const [key, value] of Object.entries(input)) {
-				if (key !== 'file_path' && key !== 'content') {
-					const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-					result += '\\n<strong>' + key + ':</strong> ' + valueStr;
+				// Show hidden lines (initially hidden)
+				if (shouldTruncate && hiddenLines.length > 0) {
+					result += '<div id="' + diffId + '_hidden" style="display: none;">';
+					for (const line of hiddenLines) {
+						result += '<div class="diff-line added">' + escapeHtml(String(line || '')) + '</div>';
+					}
+					result += '</div>';
+					
+					// Add expand button
+					result += '<div class="diff-expand-container">';
+					result += '<button class="diff-expand-btn" onclick="toggleDiffExpansion(\\\'' + diffId + '\\\')">Show ' + hiddenLines.length + ' more lines</button>';
+					result += '</div>';
 				}
+				
+				result += '</div>';
+				
+				// Add other properties if they exist
+				for (const [key, value] of Object.entries(input)) {
+					if (key !== 'file_path' && key !== 'content') {
+						try {
+							const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr);
+						} catch (error) {
+							result += '\\n<strong>' + escapeHtml(key) + ':</strong> [Unable to format]';
+						}
+					}
+				}
+				
+				return result;
+			} catch (error) {
+				console.error('Error formatting Write tool diff:', error);
+				return formatToolInputUI(input);
 			}
-			
-			return result;
 		}
 
 		function escapeHtml(text) {
@@ -1866,11 +2100,17 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		// Stop button functions
 		function showStopButton() {
-			document.getElementById('stopBtn').style.display = 'flex';
+			const stopBtn = document.getElementById('stopBtn');
+			if (stopBtn) {
+				stopBtn.style.display = 'flex';
+			}
 		}
 
 		function hideStopButton() {
-			document.getElementById('stopBtn').style.display = 'none';
+			const stopBtn = document.getElementById('stopBtn');
+			if (stopBtn) {
+				stopBtn.style.display = 'none';
+			}
 		}
 
 		function stopRequest() {
@@ -2039,7 +2279,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					break;
 					
 				case 'output':
-					if (message.data.trim()) {
+					if (message.data && message.data.trim()) {
 						let displayData = message.data;
 						
 						// Check if this is a usage limit message with Unix timestamp
@@ -2064,7 +2304,64 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 							displayData = displayData.replace(usageLimitMatch[0], \`Claude AI usage limit reached: \${readableDate}\`);
 						}
 						
-						addMessage(parseSimpleMarkdown(displayData), 'claude');
+						// Check if there's an existing Claude message being streamed
+						const messagesDiv = document.getElementById('messages');
+						const lastMessage = messagesDiv.lastElementChild;
+						const isStreaming = lastMessage && 
+							lastMessage.classList.contains('claude') && 
+							lastMessage.hasAttribute('data-streaming');
+						
+						if (isStreaming) {
+							// Append to existing streaming message
+							const contentDiv = lastMessage.querySelector('.message-content');
+							if (contentDiv) {
+								// Get current content as text
+								const currentText = contentDiv.innerText || contentDiv.textContent || '';
+								// Append new content
+								const newText = currentText + displayData;
+								// Re-parse markdown with full content
+								contentDiv.innerHTML = parseSimpleMarkdown(newText);
+								scrollToBottomIfNeeded(messagesDiv, shouldAutoScroll(messagesDiv));
+							}
+						} else {
+							// Create new streaming message
+							const messageDiv = document.createElement('div');
+							messageDiv.className = 'message claude';
+							messageDiv.setAttribute('data-streaming', 'true');
+							messageDiv.setAttribute('data-message-index', messageIndex++);
+							
+							// Add header
+							const headerDiv = document.createElement('div');
+							headerDiv.className = 'message-header';
+							
+							const iconDiv = document.createElement('div');
+							iconDiv.className = 'message-icon claude';
+							iconDiv.innerHTML = icons.claude;
+							
+							const labelDiv = document.createElement('div');
+							labelDiv.className = 'message-label';
+							labelDiv.textContent = 'Claude';
+							
+							const copyBtn = document.createElement('button');
+							copyBtn.className = 'copy-btn';
+							copyBtn.title = 'Copy message';
+							copyBtn.onclick = () => copyMessageContent(messageDiv);
+							copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+							
+							headerDiv.appendChild(iconDiv);
+							headerDiv.appendChild(labelDiv);
+							headerDiv.appendChild(copyBtn);
+							messageDiv.appendChild(headerDiv);
+							
+							// Add content
+							const contentDiv = document.createElement('div');
+							contentDiv.className = 'message-content';
+							contentDiv.innerHTML = parseSimpleMarkdown(displayData);
+							messageDiv.appendChild(contentDiv);
+							
+							messagesDiv.appendChild(messageDiv);
+							scrollToBottomIfNeeded(messagesDiv, shouldAutoScroll(messagesDiv));
+						}
 					}
 					updateStatusWithTotals();
 					break;
@@ -2095,6 +2392,26 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						stopRequestTimer();
 						hideStopButton();
 						enableButtons();
+						// Mark streaming as complete and remove cursors
+						const messagesDiv = document.getElementById('messages');
+						
+						// Remove Claude message streaming attribute
+						const lastMessage = messagesDiv.lastElementChild;
+						if (lastMessage && lastMessage.hasAttribute('data-streaming')) {
+							lastMessage.removeAttribute('data-streaming');
+						}
+						
+						// Remove all terminal cursors
+						const terminalCursors = messagesDiv.querySelectorAll('.terminal-cursor');
+						terminalCursors.forEach(cursor => cursor.remove());
+						
+						// Remove all file write cursors
+						const fileWriteCursors = messagesDiv.querySelectorAll('.file-write-cursor');
+						fileWriteCursors.forEach(cursor => cursor.remove());
+						
+						// Remove streaming attributes from terminal/file-write containers
+						const streamingContainers = messagesDiv.querySelectorAll('[data-streaming="true"]');
+						streamingContainers.forEach(container => container.removeAttribute('data-streaming'));
 					}
 					updateStatusWithTotals();
 					break;
@@ -2237,7 +2554,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
 					hideSessionInfo();
-					addMessage('🆕 Started new session', 'system');
+					addMessage('New chat started. How can I help you today?', 'system');
 					// Reset totals
 					totalCost = 0;
 					totalTokensInput = 0;
@@ -2272,6 +2589,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'restoreSuccess':
 					//hideRestoreContainer(message.data.commitSha);
 					addMessage(message.data.message, 'system');
+					hideRedoRestoreButton(); // Hide redo button when new restore happens
 					if (message.data.canUndo) {
 						showUndoRestoreButton();
 					}
@@ -2280,6 +2598,18 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'undoRestoreSuccess':
 					addMessage(message.data.message, 'system');
 					hideUndoRestoreButton();
+					if (message.data.canRedo) {
+						showRedoRestoreButton();
+					}
+					break;
+
+				case 'redoRestoreSuccess':
+					addMessage(message.data.message, 'system');
+					hideRedoRestoreButton();
+					hideUndoRestoreButton(); // Hide undo button when redo happens
+					if (message.data.canUndo) {
+						showUndoRestoreButton();
+					}
 					break;
 
 				case 'restoreError':
@@ -2376,11 +2706,11 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					</div>
 				</div>
 				<div class="permission-content">
-					<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+					<p>Allow <strong>\${toolName}</strong>?</p>
 					<div class="permission-buttons">
+						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
 						<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
 						<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-						<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
 					</div>
 				</div>
 			\`;
@@ -2561,6 +2891,41 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		function hideUndoRestoreButton() {
 			const container = document.getElementById('undo-restore-container');
+			if (container) {
+				container.remove();
+			}
+		}
+
+		function redoRestore() {
+			vscode.postMessage({
+				type: 'redoRestore'
+			});
+		}
+
+		function showRedoRestoreButton() {
+			// Remove any existing redo button first
+			hideRedoRestoreButton();
+
+			const messagesDiv = document.getElementById('messages');
+			const shouldScroll = shouldAutoScroll(messagesDiv);
+
+			const redoContainer = document.createElement('div');
+			redoContainer.className = 'checkpoint-undo-card';
+			redoContainer.id = 'redo-restore-container';
+
+			redoContainer.innerHTML = \`
+				<div class="undo-message">Restore undone. You can redo this action.</div>
+				<button class="checkpoint-undo-btn" onclick="redoRestore()">
+					Redo
+				</button>
+			\`;
+
+			messagesDiv.appendChild(redoContainer);
+			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+
+		function hideRedoRestoreButton() {
+			const container = document.getElementById('redo-restore-container');
 			if (container) {
 				container.remove();
 			}
