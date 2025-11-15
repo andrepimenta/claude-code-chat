@@ -164,8 +164,24 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				// Add content for non-user messages
 				const contentDiv = document.createElement('div');
 				contentDiv.className = 'message-content';
-				
-				if(type === 'claude' || type === 'thinking'){
+
+				if(type === 'thinking'){
+					// Make thinking blocks collapsible and collapsed by default
+					const thinkingHeader = document.createElement('div');
+					thinkingHeader.className = 'thinking-header';
+					thinkingHeader.innerHTML = 'Thinking';
+					thinkingHeader.onclick = () => {
+						thinkingContent.classList.toggle('collapsed');
+						thinkingHeader.classList.toggle('expanded');
+					};
+
+					const thinkingContent = document.createElement('div');
+					thinkingContent.className = 'thinking-content collapsed';
+					thinkingContent.innerHTML = content.replace(/^💭 Thinking\.\.\./, '').trim();
+
+					contentDiv.appendChild(thinkingHeader);
+					contentDiv.appendChild(thinkingContent);
+				} else if(type === 'claude'){
 					contentDiv.innerHTML = content;
 				} else {
 					// Check if content contains HTML (like SVG icons)
@@ -177,7 +193,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						contentDiv.appendChild(preElement);
 					}
 				}
-				
+
 				messageDiv.appendChild(contentDiv);
 			}
 			
@@ -652,19 +668,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			try {
 				if (!input || typeof input !== 'object') {
 					const str = String(input || '');
-					if (str.length > 100) {
-						const truncateAt = 97;
-						const truncated = str.substring(0, truncateAt);
-						const inputId = 'input_' + Math.random().toString(36).substr(2, 9);
-						
-						return '<span id="' + inputId + '_visible">' + escapeHtml(truncated) + '</span>' +
-							   '<span id="' + inputId + '_ellipsis">...</span>' +
-							   '<span id="' + inputId + '_hidden" style="display: none;">' + escapeHtml(str.substring(truncateAt)) + '</span>' +
-							   '<div class="diff-expand-container">' +
-							   '<button class="diff-expand-btn" onclick="toggleResultExpansion(\\\'' + inputId + '\\\')">Show more</button>' +
-							   '</div>';
-					}
-					return escapeHtml(str);
+					return '<pre class="tool-input-code">' + escapeHtml(str) + '</pre>';
 				}
 
 				// Special handling for Read tool with file_path
@@ -673,11 +677,11 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(String(input.file_path)) + '\\\')">' + formattedPath + '</div>';
 				}
 
-				let result = '';
-				let isFirst = true;
+				// Format as JSON-like code block
+				let codeLines = [];
 				for (const [key, value] of Object.entries(input)) {
 					if (!key) continue;
-					
+
 					let valueStr;
 					try {
 						if (value === null || value === undefined) {
@@ -685,28 +689,24 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						} else if (typeof value === 'string') {
 							valueStr = value;
 						} else {
-							valueStr = JSON.stringify(value, null, 2);
+							valueStr = JSON.stringify(value);
 						}
 					} catch (error) {
 						valueStr = '[Unable to format value]';
 					}
-					
-					if (!isFirst) result += '\\n';
-					isFirst = false;
-					
-					// Special formatting for file_path in Read tool context
+
+					// Special formatting for file_path
 					if (key === 'file_path') {
 						const formattedPath = formatFilePath(valueStr);
-						result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
-					} else if (valueStr && valueStr.length > 100) {
-						const truncated = escapeHtml(valueStr.substring(0, 97)) + '...';
-						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-						result += '<span class="expandable-item"><strong>' + escapeHtml(key) + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + escapeHtml(key) + '" data-value="' + escapedValue + '" onclick="toggleExpand(this)">expand</span></span>';
+						codeLines.push('<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>');
 					} else {
-						result += '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr || '');
+						codeLines.push('<span class="tool-param-key">' + escapeHtml(key) + ':</span> <span class="tool-param-value">' + escapeHtml(valueStr || '') + '</span>');
 					}
 				}
-				return result || '[Empty input]';
+
+				if (codeLines.length === 0) return '[Empty input]';
+
+				return '<pre class="tool-input-code">' + codeLines.join('\\n') + '</pre>';
 			} catch (error) {
 				console.error('Error formatting tool input:', error);
 				return '[Error formatting input]';
@@ -2562,22 +2562,25 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Update token totals in real-time
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
-					
+
 					// Update status bar immediately
 					updateStatusWithTotals();
-					
-					// Show detailed token breakdown for current message
+
+					// Show compact token breakdown for current message
 					const currentTotal = (message.data.currentInputTokens || 0) + (message.data.currentOutputTokens || 0);
 					if (currentTotal > 0) {
-						let tokenBreakdown = \`\${icons.chart} Tokens: \${currentTotal.toLocaleString()}\`;
-						
+						// Format numbers in K format for readability
+						const formatNum = (num) => num >= 1000 ? \`\${(num/1000).toFixed(1)}K\` : num.toString();
+
+						let tokenBreakdown = \`\${icons.chart} \${currentTotal.toLocaleString()} tok\`;
+
 						if (message.data.cacheCreationTokens || message.data.cacheReadTokens) {
 							const cacheInfo = [];
-							if (message.data.cacheCreationTokens) cacheInfo.push(\`\${message.data.cacheCreationTokens.toLocaleString()} cache created\`);
-							if (message.data.cacheReadTokens) cacheInfo.push(\`\${message.data.cacheReadTokens.toLocaleString()} cache read\`);
-							tokenBreakdown += \` • \${cacheInfo.join(' • ')}\`;
+							if (message.data.cacheCreationTokens) cacheInfo.push(\`↑\${formatNum(message.data.cacheCreationTokens)}\`);
+							if (message.data.cacheReadTokens) cacheInfo.push(\`↓\${formatNum(message.data.cacheReadTokens)}\`);
+							tokenBreakdown += \` (\${cacheInfo.join(' ')})\`;
 						}
-						
+
 						addMessage(tokenBreakdown, 'system');
 					}
 					break;

@@ -778,11 +778,11 @@ const styles = `
     }
 
     .message {
-        margin-bottom: 24px;
+        margin-bottom: 12px;
         padding: 0;
         border-radius: 0;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
-        line-height: 1.6;
+        line-height: 1.5;
         font-size: 14px;
         transition: none;
         backdrop-filter: none;
@@ -794,7 +794,7 @@ const styles = `
         border-radius: 0;
         padding: 0;
         color: var(--vscode-foreground);
-        margin-bottom: 24px;
+        margin-bottom: 12px;
         max-width: 100%;
         box-sizing: border-box;
         word-wrap: break-word;
@@ -807,7 +807,7 @@ const styles = `
         border-radius: 0;
         padding: 0;
         color: var(--vscode-foreground);
-        margin-bottom: 24px;
+        margin-bottom: 12px;
         max-width: 100%;
         box-sizing: border-box;
         word-wrap: break-word;
@@ -825,10 +825,13 @@ const styles = `
     .message.system {
         background-color: transparent;
         border: none;
-        color: rgba(255, 255, 255, 0.5);
-        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
         padding: 0;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
+        opacity: 0.4;
+        font-family: var(--vscode-editor-font-family);
+        letter-spacing: 0.3px;
     }
 
     .message.tool {
@@ -858,6 +861,15 @@ const styles = `
 
     .message.tool-result.success .message-header::before {
         display: none;
+    }
+
+    .message.tool-result .message-header {
+        opacity: 0.4;
+        transition: opacity 0.15s ease;
+    }
+
+    .message.tool-result .message-header:hover {
+        opacity: 0.6;
     }
 
     /* Terminal Output Styling - Real Terminal Look */
@@ -1230,25 +1242,84 @@ const styles = `
         position: relative;
         overflow: visible;
         padding: 0;
+        margin-bottom: 8px;
+        font-size: 13px;
+        line-height: 1.4;
     }
 
     .message.thinking::before {
         display: none;
     }
 
+    .thinking-header {
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        font-weight: 500;
+        padding: 0;
+        background: transparent;
+        border-radius: 0;
+        transition: opacity 0.15s ease;
+        user-select: none;
+        opacity: 0.4;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    .thinking-header:hover {
+        opacity: 0.6;
+    }
+
+    .thinking-header::before {
+        content: '▶';
+        font-size: 7px;
+        transition: transform 0.15s ease;
+        display: inline-block;
+        opacity: 0.5;
+    }
+
+    .thinking-header.expanded::before {
+        transform: rotate(90deg);
+    }
+
+    .thinking-content {
+        max-height: 500px;
+        overflow-y: auto;
+        transition: max-height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease;
+        opacity: 1;
+        margin-top: 3px;
+        padding-left: 13px;
+    }
+
+    .thinking-content.collapsed {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        margin-top: 0;
+        padding-left: 0;
+    }
+
     .tool-header {
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-bottom: 6px;
+        margin-bottom: 3px;
         padding-bottom: 0;
         border-bottom: none;
-        opacity: 0.6;
-        font-size: 11px;
+        opacity: 0.4;
+        font-size: 10px;
         position: relative;
         font-weight: 500;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
+        transition: opacity 0.15s ease;
+    }
+
+    .tool-header:hover {
+        opacity: 0.6;
     }
 
     .tool-header::before {
@@ -1258,14 +1329,14 @@ const styles = `
         border-radius: 0;
         flex-shrink: 0;
         background-color: transparent;
-        font-size: 8px;
-        opacity: 0.5;
+        font-size: 7px;
+        opacity: 0.3;
         color: var(--vscode-descriptionForeground);
     }
 
     .tool-icon {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
         border-radius: 0;
         background: transparent;
         display: flex;
@@ -1276,29 +1347,29 @@ const styles = `
         font-weight: 500;
         flex-shrink: 0;
         margin-left: 0;
-        opacity: 0.6;
+        opacity: 0.4;
     }
 
     .tool-icon svg {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
         stroke-width: 2;
     }
 
     .tool-info {
         font-weight: 500;
-        font-size: 11px;
+        font-size: 10px;
         color: var(--vscode-descriptionForeground);
-        opacity: 0.6;
+        opacity: 0.4;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 0.8px;
     }
 
     .message-header {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         padding-bottom: 0;
         border-bottom: none;
         position: relative;
@@ -1307,7 +1378,7 @@ const styles = `
 
     .message.user .message-header {
         opacity: 1;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         padding-bottom: 0;
         border-bottom: none;
     }
@@ -1330,7 +1401,7 @@ const styles = `
 
     .message.claude .message-header {
         opacity: 1;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
         padding-bottom: 0;
         border-bottom: none;
     }
@@ -1539,13 +1610,27 @@ const styles = `
     }
 
     .message-icon.error {
-        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-        color: white;
+        background: transparent;
+        color: var(--vscode-errorForeground);
+        opacity: 0.5;
+    }
+
+    .message-icon.error svg {
+        width: 12px;
+        height: 12px;
+        stroke-width: 2.5;
     }
 
     .message-icon.success {
-        background: linear-gradient(135deg, #1cc08c 0%, #16a974 100%);
-        color: white;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.4;
+    }
+
+    .message-icon.success svg {
+        width: 12px;
+        height: 12px;
+        stroke-width: 2.5;
     }
 
     /* Status Badge Styles */
@@ -1595,10 +1680,10 @@ const styles = `
 
     .message-label {
         font-weight: 500;
-        font-size: 13px;
-        opacity: 0.8;
-        text-transform: none;
-        letter-spacing: 0;
+        font-size: 10px;
+        opacity: 0.4;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
     }
 
     .message.user .message-label {
@@ -1617,7 +1702,7 @@ const styles = `
     }
 
     .message-content p {
-        margin: 0.5em 0;
+        margin: 0.25em 0;
     }
 
     .message-content p:first-child {
@@ -1867,28 +1952,33 @@ const styles = `
 
     .tool-input-label {
         color: var(--vscode-descriptionForeground);
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 500;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        opacity: 0.7;
+        letter-spacing: 0.8px;
+        opacity: 0.5;
         cursor: pointer;
         user-select: none;
         display: flex;
         align-items: center;
-        gap: 5px;
+        gap: 4px;
+        transition: opacity 0.15s ease;
+    }
+
+    .tool-input-label:hover {
+        opacity: 0.7;
     }
 
     .tool-input-label::before {
         content: '▶';
-        font-size: 9px;
-        opacity: 0.6;
-        transition: transform 0.2s ease;
+        font-size: 8px;
+        opacity: 0.5;
+        transition: transform 0.15s ease;
     }
 
     .tool-input:not(.collapsed) .tool-input-label::before {
-        content: '▼';
+        transform: rotate(90deg);
     }
 
     .tool-input-content {
@@ -1901,6 +1991,30 @@ const styles = `
         box-sizing: border-box;
         word-wrap: break-word;
         overflow-wrap: break-word;
+    }
+
+    .tool-input-code {
+        background: var(--vscode-textCodeBlock-background);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 4px;
+        padding: 8px 10px;
+        margin: 0;
+        font-family: var(--vscode-editor-font-family);
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--vscode-editor-foreground);
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        overflow-x: auto;
+    }
+
+    .tool-param-key {
+        color: var(--vscode-symbolIcon-propertyForeground, #9CDCFE);
+        font-weight: 500;
+    }
+
+    .tool-param-value {
+        color: var(--vscode-symbolIcon-stringForeground, #CE9178);
     }
 
     /* Better command/terminal display in tool inputs */
@@ -3450,7 +3564,7 @@ const styles = `
 
     /* Markdown content styles */
     .message h1, .message h2, .message h3, .message h4 {
-        margin: 0.8em 0 0.4em 0;
+        margin: 0.5em 0 0.3em 0;
         font-weight: 600;
         line-height: 1.3;
     }
@@ -3485,12 +3599,12 @@ const styles = `
     }
 
     .message ul, .message ol {
-        margin: 0.6em 0;
+        margin: 0.4em 0;
         padding-left: 1.5em;
     }
 
     .message li {
-        margin: 0.3em 0;
+        margin: 0.15em 0;
         line-height: 1.4;
     }
 
@@ -3503,7 +3617,7 @@ const styles = `
     }
 
     .message p {
-        margin: 0.5em 0;
+        margin: 0.25em 0;
         line-height: 1.6;
     }
 
