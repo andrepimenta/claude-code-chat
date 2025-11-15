@@ -252,7 +252,7 @@ class ClaudeChatProvider {
 	private _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
+				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.images, message.imageUris);
 				return;
 			case 'branchFromMessage':
 				this._branchFromMessage(message.messageIndex);
@@ -309,6 +309,14 @@ class ClaudeChatProvider {
 				this._openFileInEditor(message.filePath);
 				return;
 			case 'createImageFile':
+				console.log('Received createImageFile message:', JSON.stringify({
+					hasImageData: !!message.imageData,
+					imageDataType: typeof message.imageData,
+					imageDataLength: message.imageData?.length,
+					hasImageType: !!message.imageType,
+					imageType: message.imageType,
+					imageTypeType: typeof message.imageType
+				}));
 				this._createImageFile(message.imageData, message.imageType);
 				return;
 			case 'permissionResponse':
@@ -416,7 +424,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean) {
+	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[], imageUris?: string[]) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -451,6 +459,11 @@ class ClaudeChatProvider {
 			actualMessage = thinkingPrompt + thinkingMesssage + actualMessage;
 		}
 
+		// Add image paths to message if images are attached
+		if (images && images.length > 0) {
+			actualMessage = actualMessage + '\n\n' + images.join('\n');
+		}
+
 		this._isProcessing = true;
 
 		// Clear draft message since we're sending it
@@ -459,7 +472,9 @@ class ClaudeChatProvider {
 		// Show original user input in chat and save to conversation (without mode prefixes)
 		this._sendAndSaveMessage({
 			type: 'userInput',
-			data: message
+			data: message,
+			images: images || [],
+			imageUris: imageUris || []
 		});
 
 		// Set processing state to true
@@ -2229,7 +2244,7 @@ class ClaudeChatProvider {
 		return path.join(configPath);
 	}
 
-	private _sendAndSaveMessage(message: { type: string, data: any }): void {
+	private _sendAndSaveMessage(message: { type: string, data: any, images?: string[], imageUris?: string[] }): void {
 
 		// Initialize conversation if this is the first message
 		if (this._currentConversation.length === 0) {
@@ -2243,7 +2258,9 @@ class ClaudeChatProvider {
 		this._currentConversation.push({
 			timestamp: new Date().toISOString(),
 			messageType: message.type,
-			data: message.data
+			data: message.data,
+			...(message.images ? { images: message.images } : {}),
+			...(message.imageUris ? { imageUris: message.imageUris } : {})
 		});
 
 		// Persist conversation
@@ -2439,6 +2456,7 @@ class ClaudeChatProvider {
 	}
 
 	private async _selectImageFile(): Promise<void> {
+		console.log('_selectImageFile called');
 		try {
 			// Show VS Code's native file picker for images
 			const result = await vscode.window.showOpenDialog({
@@ -2452,13 +2470,25 @@ class ClaudeChatProvider {
 			});
 
 			if (result && result.length > 0) {
+				console.log(`Selected ${result.length} image file(s)`);
 				// Send the selected file paths back to webview
 				result.forEach(uri => {
-					this._postMessage({
+					console.log('Sending image path to webview:', uri.fsPath);
+					// Convert to webview URI for display
+					const webviewUri = this._webview?.asWebviewUri(uri).toString() || '';
+					const messageData = {
 						type: 'imagePath',
-						path: uri.fsPath
-					});
+						data: {
+							filePath: uri.fsPath,
+							webviewUri: webviewUri,
+							fileName: uri.fsPath.split(/[/\\]/).pop() || 'image'
+						}
+					};
+					console.log('Message to send:', JSON.stringify(messageData));
+					this._postMessage(messageData);
 				});
+			} else {
+				console.log('No files selected or dialog cancelled');
 			}
 
 		} catch (error) {
@@ -2857,17 +2887,26 @@ class ClaudeChatProvider {
 	}
 
 	private async _createImageFile(imageData: string, imageType: string) {
+		console.log('_createImageFile called');
+		console.log('imageData type:', typeof imageData, 'length:', imageData?.length);
+		console.log('imageType:', imageType, 'type:', typeof imageType);
 		try {
 			// Validate inputs
 			if (!imageData || typeof imageData !== 'string') {
-				vscode.window.showErrorMessage('Invalid image data provided');
+				const errorMsg = `Invalid image data provided - received type: ${typeof imageData}, has value: ${!!imageData}`;
+				console.error(errorMsg);
+				vscode.window.showErrorMessage(errorMsg);
 				return;
 			}
 
 			if (!imageType || typeof imageType !== 'string') {
-				vscode.window.showErrorMessage('Invalid image type provided');
+				const errorMsg = `Invalid image type provided - received: "${imageType}" (type: ${typeof imageType})`;
+				console.error(errorMsg);
+				vscode.window.showErrorMessage(errorMsg);
 				return;
 			}
+
+			console.log('Validation passed! imageType:', imageType);
 
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 			if (!workspaceFolder) {
@@ -2948,7 +2987,8 @@ class ClaudeChatProvider {
 				this._postMessage({
 					type: 'imagePath',
 					data: {
-						filePath: imagePath.fsPath
+						filePath: imagePath.fsPath,
+					fileName: imageFileName
 					}
 				});
 

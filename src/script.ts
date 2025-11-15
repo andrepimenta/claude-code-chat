@@ -16,6 +16,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
 		let messageIndex = 0; // Track message index for branching
+		let attachedImages = []; // Track attached images {filePath, fileName}
 
 		// Icon helper functions
 		const icons = {
@@ -60,24 +61,58 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		}
 
-		function addMessage(content, type = 'claude', msgIndex = null) {
+		function addMessage(content, type = 'claude', msgIndex = null, images = null) {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
-			
+
 			const messageDiv = document.createElement('div');
 			messageDiv.className = \`message \${type}\`;
-			
+
 			// Assign message index if not provided
 			if (msgIndex === null) {
 				msgIndex = messageIndex++;
 			}
 			messageDiv.setAttribute('data-message-index', msgIndex);
-			
-			// For user messages, only show restore button box (content already in input)
+
+			// For user messages, show message content and images if any
 			if (type === 'user') {
+				// Add text content if present
+				if (content && content.trim()) {
+					const textDiv = document.createElement('div');
+					textDiv.className = 'user-message-text';
+					textDiv.innerHTML = content;
+					messageDiv.appendChild(textDiv);
+				}
+
+				// Add images if present (show as attachment badges)
+				if (images && images.length > 0) {
+					const attachmentsContainer = document.createElement('div');
+					attachmentsContainer.className = 'user-message-attachments';
+					images.forEach(imgUri => {
+						const badge = document.createElement('div');
+						badge.className = 'attachment-badge';
+
+						const icon = document.createElement('span');
+						icon.className = 'attachment-icon';
+						icon.innerHTML = '🖼️';
+
+						// Extract filename from URI
+						const filename = imgUri.split('/').pop() || 'image';
+						const label = document.createElement('span');
+						label.className = 'attachment-label';
+						label.textContent = decodeURIComponent(filename);
+
+						badge.appendChild(icon);
+						badge.appendChild(label);
+						attachmentsContainer.appendChild(badge);
+					});
+					messageDiv.appendChild(attachmentsContainer);
+				}
+
+				// Add restore button box
 				const restoreBox = document.createElement('div');
 				restoreBox.className = 'user-restore-box';
-				
+
 				const restoreBtn = document.createElement('button');
 				restoreBtn.className = 'user-restore-btn';
 				restoreBtn.onclick = (e) => {
@@ -85,7 +120,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					restoreMessageToInput(content);
 				};
 				restoreBtn.innerHTML = \`<span class="restore-icon">\${icons.restore}</span><span class="restore-text">Restore</span>\`;
-				
+
 				restoreBox.appendChild(restoreBtn);
 				messageDiv.appendChild(restoreBox);
 			} else {
@@ -1072,15 +1107,19 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		function sendMessage() {
 			const text = messageInput.value.trim();
-			if (text) {
+			if (text || attachedImages.length > 0) {
 				vscode.postMessage({
 					type: 'sendMessage',
 					text: text,
 					planMode: planModeEnabled,
-					thinkingMode: thinkingModeEnabled
+					thinkingMode: thinkingModeEnabled,
+					images: attachedImages.map(img => img.filePath),
+					imageUris: attachedImages.map(img => img.webviewUri)
 				});
-				
+
 				messageInput.value = '';
+				attachedImages = [];
+				renderImagePreviews();
 			}
 		}
 
@@ -1279,24 +1318,41 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					let hasImage = false;
 					for (let i = 0; i < clipboardData.items.length; i++) {
 						const item = clipboardData.items[i];
-						if (item.type.startsWith('image/')) {
+						if (item.type && item.type.startsWith('image/')) {
 							// Found an image, handle it
 							console.log('Image detected in clipboard:', item.type);
 							hasImage = true;
+
+							// IMPORTANT: Capture item.type in a variable BEFORE async operations
+							// to avoid closure issues
+							const imageType = item.type;
+							console.log('Captured imageType:', imageType, 'typeof:', typeof imageType);
 							const blob = item.getAsFile();
-							if (blob) {
+							console.log('Blob obtained:', !!blob, 'size:', blob?.size);
+
+							if (blob && imageType) {
 								console.log('Converting image blob to base64...');
+								console.log('Image type captured:', imageType);
 								// Convert blob to base64
 								const reader = new FileReader();
 								reader.onload = function(event) {
 									const base64Data = event.target.result;
+									console.log('Image converted to base64, length:', base64Data?.length);
+									console.log('Image type in callback:', imageType);
 									console.log('Sending image to extension for file creation');
-									// Send to extension to create file
-									vscode.postMessage({
+									const messageData = {
 										type: 'createImageFile',
 										imageData: base64Data,
-										imageType: item.type
-									});
+										imageType: imageType
+									};
+									console.log('Message to send:', JSON.stringify({
+										type: messageData.type,
+										hasImageData: !!messageData.imageData,
+										imageDataLength: messageData.imageData?.length,
+										imageType: messageData.imageType
+									}));
+									// Send to extension to create file
+									vscode.postMessage(messageData);
 								};
 								reader.readAsDataURL(blob);
 							}
@@ -2367,9 +2423,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					break;
 					
 				case 'userInput':
-					if (message.data.trim()) {
+					if (message.data.trim() || (message.images && message.images.length > 0)) {
 						const msgIdx = message.messageIndex !== undefined ? message.messageIndex : null;
-						addMessage(parseSimpleMarkdown(message.data), 'user', msgIdx);
+						addMessage(parseSimpleMarkdown(message.data), 'user', msgIdx, message.imageUris);
 						// Update messageIndex counter to ensure it's always ahead of loaded messages
 						if (msgIdx !== null && msgIdx >= messageIndex) {
 							messageIndex = msgIdx + 1;
@@ -2474,30 +2530,31 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					
 				case 'imagePath':
 					// Handle image file path response
-					if (message.data.filePath) {
-						// Get current cursor position and content
-						const cursorPosition = messageInput.selectionStart || messageInput.value.length;
-						const currentValue = messageInput.value || '';
-						
-						// Insert the file path at the current cursor position
-						const textBefore = currentValue.substring(0, cursorPosition);
-						const textAfter = currentValue.substring(cursorPosition);
-						
-						// Add a space before the path if there's text before and it doesn't end with whitespace
-						const separator = (textBefore && !textBefore.endsWith(' ') && !textBefore.endsWith('\\n')) ? ' ' : '';
-						
-						messageInput.value = textBefore + separator + message.data.filePath + textAfter;
-						
-						// Move cursor to end of inserted path
-						const newCursorPosition = cursorPosition + separator.length + message.data.filePath.length;
-						messageInput.setSelectionRange(newCursorPosition, newCursorPosition);
-						
-						// Focus back on textarea and adjust height
+					console.log('Received imagePath message:', JSON.stringify(message));
+				if (message.data && message.data.filePath) {
+						// Add to attached images array
+						attachedImages.push({
+							filePath: message.data.filePath,
+							webviewUri: message.data.webviewUri,
+							fileName: message.data.fileName
+						});
+
+						// Render image previews
+						renderImagePreviews();
+
+						// Focus back on textarea
 						messageInput.focus();
-						adjustTextareaHeight();
-						
-						console.log('Inserted image path:', message.data.filePath);
-						console.log('Full textarea value:', messageInput.value);
+
+						// Show feedback notification
+						if (message.data.fileName) {
+							console.log('Calling showImageAddedFeedback with:', message.data.fileName);
+							showImageAddedFeedback(message.data.fileName);
+						}
+
+						console.log('Added image attachment:', message.data.filePath);
+						console.log('Total attached images:', attachedImages.length);
+					} else {
+						console.error('Invalid imagePath - missing data or filePath:', JSON.stringify(message));
 					}
 					break;
 					
@@ -2621,17 +2678,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					selectedFileIndex = -1;
 					renderFileList();
 					break;
-					
-				case 'imagePath':
-					// Add the image path to the textarea
-					const currentText = messageInput.value;
-					const pathIndicator = \`@\${message.path} \`;
-					messageInput.value = currentText + pathIndicator;
-					messageInput.focus();
-					adjustTextareaHeight();
-					break;
-					
-				case 'conversationList':
+					case 'conversationList':
 					displayConversationList(message.data);
 					break;
 				case 'clipboardText':
@@ -3247,12 +3294,72 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		// Image handling functions
 		function selectImage() {
+			console.log('selectImage function called');
 			// Use VS Code's native file picker instead of browser file picker
 			vscode.postMessage({
 				type: 'selectImageFile'
 			});
+			console.log('selectImageFile message sent to extension');
 		}
 
+
+		function renderImagePreviews() {
+			// Get or create preview container
+			let previewContainer = document.getElementById('imagePreviewContainer');
+			if (!previewContainer) {
+				previewContainer = document.createElement('div');
+				previewContainer.id = 'imagePreviewContainer';
+				previewContainer.className = 'image-preview-container';
+
+				// Insert before the input container
+				const inputContainer = document.querySelector('.input-container');
+				inputContainer.parentElement.insertBefore(previewContainer, inputContainer);
+			}
+
+			// Clear and render
+			previewContainer.innerHTML = '';
+
+			if (attachedImages.length === 0) {
+				previewContainer.style.display = 'none';
+				return;
+			}
+
+			previewContainer.style.display = 'flex';
+
+			attachedImages.forEach((img, index) => {
+				const badge = document.createElement('div');
+				badge.className = 'image-attachment-badge';
+
+				// Image icon
+				const icon = document.createElement('span');
+				icon.className = 'attachment-icon';
+				icon.innerHTML = '🖼️';
+
+				// Filename
+				const filename = document.createElement('span');
+				filename.className = 'attachment-filename';
+				filename.textContent = img.fileName;
+
+				// Remove button
+				const removeBtn = document.createElement('button');
+				removeBtn.className = 'attachment-remove';
+				removeBtn.innerHTML = '×';
+				removeBtn.onclick = (e) => {
+					e.stopPropagation();
+					removeImageAttachment(index);
+				};
+
+				badge.appendChild(icon);
+				badge.appendChild(filename);
+				badge.appendChild(removeBtn);
+				previewContainer.appendChild(badge);
+			});
+		}
+
+		function removeImageAttachment(index) {
+			attachedImages.splice(index, 1);
+			renderImagePreviews();
+		}
 
 		function showImageAddedFeedback(fileName) {
 			// Create temporary feedback element
@@ -3271,12 +3378,12 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				opacity: 0;
 				transition: opacity 0.3s ease;
 			\`;
-			
+
 			document.body.appendChild(feedback);
-			
+
 			// Animate in
 			setTimeout(() => feedback.style.opacity = '1', 10);
-			
+
 			// Animate out and remove
 			setTimeout(() => {
 				feedback.style.opacity = '0';

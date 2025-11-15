@@ -1363,6 +1363,42 @@ const styles = `
         opacity: 0.7;
     }
 
+    /* User message text and attachments */
+    .user-message-text {
+        margin-bottom: 8px;
+        color: var(--vscode-foreground);
+    }
+
+    .user-message-attachments {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+    }
+
+    .attachment-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 8px;
+        background-color: var(--vscode-input-background);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 3px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    .attachment-badge .attachment-icon {
+        font-size: 12px;
+    }
+
+    .attachment-badge .attachment-label {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     /* User Restore Box - Only shows restore button for user messages */
     .user-restore-box {
         display: flex;
@@ -2163,6 +2199,62 @@ const styles = `
         opacity: 0.8;
     }
 
+    .image-preview-container {
+        display: none;
+        gap: 6px;
+        padding: 6px 16px;
+        background-color: var(--vscode-editor-background);
+        border-top: 1px solid var(--vscode-panel-border);
+        flex-wrap: wrap;
+    }
+
+    .image-attachment-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 8px;
+        background-color: var(--vscode-input-background);
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 4px;
+        font-size: 12px;
+        transition: all 0.15s ease;
+    }
+
+    .image-attachment-badge:hover {
+        background-color: var(--vscode-list-hoverBackground);
+    }
+
+    .attachment-icon {
+        font-size: 14px;
+        line-height: 1;
+    }
+
+    .attachment-filename {
+        max-width: 150px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--vscode-foreground);
+        font-size: 11px;
+    }
+
+    .attachment-remove {
+        background: none;
+        border: none;
+        color: var(--vscode-foreground);
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 0 2px;
+        opacity: 0.6;
+        transition: opacity 0.15s ease;
+    }
+
+    .attachment-remove:hover {
+        opacity: 1;
+        color: var(--vscode-errorForeground);
+    }
+
     .input-container {
         padding: 12px 16px;
         border-top: 1px solid var(--vscode-panel-border);
@@ -2375,57 +2467,50 @@ const styles = `
     }
 
     .send-btn {
-        background-color: var(--vscode-button-background);
-        color: var(--vscode-button-foreground);
-        border: none;
-        padding: 10px 18px;
-        border-radius: 8px;
+        background-color: var(--vscode-input-background);
+        color: var(--vscode-foreground);
+        border: 1px solid var(--vscode-panel-border);
+        padding: 6px 12px;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 13px;
-        font-weight: 600;
-        transition: all 0.2s ease;
+        font-size: 12px;
+        font-weight: 500;
+        transition: all 0.15s ease;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
-        min-width: 80px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        gap: 5px;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', system-ui, sans-serif;
     }
 
     .send-btn svg {
-        width: 16px;
-        height: 16px;
+        width: 14px;
+        height: 14px;
         flex-shrink: 0;
-        stroke-width: 2.5;
+        stroke-width: 2;
     }
 
     .send-btn span {
         line-height: 1;
-        letter-spacing: 0.01em;
     }
 
     .send-btn:hover {
-        background-color: var(--vscode-button-hoverBackground);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-        transform: translateY(-1px);
+        background-color: var(--vscode-list-hoverBackground);
+        border-color: var(--vscode-focusBorder);
     }
 
     .send-btn:active {
-        transform: translateY(0);
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        background-color: var(--vscode-list-activeSelectionBackground);
     }
 
     .send-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
     }
 
     .send-btn:disabled:hover {
-        transform: none;
-        box-shadow: none;
+        background-color: var(--vscode-input-background);
+        border-color: var(--vscode-panel-border);
     }
 
     .secondary-button {
