@@ -1145,7 +1145,7 @@ class ClaudeChatProvider {
 			} else if (status.trim()) {
 				actualMessage = commitMessage;
 			} else {
-				actualMessage = `Checkpoint (no changes): ${safeMessage}${userMessage && userMessage.length > 50 ? '...' : ''}`;
+				actualMessage = `User: ${safeMessage}${userMessage && userMessage.length > 50 ? '...' : ''}`;
 			}
 
 			// Escape message for shell to prevent injection

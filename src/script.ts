@@ -2838,7 +2838,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 			restoreContainer.innerHTML = \`
 				<div class="checkpoint-header">
-					<span class="checkpoint-label">Checkpoint</span>
+					<span class="checkpoint-label">User</span>
 					<span class="checkpoint-sha">\${shortSha}</span>
 				</div>
 				<div class="checkpoint-info">
