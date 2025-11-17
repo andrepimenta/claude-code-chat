@@ -108,6 +108,8 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
+	private _preRestoreCommit: { sha: string, message: string } | undefined;
+	private _restoreCommit: { sha: string, message: string } | undefined; // Store restore commit for redo
 	private _conversationsPath: string | undefined;
 	private _permissionRequestsPath: string | undefined;
 	private _permissionWatcher: vscode.FileSystemWatcher | undefined;
@@ -250,13 +252,22 @@ class ClaudeChatProvider {
 	private _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
+				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.images, message.imageUris);
+				return;
+			case 'branchFromMessage':
+				this._branchFromMessage(message.messageIndex);
 				return;
 			case 'newSession':
 				this._newSession();
 				return;
 			case 'restoreCommit':
 				this._restoreToCommit(message.commitSha);
+				return;
+			case 'undoRestore':
+				this._undoRestore();
+				return;
+			case 'redoRestore':
+				this._redoRestore();
 				return;
 			case 'getConversationList':
 				this._sendConversationList();
@@ -298,6 +309,14 @@ class ClaudeChatProvider {
 				this._openFileInEditor(message.filePath);
 				return;
 			case 'createImageFile':
+				console.log('Received createImageFile message:', JSON.stringify({
+					hasImageData: !!message.imageData,
+					imageDataType: typeof message.imageData,
+					imageDataLength: message.imageData?.length,
+					hasImageType: !!message.imageType,
+					imageType: message.imageType,
+					imageTypeType: typeof message.imageType
+				}));
 				this._createImageFile(message.imageData, message.imageType);
 				return;
 			case 'permissionResponse':
@@ -405,7 +424,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean) {
+	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[], imageUris?: string[]) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -440,6 +459,11 @@ class ClaudeChatProvider {
 			actualMessage = thinkingPrompt + thinkingMesssage + actualMessage;
 		}
 
+		// Add image paths to message if images are attached
+		if (images && images.length > 0) {
+			actualMessage = actualMessage + '\n\n' + images.join('\n');
+		}
+
 		this._isProcessing = true;
 
 		// Clear draft message since we're sending it
@@ -448,7 +472,9 @@ class ClaudeChatProvider {
 		// Show original user input in chat and save to conversation (without mode prefixes)
 		this._sendAndSaveMessage({
 			type: 'userInput',
-			data: message
+			data: message,
+			images: images || [],
+			imageUris: imageUris || []
 		});
 
 		// Set processing state to true
@@ -565,12 +591,26 @@ class ClaudeChatProvider {
 				rawOutput = lines.pop() || ''; // Keep incomplete line for next chunk
 
 				for (const line of lines) {
-					if (line.trim()) {
+					const trimmedLine = line.trim();
+					if (trimmedLine) {
 						try {
-							const jsonData = JSON.parse(line.trim());
-							this._processJsonStreamData(jsonData);
+							const jsonData = JSON.parse(trimmedLine);
+							// Validate JSON structure before processing
+							if (jsonData && typeof jsonData === 'object') {
+								this._processJsonStreamData(jsonData);
+							} else {
+								console.warn('Invalid JSON structure:', jsonData);
+							}
 						} catch (error) {
-							console.log('Failed to parse JSON line:', line, error);
+							// Log but don't crash - might be partial JSON or non-JSON output
+							console.log('Failed to parse JSON line:', trimmedLine.substring(0, 100), error);
+							// If it looks like an error message, show it to user
+							if (trimmedLine.toLowerCase().includes('error') || trimmedLine.toLowerCase().includes('failed')) {
+								this._sendAndSaveMessage({
+									type: 'error',
+									data: trimmedLine
+								});
+							}
 						}
 					}
 				}
@@ -608,12 +648,32 @@ class ClaudeChatProvider {
 				data: { isProcessing: false }
 			});
 
-			if (code !== 0 && errorOutput.trim()) {
-				// Error with output
-				this._sendAndSaveMessage({
-					type: 'error',
-					data: errorOutput.trim()
-				});
+			// Handle non-zero exit codes
+			if (code !== 0) {
+				const errorMsg = errorOutput.trim();
+				if (errorMsg) {
+					// Check for specific error types
+					if (errorMsg.includes('Invalid API key') || errorMsg.includes('authentication')) {
+						this._handleLoginRequired();
+					} else if (errorMsg.includes('ENOENT') || errorMsg.includes('command not found')) {
+						this._sendAndSaveMessage({
+							type: 'error',
+							data: 'Claude Code CLI not found. Please install it from https://www.anthropic.com/claude-code'
+						});
+					} else {
+						// Generic error
+						this._sendAndSaveMessage({
+							type: 'error',
+							data: errorMsg || `Process exited with code ${code}`
+						});
+					}
+				} else if (code !== null && code !== undefined) {
+					// Exit code but no error message
+					this._sendAndSaveMessage({
+						type: 'error',
+						data: `Process exited with code ${code}`
+					});
+				}
 			}
 		});
 
@@ -697,50 +757,70 @@ class ClaudeChatProvider {
 					}
 
 					// Process each content item in the assistant message
-					for (const content of jsonData.message.content) {
-						if (content.type === 'text' && content.text.trim()) {
-							// Show text content and save to conversation
-							this._sendAndSaveMessage({
-								type: 'output',
-								data: content.text.trim()
-							});
-						} else if (content.type === 'thinking' && content.thinking.trim()) {
-							// Show thinking content and save to conversation
-							this._sendAndSaveMessage({
-								type: 'thinking',
-								data: content.thinking.trim()
-							});
-						} else if (content.type === 'tool_use') {
-							// Show tool execution with better formatting
-							const toolInfo = `🔧 Executing: ${content.name}`;
-							let toolInput = '';
-
-							if (content.input) {
-								// Special formatting for TodoWrite to make it more readable
-								if (content.name === 'TodoWrite' && content.input.todos) {
-									toolInput = '\nTodo List Update:';
-									for (const todo of content.input.todos) {
-										const status = todo.status === 'completed' ? '✅' :
-											todo.status === 'in_progress' ? '🔄' : '⏳';
-										toolInput += `\n${status} ${todo.content} (priority: ${todo.priority})`;
-									}
-								} else {
-									// Send raw input to UI for formatting
-									toolInput = '';
-								}
+					if (Array.isArray(jsonData.message.content)) {
+						for (const content of jsonData.message.content) {
+							if (!content || !content.type) {
+								console.warn('Invalid content item:', content);
+								continue;
 							}
-
-							// Show tool use and save to conversation
-							this._sendAndSaveMessage({
-								type: 'toolUse',
-								data: {
-									toolInfo: toolInfo,
-									toolInput: toolInput,
-									rawInput: content.input,
-									toolName: content.name
+							
+							if (content.type === 'text' && content.text && content.text.trim()) {
+								// Show text content and save to conversation
+								this._sendAndSaveMessage({
+									type: 'output',
+									data: content.text.trim()
+								});
+							} else if (content.type === 'thinking' && content.thinking && content.thinking.trim()) {
+								// Show thinking content and save to conversation
+								this._sendAndSaveMessage({
+									type: 'thinking',
+									data: content.thinking.trim()
+								});
+							} else if (content.type === 'tool_use') {
+								// Validate tool_use content
+								if (!content.name) {
+									console.warn('Tool use missing name:', content);
+									continue;
 								}
-							});
+								
+								// Show tool execution with better formatting
+								const toolInfo = `🔧 Executing: ${content.name}`;
+								let toolInput = '';
+
+								if (content.input) {
+									// Special formatting for TodoWrite to make it more readable
+									if (content.name === 'TodoWrite' && content.input.todos && Array.isArray(content.input.todos)) {
+										toolInput = '\nTodo List Update:';
+										for (const todo of content.input.todos) {
+											if (todo && typeof todo === 'object') {
+												const status = todo.status === 'completed' ? '[Done]' :
+													todo.status === 'in_progress' ? '[Active]' : '[Pending]';
+												const contentText = todo.content || '(no content)';
+												const priority = todo.priority ? ` (priority: ${todo.priority})` : '';
+												toolInput += `\n${status} ${contentText}${priority}`;
+											}
+										}
+									} else {
+										// Send raw input to UI for formatting
+										toolInput = '';
+									}
+								}
+
+								// Show tool use and save to conversation
+								this._sendAndSaveMessage({
+									type: 'toolUse',
+									data: {
+										toolInfo: toolInfo,
+										toolInput: toolInput,
+										rawInput: content.input || {},
+										toolName: content.name,
+										toolUseId: content.id || content.tool_use_id || undefined
+									}
+								});
+							}
 						}
+					} else {
+						console.warn('Message content is not an array:', jsonData.message.content);
 					}
 				}
 				break;
@@ -748,21 +828,36 @@ class ClaudeChatProvider {
 			case 'user':
 				if (jsonData.message && jsonData.message.content) {
 					// Process tool results from user messages
-					for (const content of jsonData.message.content) {
-						if (content.type === 'tool_result') {
-							let resultContent = content.content || 'Tool executed successfully';
-
-							// Stringify if content is an object or array
-							if (typeof resultContent === 'object' && resultContent !== null) {
-								resultContent = JSON.stringify(resultContent, null, 2);
+					if (Array.isArray(jsonData.message.content)) {
+						for (const content of jsonData.message.content) {
+							if (!content || content.type !== 'tool_result') {
+								continue;
+							}
+							let resultContent = content.content;
+							
+							// Handle null/undefined content
+							if (resultContent === null || resultContent === undefined) {
+								resultContent = 'Tool executed successfully (no output)';
+							} else if (typeof resultContent === 'string' && resultContent.trim() === '') {
+								resultContent = 'Tool executed successfully (empty output)';
+							} else {
+								// Stringify if content is an object or array
+								if (typeof resultContent === 'object') {
+									try {
+										resultContent = JSON.stringify(resultContent, null, 2);
+									} catch (error) {
+										console.error('Failed to stringify tool result:', error);
+										resultContent = '[Unable to format result]';
+									}
+								}
 							}
 
 							const isError = content.is_error || false;
 
 							// Find the last tool use to get the tool name
-							const lastToolUse = this._currentConversation[this._currentConversation.length - 1]
+							const lastToolUse = this._currentConversation[this._currentConversation.length - 1];
 
-							const toolName = lastToolUse?.data?.toolName;
+							const toolName = lastToolUse?.data?.toolName || 'Unknown';
 
 							// Don't send tool result for Read and Edit tools unless there's an error
 							if ((toolName === 'Read' || toolName === 'Edit' || toolName === 'TodoWrite' || toolName === 'MultiEdit') && !isError) {
@@ -784,12 +879,14 @@ class ClaudeChatProvider {
 									data: {
 										content: resultContent,
 										isError: isError,
-										toolUseId: content.tool_use_id,
+										toolUseId: content.tool_use_id || content.id,
 										toolName: toolName
 									}
 								});
 							}
 						}
+					} else {
+						console.warn('User message content is not an array:', jsonData.message.content);
 					}
 				}
 				break;
@@ -890,6 +987,8 @@ class ClaudeChatProvider {
 		this._commits = [];
 		this._currentConversation = [];
 		this._conversationStartTime = undefined;
+		this._preRestoreCommit = undefined;
+		this._restoreCommit = undefined;
 
 		// Reset counters
 		this._totalCost = 0;
@@ -919,7 +1018,7 @@ class ClaudeChatProvider {
 		// Send message to webview about the config change
 		this._sendAndSaveMessage({
 			type: 'configChanged',
-			data: '⚙️ WSL configuration changed. Started a new session.'
+			data: 'WSL configuration changed. Started a new session.'
 		});
 	}
 
@@ -1003,16 +1102,38 @@ class ClaudeChatProvider {
 	private async _createBackupCommit(userMessage: string): Promise<void> {
 		try {
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-			if (!workspaceFolder || !this._backupRepoPath) { return; }
+			if (!workspaceFolder || !this._backupRepoPath) { 
+				console.log('Skipping backup commit: no workspace folder or backup repo path');
+				return; 
+			}
 
 			const workspacePath = workspaceFolder.uri.fsPath;
+			if (!workspacePath || workspacePath.trim() === '') {
+				console.warn('Invalid workspace path');
+				return;
+			}
+
 			const now = new Date();
 			const timestamp = now.toISOString().replace(/[:.]/g, '-');
 			const displayTimestamp = now.toISOString();
-			const commitMessage = `Before: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
+			const safeMessage = (userMessage || '').substring(0, 50).replace(/"/g, "'").replace(/\n/g, ' ');
+			const commitMessage = `User: ${safeMessage}${userMessage && userMessage.length > 50 ? '...' : ''}`;
+
+			// Validate git is available
+			try {
+				await exec('git --version');
+			} catch (error) {
+				console.warn('Git not available, skipping backup commit');
+				return;
+			}
 
 			// Add all files using git-dir and work-tree (excludes .git automatically)
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			} catch (error: any) {
+				console.warn('Failed to add files to git:', error.message);
+				// Continue anyway - might be empty repo or permission issue
+			}
 
 			// Check if this is the first commit (no HEAD exists yet)
 			let isFirstCommit = false;
@@ -1023,53 +1144,286 @@ class ClaudeChatProvider {
 			}
 
 			// Check if there are changes to commit
-			const { stdout: status } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" status --porcelain`);
+			let status = '';
+			try {
+				const statusResult = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" status --porcelain`);
+				status = statusResult.stdout || '';
+			} catch (error: any) {
+				console.warn('Failed to check git status:', error.message);
+				// Continue with empty status
+			}
 
 			// Always create a checkpoint, even if no files changed
 			let actualMessage;
 			if (isFirstCommit) {
-				actualMessage = `Initial backup: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
+				actualMessage = `Initial backup: ${safeMessage}${userMessage && userMessage.length > 50 ? '...' : ''}`;
 			} else if (status.trim()) {
 				actualMessage = commitMessage;
 			} else {
-				actualMessage = `Checkpoint (no changes): ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
+				actualMessage = `User: ${safeMessage}${userMessage && userMessage.length > 50 ? '...' : ''}`;
 			}
 
+			// Escape message for shell to prevent injection
+			const escapedMessage = actualMessage.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/`/g, '\\`');
+
 			// Create commit with --allow-empty to ensure checkpoint is always created
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "${actualMessage}"`);
-			const { stdout: sha } = await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "${escapedMessage}"`);
+				const { stdout: sha } = await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
 
-			// Store commit info
-			const commitInfo = {
-				id: `commit-${timestamp}`,
-				sha: sha.trim(),
-				message: actualMessage,
-				timestamp: displayTimestamp
-			};
+				// Store commit info
+				const commitInfo = {
+					id: `commit-${timestamp}`,
+					sha: (sha || '').trim(),
+					message: actualMessage,
+					timestamp: displayTimestamp
+				};
 
-			this._commits.push(commitInfo);
+				if (commitInfo.sha) {
+					this._commits.push(commitInfo);
 
-			// Show restore option in UI and save to conversation
-			this._sendAndSaveMessage({
-				type: 'showRestoreOption',
-				data: commitInfo
-			});
+					// Show restore option in UI and save to conversation
+					this._sendAndSaveMessage({
+						type: 'showRestoreOption',
+						data: commitInfo
+					});
 
-			console.log(`Created backup commit: ${commitInfo.sha.substring(0, 8)} - ${actualMessage}`);
+					console.log(`Created backup commit: ${commitInfo.sha.substring(0, 8)} - ${actualMessage}`);
+				} else {
+					console.warn('Failed to get commit SHA');
+				}
+			} catch (commitError: any) {
+				console.error('Failed to create commit:', commitError.message);
+				// Don't throw - checkpoint creation failure shouldn't block the conversation
+			}
 		} catch (error: any) {
 			console.error('Failed to create backup commit:', error.message);
+			// Don't throw - checkpoint creation failure shouldn't block the conversation
 		}
 	}
 
 
 	private async _restoreToCommit(commitSha: string): Promise<void> {
 		try {
+			// Validate commit SHA
+			if (!commitSha || typeof commitSha !== 'string' || commitSha.trim() === '') {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Invalid commit SHA provided'
+				});
+				return;
+			}
+
 			const commit = this._commits.find(c => c.sha === commitSha);
 			if (!commit) {
 				this._postMessage({
 					type: 'restoreError',
-					data: 'Commit not found'
+					data: `Commit ${commitSha.substring(0, 8)} not found in checkpoint history`
 				});
+				return;
+			}
+
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder || !this._backupRepoPath) {
+				vscode.window.showErrorMessage('No workspace folder or backup repository available.');
+				this._postMessage({
+					type: 'restoreError',
+					data: 'No workspace folder or backup repository available'
+				});
+				return;
+			}
+
+			const workspacePath = workspaceFolder.uri.fsPath;
+			if (!workspacePath || workspacePath.trim() === '') {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Invalid workspace path'
+				});
+				return;
+			}
+
+			// Validate git is available
+			try {
+				await exec('git --version');
+			} catch (error) {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Git is not available. Please install Git to use restore functionality.'
+				});
+				return;
+			}
+
+			// Validate commit exists in git repo
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" cat-file -e ${commitSha}`);
+			} catch (error) {
+				this._postMessage({
+					type: 'restoreError',
+					data: `Commit ${commitSha.substring(0, 8)} does not exist in backup repository`
+				});
+				return;
+			}
+
+			this._postMessage({
+				type: 'restoreProgress',
+				data: 'Restoring files from backup...'
+			});
+
+			// Save current state before restoring
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+				const { stdout: currentSha } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "Pre-restore snapshot"`);
+				const shaMatch = currentSha.match(/\[.*?([a-f0-9]+)\]/);
+				if (shaMatch && shaMatch[1]) {
+					this._preRestoreCommit = {
+						sha: shaMatch[1],
+						message: 'State before restore'
+					};
+				} else {
+					console.warn('Could not extract SHA from commit output:', currentSha);
+				}
+			} catch (error: any) {
+				console.warn('Failed to create pre-restore snapshot:', error.message);
+				// Continue anyway - restore might still work
+			}
+
+			// Restore files directly to workspace using git reset hard
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" reset --hard ${commitSha}`);
+
+			// Store restore commit for potential redo (clear any previous restore commit)
+			this._restoreCommit = {
+				sha: commitSha,
+				message: commit.message || 'Unknown checkpoint'
+			};
+
+			vscode.window.showInformationMessage(`Restored to commit: ${commit.message || commitSha.substring(0, 8)}`);
+
+			this._sendAndSaveMessage({
+				type: 'restoreSuccess',
+				data: {
+					message: `Successfully restored to: ${commit.message || commitSha.substring(0, 8)}`,
+					commitSha: commitSha,
+					canUndo: !!this._preRestoreCommit
+				}
+			});
+
+		} catch (error: any) {
+			console.error('Failed to restore commit:', error.message);
+			const errorMsg = error.message || 'Unknown error occurred during restore';
+			vscode.window.showErrorMessage(`Failed to restore commit: ${errorMsg}`);
+			this._postMessage({
+				type: 'restoreError',
+				data: `Failed to restore: ${errorMsg}`
+			});
+		}
+	}
+
+	private async _undoRestore(): Promise<void> {
+		try {
+			if (!this._preRestoreCommit || !this._preRestoreCommit.sha) {
+				vscode.window.showErrorMessage('No previous state available to restore.');
+				this._postMessage({
+					type: 'restoreError',
+					data: 'No previous state available to restore'
+				});
+				return;
+			}
+
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder || !this._backupRepoPath) {
+				vscode.window.showErrorMessage('No workspace folder or backup repository available.');
+				this._postMessage({
+					type: 'restoreError',
+					data: 'No workspace folder or backup repository available'
+				});
+				return;
+			}
+
+			const workspacePath = workspaceFolder.uri.fsPath;
+			if (!workspacePath || workspacePath.trim() === '') {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Invalid workspace path'
+				});
+				return;
+			}
+
+			// Validate git is available
+			try {
+				await exec('git --version');
+			} catch (error) {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Git is not available. Please install Git to use undo functionality.'
+				});
+				return;
+			}
+
+			// Validate commit exists
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" cat-file -e ${this._preRestoreCommit.sha}`);
+			} catch (error) {
+				this._postMessage({
+					type: 'restoreError',
+					data: `Pre-restore commit ${this._preRestoreCommit.sha.substring(0, 8)} does not exist`
+				});
+				return;
+			}
+
+			this._postMessage({
+				type: 'restoreProgress',
+				data: 'Undoing restore...'
+			});
+
+			// Save restore commit for potential redo before clearing
+			const restoreCommitForRedo = this._restoreCommit;
+
+			// Restore to the pre-restore state using git reset hard
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" reset --hard ${this._preRestoreCommit.sha}`);
+
+			vscode.window.showInformationMessage('Successfully undone restore operation.');
+
+			this._sendAndSaveMessage({
+				type: 'undoRestoreSuccess',
+				data: {
+					message: 'Successfully undone restore operation',
+					canRedo: !!restoreCommitForRedo
+				}
+			});
+
+			// Clear the pre-restore commit since we've used it
+			this._preRestoreCommit = undefined;
+			
+			// Keep restore commit for redo, but swap pre-restore commit to current state
+			// Save current state as new pre-restore commit for future undo
+			try {
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+				const { stdout: currentSha } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "Pre-restore snapshot"`);
+				const shaMatch = currentSha.match(/\[.*?([a-f0-9]+)\]/);
+				if (shaMatch) {
+					this._preRestoreCommit = {
+						sha: shaMatch[1],
+						message: 'State before restore'
+					};
+				}
+			} catch (error) {
+				console.error('Failed to save pre-restore state:', error);
+			}
+
+		} catch (error: any) {
+			console.error('Failed to undo restore:', error.message);
+			vscode.window.showErrorMessage(`Failed to undo restore: ${error.message}`);
+			this._postMessage({
+				type: 'restoreError',
+				data: `Failed to undo restore: ${error.message}`
+			});
+		}
+	}
+
+	private async _redoRestore(): Promise<void> {
+		try {
+			if (!this._restoreCommit) {
+				vscode.window.showErrorMessage('No restore operation available to redo.');
 				return;
 			}
 
@@ -1083,28 +1437,39 @@ class ClaudeChatProvider {
 
 			this._postMessage({
 				type: 'restoreProgress',
-				data: 'Restoring files from backup...'
+				data: 'Redoing restore...'
 			});
 
-			// Restore files directly to workspace using git checkout
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
+			// Save current state before redoing restore
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			const { stdout: currentSha } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "Pre-restore snapshot"`);
+			const shaMatch = currentSha.match(/\[.*?([a-f0-9]+)\]/);
+			if (shaMatch) {
+				this._preRestoreCommit = {
+					sha: shaMatch[1],
+					message: 'State before restore'
+				};
+			}
 
-			vscode.window.showInformationMessage(`Restored to commit: ${commit.message}`);
+			// Restore to the restore commit using git reset hard
+			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" reset --hard ${this._restoreCommit.sha}`);
+
+			vscode.window.showInformationMessage(`Redone restore to commit: ${this._restoreCommit.message}`);
 
 			this._sendAndSaveMessage({
-				type: 'restoreSuccess',
+				type: 'redoRestoreSuccess',
 				data: {
-					message: `Successfully restored to: ${commit.message}`,
-					commitSha: commitSha
+					message: `Successfully redone restore to: ${this._restoreCommit.message}`,
+					canUndo: true
 				}
 			});
 
 		} catch (error: any) {
-			console.error('Failed to restore commit:', error.message);
-			vscode.window.showErrorMessage(`Failed to restore commit: ${error.message}`);
+			console.error('Failed to redo restore:', error.message);
+			vscode.window.showErrorMessage(`Failed to redo restore: ${error.message}`);
 			this._postMessage({
 				type: 'restoreError',
-				data: `Failed to restore: ${error.message}`
+				data: `Failed to redo restore: ${error.message}`
 			});
 		}
 	}
@@ -1228,26 +1593,81 @@ class ClaudeChatProvider {
 
 	private async _handlePermissionRequest(requestUri: vscode.Uri): Promise<void> {
 		try {
-			// Read the request file
-			const content = await vscode.workspace.fs.readFile(requestUri);
-			const request = JSON.parse(new TextDecoder().decode(content));
+			// Validate URI
+			if (!requestUri || requestUri.scheme !== 'file') {
+				console.warn('Invalid permission request URI:', requestUri);
+				return;
+			}
 
-			// Show permission dialog
-			const approved = await this._showPermissionDialog(request);
+			// Read the request file
+			let content: Uint8Array;
+			try {
+				content = await vscode.workspace.fs.readFile(requestUri);
+			} catch (error: any) {
+				console.error('Failed to read permission request file:', error.message);
+				return;
+			}
+
+			if (!content || content.length === 0) {
+				console.warn('Permission request file is empty');
+				return;
+			}
+
+			// Parse JSON
+			let request: any;
+			try {
+				const decoded = new TextDecoder().decode(content);
+				request = JSON.parse(decoded);
+			} catch (error: any) {
+				console.error('Failed to parse permission request JSON:', error.message);
+				// Try to clean up invalid request file
+				try {
+					await vscode.workspace.fs.delete(requestUri);
+				} catch {}
+				return;
+			}
+
+			// Validate request structure
+			if (!request || !request.id) {
+				console.warn('Invalid permission request structure:', request);
+				try {
+					await vscode.workspace.fs.delete(requestUri);
+				} catch {}
+				return;
+			}
+
+			// Show permission dialog with timeout
+			const timeoutPromise = new Promise<boolean>((resolve) => {
+				setTimeout(() => {
+					console.warn(`Permission request ${request.id} timed out, defaulting to deny`);
+					resolve(false);
+				}, 300000); // 5 minute timeout
+			});
+
+			const dialogPromise = this._showPermissionDialog(request);
+			const approved = await Promise.race([dialogPromise, timeoutPromise]);
 
 			// Write response file
 			const responseFile = requestUri.fsPath.replace('.request', '.response');
 			const response = {
-				id: request.id,
+				id: request.id || 'unknown',
 				approved: approved,
 				timestamp: new Date().toISOString()
 			};
 
-			const responseContent = new TextEncoder().encode(JSON.stringify(response));
-			await vscode.workspace.fs.writeFile(vscode.Uri.file(responseFile), responseContent);
+			try {
+				const responseContent = new TextEncoder().encode(JSON.stringify(response));
+				await vscode.workspace.fs.writeFile(vscode.Uri.file(responseFile), responseContent);
+			} catch (error: any) {
+				console.error('Failed to write permission response:', error.message);
+			}
 
 			// Clean up request file
-			await vscode.workspace.fs.delete(requestUri);
+			try {
+				await vscode.workspace.fs.delete(requestUri);
+			} catch (error: any) {
+				console.warn('Failed to delete permission request file:', error.message);
+			}
 
 		} catch (error: any) {
 			console.error('Failed to handle permission request:', error.message);
@@ -1255,31 +1675,50 @@ class ClaudeChatProvider {
 	}
 
 	private async _showPermissionDialog(request: any): Promise<boolean> {
-		const toolName = request.tool || 'Unknown Tool';
+		try {
+			const toolName = request.tool || 'Unknown Tool';
+			const requestId = request.id || `req_${Date.now()}`;
 
-		// Generate pattern for Bash commands
-		let pattern = undefined;
-		if (toolName === 'Bash' && request.input?.command) {
-			pattern = this.getCommandPattern(request.input.command);
-		}
-
-		// Send permission request to the UI
-		this._sendAndSaveMessage({
-			type: 'permissionRequest',
-			data: {
-				id: request.id,
-				tool: toolName,
-				input: request.input,
-				pattern: pattern
+			// Generate pattern for Bash commands
+			let pattern = undefined;
+			if (toolName === 'Bash' && request.input && typeof request.input === 'object' && request.input.command) {
+				try {
+					pattern = this.getCommandPattern(String(request.input.command));
+				} catch (error) {
+					console.warn('Failed to generate command pattern:', error);
+				}
 			}
-		});
 
-		// Wait for response from UI
-		return new Promise((resolve) => {
-			// Store the resolver so we can call it when we get the response
-			this._pendingPermissionResolvers = this._pendingPermissionResolvers || new Map();
-			this._pendingPermissionResolvers.set(request.id, resolve);
-		});
+			// Send permission request to the UI
+			this._sendAndSaveMessage({
+				type: 'permissionRequest',
+				data: {
+					id: requestId,
+					tool: toolName,
+					input: request.input || {},
+					pattern: pattern
+				}
+			});
+
+			// Wait for response from UI with timeout
+			return new Promise<boolean>((resolve) => {
+				// Store the resolver so we can call it when we get the response
+				this._pendingPermissionResolvers = this._pendingPermissionResolvers || new Map();
+				this._pendingPermissionResolvers.set(requestId, resolve);
+
+				// Set timeout to auto-deny after 5 minutes
+				setTimeout(() => {
+					if (this._pendingPermissionResolvers && this._pendingPermissionResolvers.has(requestId)) {
+						console.warn(`Permission request ${requestId} timed out, defaulting to deny`);
+						this._pendingPermissionResolvers.delete(requestId);
+						resolve(false);
+					}
+				}, 300000); // 5 minutes
+			});
+		} catch (error: any) {
+			console.error('Failed to show permission dialog:', error.message);
+			return false; // Default to deny on error
+		}
 	}
 
 	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean): void {
@@ -1805,7 +2244,7 @@ class ClaudeChatProvider {
 		return path.join(configPath);
 	}
 
-	private _sendAndSaveMessage(message: { type: string, data: any }): void {
+	private _sendAndSaveMessage(message: { type: string, data: any, images?: string[], imageUris?: string[] }): void {
 
 		// Initialize conversation if this is the first message
 		if (this._currentConversation.length === 0) {
@@ -1819,11 +2258,43 @@ class ClaudeChatProvider {
 		this._currentConversation.push({
 			timestamp: new Date().toISOString(),
 			messageType: message.type,
-			data: message.data
+			data: message.data,
+			...(message.images ? { images: message.images } : {}),
+			...(message.imageUris ? { imageUris: message.imageUris } : {})
 		});
 
 		// Persist conversation
 		void this._saveCurrentConversation();
+	}
+
+	private _branchFromMessage(messageIndex: number): void {
+		// Find the user message at the specified index
+		// We need to count user messages to find the right one
+		let userMessageCount = 0;
+		let targetIndex = -1;
+		
+		for (let i = 0; i < this._currentConversation.length; i++) {
+			if (this._currentConversation[i].messageType === 'userInput') {
+				if (userMessageCount === messageIndex) {
+					targetIndex = i;
+					break;
+				}
+				userMessageCount++;
+			}
+		}
+		
+		if (targetIndex === -1) {
+			console.error(`Could not find user message at index ${messageIndex}`);
+			return;
+		}
+		
+		// Truncate conversation to keep only messages up to and including the target user message
+		this._currentConversation = this._currentConversation.slice(0, targetIndex + 1);
+		
+		// Clear the current session ID to start a new branch
+		this._currentSessionId = undefined;
+		
+		console.log(`Branched conversation from message index ${messageIndex}, kept ${this._currentConversation.length} messages`);
 	}
 
 	private async _saveCurrentConversation(): Promise<void> {
@@ -1889,47 +2360,94 @@ class ClaudeChatProvider {
 
 	private async _sendWorkspaceFiles(searchTerm?: string): Promise<void> {
 		try {
-			// Always get all files and filter on the backend for better search results
-			const files = await vscode.workspace.findFiles(
-				'**/*',
-				'{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/.nuxt/**,**/target/**,**/bin/**,**/obj/**}',
-				500 // Reasonable limit for filtering
-			);
+			// Check if workspace is available
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) {
+				this._postMessage({
+					type: 'workspaceFiles',
+					data: []
+				});
+				return;
+			}
 
-			let fileList = files.map(file => {
-				const relativePath = vscode.workspace.asRelativePath(file);
-				return {
-					name: file.path.split('/').pop() || '',
-					path: relativePath,
-					fsPath: file.fsPath
-				};
-			});
+			// Always get all files and filter on the backend for better search results
+			let files: vscode.Uri[];
+			try {
+				files = await vscode.workspace.findFiles(
+					'**/*',
+					'{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/.nuxt/**,**/target/**,**/bin/**,**/obj/**}',
+					500 // Reasonable limit for filtering
+				);
+			} catch (error: any) {
+				console.error('Error finding workspace files:', error.message);
+				this._postMessage({
+					type: 'workspaceFiles',
+					data: []
+				});
+				return;
+			}
+
+			if (!files || !Array.isArray(files)) {
+				this._postMessage({
+					type: 'workspaceFiles',
+					data: []
+				});
+				return;
+			}
+
+			let fileList = files
+				.filter(file => file && file.fsPath) // Filter out invalid files
+				.map(file => {
+					try {
+						const relativePath = vscode.workspace.asRelativePath(file);
+						const pathParts = file.path.split('/');
+						return {
+							name: pathParts[pathParts.length - 1] || relativePath || 'unknown',
+							path: relativePath || file.fsPath,
+							fsPath: file.fsPath
+						};
+					} catch (error) {
+						console.warn('Error processing file:', file, error);
+						return null;
+					}
+				})
+				.filter((file): file is { name: string; path: string; fsPath: string } => file !== null);
 
 			// Filter results based on search term
-			if (searchTerm && searchTerm.trim()) {
-				const term = searchTerm.toLowerCase();
+			if (searchTerm && typeof searchTerm === 'string' && searchTerm.trim()) {
+				const term = searchTerm.toLowerCase().trim();
 				fileList = fileList.filter(file => {
-					const fileName = file.name.toLowerCase();
-					const filePath = file.path.toLowerCase();
+					try {
+						const fileName = (file.name || '').toLowerCase();
+						const filePath = (file.path || '').toLowerCase();
 
-					// Check if term matches filename or any part of the path
-					return fileName.includes(term) ||
-						filePath.includes(term) ||
-						filePath.split('/').some(segment => segment.includes(term));
+						// Check if term matches filename or any part of the path
+						return fileName.includes(term) ||
+							filePath.includes(term) ||
+							filePath.split('/').some(segment => segment.includes(term));
+					} catch (error) {
+						return false;
+					}
 				});
 			}
 
 			// Sort and limit results
 			fileList = fileList
-				.sort((a, b) => a.name.localeCompare(b.name))
+				.sort((a, b) => {
+					try {
+						return (a.name || '').localeCompare(b.name || '');
+					} catch (error) {
+						return 0;
+					}
+				})
 				.slice(0, 50);
 
 			this._postMessage({
 				type: 'workspaceFiles',
 				data: fileList
 			});
-		} catch (error) {
-			console.error('Error getting workspace files:', error);
+		} catch (error: any) {
+			console.error('Error getting workspace files:', error.message || error);
 			this._postMessage({
 				type: 'workspaceFiles',
 				data: []
@@ -1938,6 +2456,7 @@ class ClaudeChatProvider {
 	}
 
 	private async _selectImageFile(): Promise<void> {
+		console.log('_selectImageFile called');
 		try {
 			// Show VS Code's native file picker for images
 			const result = await vscode.window.showOpenDialog({
@@ -1951,13 +2470,25 @@ class ClaudeChatProvider {
 			});
 
 			if (result && result.length > 0) {
+				console.log(`Selected ${result.length} image file(s)`);
 				// Send the selected file paths back to webview
 				result.forEach(uri => {
-					this._postMessage({
+					console.log('Sending image path to webview:', uri.fsPath);
+					// Convert to webview URI for display
+					const webviewUri = this._webview?.asWebviewUri(uri).toString() || '';
+					const messageData = {
 						type: 'imagePath',
-						path: uri.fsPath
-					});
+						data: {
+							filePath: uri.fsPath,
+							webviewUri: webviewUri,
+							fileName: uri.fsPath.split(/[/\\]/).pop() || 'image'
+						}
+					};
+					console.log('Message to send:', JSON.stringify(messageData));
+					this._postMessage(messageData);
 				});
+			} else {
+				console.log('No files selected or dialog cancelled');
 			}
 
 		} catch (error) {
@@ -2000,7 +2531,7 @@ class ClaudeChatProvider {
 			// Send stop confirmation message directly to UI and save
 			this._sendAndSaveMessage({
 				type: 'error',
-				data: '⏹️ Claude code was stopped.'
+				data: 'Claude code was stopped.'
 			});
 
 			console.log('Claude process termination initiated');
@@ -2082,6 +2613,9 @@ class ClaudeChatProvider {
 				// Small delay to ensure messages are cleared before loading new ones
 				setTimeout(() => {
 					const messages = this._currentConversation;
+					let userMessageIndex = 0; // Track user message index for branching
+					let maxUserMessageIndex = -1; // Track the highest user message index
+					
 					for (let i = 0; i < messages.length; i++) {
 
 						const message = messages[i];
@@ -2093,17 +2627,32 @@ class ClaudeChatProvider {
 							}
 						}
 
-						this._postMessage({
+						const postMessage: any = {
 							type: message.messageType,
 							data: message.data
-						});
+						};
+						
+						// Add message index for user messages to enable branching
 						if (message.messageType === 'userInput') {
+							postMessage.messageIndex = userMessageIndex;
+							maxUserMessageIndex = userMessageIndex;
+							userMessageIndex++;
 							try {
 								requestStartTime = new Date(message.timestamp).getTime()
 							} catch (e) {
 								console.log(e)
 							}
 						}
+						
+						this._postMessage(postMessage);
+					}
+					
+					// Send message to set the messageIndex counter correctly after loading
+					if (maxUserMessageIndex >= 0) {
+						this._postMessage({
+							type: 'setMessageIndex',
+							data: { messageIndex: maxUserMessageIndex + 1 }
+						});
 					}
 
 					// Send updated totals
@@ -2338,50 +2887,127 @@ class ClaudeChatProvider {
 	}
 
 	private async _createImageFile(imageData: string, imageType: string) {
+		console.log('_createImageFile called');
+		console.log('imageData type:', typeof imageData, 'length:', imageData?.length);
+		console.log('imageType:', imageType, 'type:', typeof imageType);
 		try {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-			if (!workspaceFolder) { return; }
-
-			// Extract base64 data from data URL
-			const base64Data = imageData.split(',')[1];
-			const buffer = Buffer.from(base64Data, 'base64');
-
-			// Get file extension from image type
-			const extension = imageType.split('/')[1] || 'png';
-
-			// Create unique filename with timestamp
-			const timestamp = Date.now();
-			const imageFileName = `image_${timestamp}.${extension}`;
-
-			// Create images folder in workspace .claude directory
-			const imagesDir = vscode.Uri.joinPath(workspaceFolder.uri, '.claude', 'claude-code-chat-images');
-			await vscode.workspace.fs.createDirectory(imagesDir);
-
-			// Create .gitignore to ignore all images
-			const gitignorePath = vscode.Uri.joinPath(imagesDir, '.gitignore');
-			try {
-				await vscode.workspace.fs.stat(gitignorePath);
-			} catch {
-				// .gitignore doesn't exist, create it
-				const gitignoreContent = new TextEncoder().encode('*\n');
-				await vscode.workspace.fs.writeFile(gitignorePath, gitignoreContent);
+			// Validate inputs
+			if (!imageData || typeof imageData !== 'string') {
+				const errorMsg = `Invalid image data provided - received type: ${typeof imageData}, has value: ${!!imageData}`;
+				console.error(errorMsg);
+				vscode.window.showErrorMessage(errorMsg);
+				return;
 			}
 
-			// Create the image file
-			const imagePath = vscode.Uri.joinPath(imagesDir, imageFileName);
-			await vscode.workspace.fs.writeFile(imagePath, buffer);
+			if (!imageType || typeof imageType !== 'string') {
+				const errorMsg = `Invalid image type provided - received: "${imageType}" (type: ${typeof imageType})`;
+				console.error(errorMsg);
+				vscode.window.showErrorMessage(errorMsg);
+				return;
+			}
 
-			// Send the file path back to webview
-			this._postMessage({
-				type: 'imagePath',
-				data: {
-					filePath: imagePath.fsPath
+			console.log('Validation passed! imageType:', imageType);
+
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			if (!workspaceFolder) {
+				vscode.window.showErrorMessage('No workspace folder available');
+				return;
+			}
+
+			// Extract base64 data from data URL
+			let base64Data: string;
+			if (imageData.includes(',')) {
+				base64Data = imageData.split(',')[1];
+			} else {
+				base64Data = imageData; // Assume it's already base64
+			}
+
+			if (!base64Data || base64Data.trim() === '') {
+				vscode.window.showErrorMessage('Empty image data');
+				return;
+			}
+
+			// Validate base64 data
+			try {
+				const buffer = Buffer.from(base64Data, 'base64');
+				if (buffer.length === 0) {
+					vscode.window.showErrorMessage('Invalid base64 image data');
+					return;
 				}
-			});
 
-		} catch (error) {
+				// Check file size (limit to 10MB)
+				const maxSize = 10 * 1024 * 1024; // 10MB
+				if (buffer.length > maxSize) {
+					vscode.window.showErrorMessage(`Image file too large (${Math.round(buffer.length / 1024 / 1024)}MB). Maximum size is 10MB.`);
+					return;
+				}
+
+				// Get file extension from image type
+				const extension = imageType.split('/')[1] || 'png';
+				const validExtensions = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'];
+				const safeExtension = validExtensions.includes(extension.toLowerCase()) ? extension.toLowerCase() : 'png';
+
+				// Create unique filename with timestamp
+				const timestamp = Date.now();
+				const imageFileName = `image_${timestamp}.${safeExtension}`;
+
+				// Create images folder in workspace .claude directory
+				const imagesDir = vscode.Uri.joinPath(workspaceFolder.uri, '.claude', 'claude-code-chat-images');
+				try {
+					await vscode.workspace.fs.createDirectory(imagesDir);
+				} catch (error: any) {
+					// Directory might already exist, check if it's a different error
+					try {
+						await vscode.workspace.fs.stat(imagesDir);
+					} catch {
+						throw new Error(`Failed to create images directory: ${error.message}`);
+					}
+				}
+
+				// Create .gitignore to ignore all images
+				const gitignorePath = vscode.Uri.joinPath(imagesDir, '.gitignore');
+				try {
+					await vscode.workspace.fs.stat(gitignorePath);
+				} catch {
+					// .gitignore doesn't exist, create it
+					try {
+						const gitignoreContent = new TextEncoder().encode('*\n');
+						await vscode.workspace.fs.writeFile(gitignorePath, gitignoreContent);
+					} catch (error: any) {
+						console.warn('Failed to create .gitignore:', error.message);
+						// Continue anyway
+					}
+				}
+
+				// Create the image file
+				const imagePath = vscode.Uri.joinPath(imagesDir, imageFileName);
+				await vscode.workspace.fs.writeFile(imagePath, buffer);
+
+				// Send the file path back to webview
+				this._postMessage({
+					type: 'imagePath',
+					data: {
+						filePath: imagePath.fsPath,
+					fileName: imageFileName
+					}
+				});
+
+			} catch (error: any) {
+				if (error.message && error.message.includes('Invalid base64')) {
+					vscode.window.showErrorMessage('Invalid base64 image data');
+				} else {
+					throw error;
+				}
+			}
+
+		} catch (error: any) {
 			console.error('Error creating image file:', error);
-			vscode.window.showErrorMessage('Failed to create image file');
+			const errorMsg = error.message || 'Unknown error occurred';
+			vscode.window.showErrorMessage(`Failed to create image file: ${errorMsg}`);
+			this._postMessage({
+				type: 'error',
+				data: `Failed to create image file: ${errorMsg}`
+			});
 		}
 	}
 

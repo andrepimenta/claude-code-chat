@@ -9,6 +9,36 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Claude Code Chat</title>
 	${styles}
+	<script>
+		// Icon definitions for UI
+		window.icons = {
+			history: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+			computer: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>',
+			book: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>',
+			brain: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44L6.5 19.5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5v-5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5 2.5 2.5 0 0 0 2-2.5h.5A2.5 2.5 0 0 1 9.5 2z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44L17.5 19.5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5v-5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5 2.5 2.5 0 0 1-2-2.5h-.5A2.5 2.5 0 0 0 14.5 2z"></path></svg>',
+			folder: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+			plus: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+			zap: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>',
+			lock: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>',
+			search: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>',
+			bookOpen: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>',
+			bug: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"></rect><path d="M10 6h4"></path><path d="M12 6v14"></path><rect x="5" y="8" width="14" height="8" rx="1"></rect><path d="M7 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path></svg>',
+			flask: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6l-3 3v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8l-3-3V2"></path><line x1="9" y1="2" x2="15" y2="2"></line></svg>',
+			dollar: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>',
+			heart: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>',
+			help: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+			rocket: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5.5 0 5.5s3.24-1.5 5.5-3.5"></path><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg>',
+			key: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="1"></circle><path d="M15.5 11A5.5 5.5 0 1 1 9.5 11"></path><path d="M20 8l-6 6"></path><path d="M14 8l-6 6"></path></svg>',
+			door: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>',
+			plug: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
+			message: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>',
+			eye: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+			rewind: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>',
+			barChart: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"></line><line x1="18" x2="18" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="16"></line></svg>',
+			trending: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>',
+			robot: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>'
+		};
+	</script>
 </head>
 <body>
 	<div class="header">
@@ -22,8 +52,8 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 		<div style="display: flex; gap: 8px; align-items: center;">
 			<div id="sessionStatus" class="session-status" style="display: none;">No session</div>
-			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
-			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 History</button>
+			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">Settings</button>
+			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()"><span style="display: inline-flex; align-items: center; gap: 4px;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg> History</span></button>
 			<button class="btn primary" id="newSessionBtn" onclick="newSession()">New Chat</button>
 		</div>
 	</div>
@@ -44,7 +74,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		<!-- WSL Alert for Windows users -->
 		<div id="wslAlert" class="wsl-alert" style="display: none;">
 			<div class="wsl-alert-content">
-				<div class="wsl-alert-icon">💻</div>
+				<div class="wsl-alert-icon" style="display: inline-flex; align-items: center; justify-content: center;"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></div>
 				<div class="wsl-alert-text">
 					<strong>Looks like you are using Windows!</strong><br/>
 					If you are using WSL to run Claude Code, you should enable WSL integration in the settings.
@@ -101,21 +131,12 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 								</g>
 							</svg>
 							</button>
-							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
-							<div>
-							<span>Send </span>
-							   <svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								width="11"
-								height="11"
-								>
-								<path
-									fill="currentColor"
-									d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"
-								></path>
+							<button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send message (Enter)">
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<line x1="22" y1="2" x2="11" y2="13"></line>
+									<polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
 								</svg>
-								</div>
+								<span>Send</span>
 							</button>
 						</div>
 					</div>
@@ -127,16 +148,16 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div class="status ready" id="status">
 		<div class="status-indicator"></div>
 		<div class="status-text" id="statusText">Initializing...</div>
-		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
-			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-				<path d="M6 6h12v12H6z"/>
+		<button class="stop-btn" id="stopBtn" onclick="stopRequest()" style="display: none;" title="Stop request">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+				<rect x="6" y="6" width="12" height="12" rx="2"></rect>
 			</svg>
-			Stop
+			<span>Stop</span>
 		</button>
 	</div>
 
 			<div id="yoloWarning" class="yolo-warning" style="display: none;">
-			⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.
+			Yolo Mode Active: Claude Code will auto-approve all tool requests.
 		</div>
 
 	<!-- File picker modal -->
@@ -170,42 +191,42 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<h4>Popular MCP Servers</h4>
 					<div class="popular-servers-grid">
 						<div class="popular-server-item" onclick="addPopularServer('context7', { type: 'http', url: 'https://context7.liam.sh/mcp' })">
-							<div class="popular-server-icon">📚</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Context7</div>
 								<div class="popular-server-desc">Up-to-date Code Docs For Any Prompt</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('sequential-thinking', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] })">
-							<div class="popular-server-icon">🔗</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Sequential Thinking</div>
 								<div class="popular-server-desc">Step-by-step reasoning capabilities</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('memory', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] })">
-							<div class="popular-server-icon">🧠</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44L6.5 19.5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5v-5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5 2.5 2.5 0 0 0 2-2.5h.5A2.5 2.5 0 0 1 9.5 2z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44L17.5 19.5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5v-5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5 2.5 2.5 0 0 1-2-2.5h-.5A2.5 2.5 0 0 0 14.5 2z"></path></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Memory</div>
 								<div class="popular-server-desc">Knowledge graph storage</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('puppeteer', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer'] })">
-							<div class="popular-server-icon">🎭</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Puppeteer</div>
 								<div class="popular-server-desc">Browser automation</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('fetch', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-fetch'] })">
-							<div class="popular-server-icon">🌐</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Fetch</div>
 								<div class="popular-server-desc">HTTP requests & web scraping</div>
 							</div>
 						</div>
 						<div class="popular-server-item" onclick="addPopularServer('filesystem', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] })">
-							<div class="popular-server-icon">📁</div>
+							<div class="popular-server-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
 							<div class="popular-server-info">
 								<div class="popular-server-name">Filesystem</div>
 								<div class="popular-server-desc">File operations & management</div>
@@ -452,7 +473,7 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				<div class="slash-commands-list" id="promptSnippetsList">
 					<!-- Add Custom Snippet Button -->
 					<div class="slash-command-item add-snippet-item" onclick="showAddSnippetForm()">
-						<div class="slash-command-icon">➕</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">Add Custom Command</div>
 							<div class="slash-command-description">Create your own slash command</div>
@@ -480,56 +501,56 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					
 					<!-- Built-in Snippets -->
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('performance-analysis')">
-						<div class="slash-command-icon">⚡</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/performance-analysis</div>
 							<div class="slash-command-description">Analyze this code for performance issues and suggest optimizations</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('security-review')">
-						<div class="slash-command-icon">🔒</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/security-review</div>
 							<div class="slash-command-description">Review this code for security vulnerabilities</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('implementation-review')">
-						<div class="slash-command-icon">🔍</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/implementation-review</div>
 							<div class="slash-command-description">Review the implementation in this code</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('code-explanation')">
-						<div class="slash-command-icon">📖</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/code-explanation</div>
 							<div class="slash-command-description">Explain how this code works in detail</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('bug-fix')">
-						<div class="slash-command-icon">🐛</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"></rect><path d="M10 6h4"></path><path d="M12 6v14"></path><rect x="5" y="8" width="14" height="8" rx="1"></rect><path d="M7 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/bug-fix</div>
 							<div class="slash-command-description">Help me fix this bug in my code</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('refactor')">
-						<div class="slash-command-icon">🔄</div>
+						
 						<div class="slash-command-content">
 							<div class="slash-command-title">/refactor</div>
 							<div class="slash-command-description">Refactor this code to improve readability and maintainability</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('test-generation')">
-						<div class="slash-command-icon">🧪</div>
+						<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6l-3 3v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-8l-3-3V2"></path><line x1="9" y1="2" x2="15" y2="2"></line></svg></div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/test-generation</div>
 							<div class="slash-command-description">Generate comprehensive tests for this code</div>
 						</div>
 					</div>
 					<div class="slash-command-item prompt-snippet-item" onclick="usePromptSnippet('documentation')">
-						<div class="slash-command-icon">📝</div>
+						
 						<div class="slash-command-content">
 							<div class="slash-command-title">/documentation</div>
 							<div class="slash-command-description">Generate documentation for this code</div>
@@ -546,28 +567,28 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				</div>
 				<div class="slash-commands-list" id="nativeCommandsList">
 				<div class="slash-command-item" onclick="executeSlashCommand('add-dir')">
-					<div class="slash-command-icon">📁</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/add-dir</div>
 						<div class="slash-command-description">Add additional working directories</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('agents')">
-					<div class="slash-command-icon">🤖</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/agents</div>
 						<div class="slash-command-description">Manage custom AI subagents for specialized tasks</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('bug')">
-					<div class="slash-command-icon">🐛</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"></rect><path d="M10 6h4"></path><path d="M12 6v14"></path><rect x="5" y="8" width="14" height="8" rx="1"></rect><path d="M7 8V6a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/bug</div>
 						<div class="slash-command-description">Report bugs (sends conversation to Anthropic)</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('clear')">
-					<div class="slash-command-icon">🗑️</div>
+					
 					<div class="slash-command-content">
 						<div class="slash-command-title">/clear</div>
 						<div class="slash-command-description">Clear conversation history</div>
@@ -581,133 +602,133 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('config')">
-					<div class="slash-command-icon">⚙️</div>
+					<div class="slash-command-icon">Settings</div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/config</div>
 						<div class="slash-command-description">Open the Settings interface (Config tab)</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('cost')">
-					<div class="slash-command-icon">💰</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/cost</div>
 						<div class="slash-command-description">Show token usage statistics (see cost tracking guide for subscription-specific details)</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('doctor')">
-					<div class="slash-command-icon">🩺</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/doctor</div>
 						<div class="slash-command-description">Checks the health of your Claude Code installation</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('help')">
-					<div class="slash-command-icon">❓</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/help</div>
 						<div class="slash-command-description">Get usage help</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('init')">
-					<div class="slash-command-icon">🚀</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5.5 0 5.5s3.24-1.5 5.5-3.5"></path><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"></path><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"></path><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/init</div>
 						<div class="slash-command-description">Initialize project with CLAUDE.md guide</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('login')">
-					<div class="slash-command-icon">🔑</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="1"></circle><path d="M15.5 11A5.5 5.5 0 1 1 9.5 11"></path><path d="M20 8l-6 6"></path><path d="M14 8l-6 6"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/login</div>
 						<div class="slash-command-description">Switch Anthropic accounts</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('logout')">
-					<div class="slash-command-icon">🚪</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/logout</div>
 						<div class="slash-command-description">Sign out from your Anthropic account</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('mcp')">
-					<div class="slash-command-icon">🔌</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/mcp</div>
 						<div class="slash-command-description">Manage MCP server connections and OAuth authentication</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('memory')">
-					<div class="slash-command-icon">🧠</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44L6.5 19.5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5v-5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5 2.5 2.5 0 0 0 2-2.5h.5A2.5 2.5 0 0 1 9.5 2z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44L17.5 19.5a2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 1 2-2.5 2.5 2.5 0 0 0 2-2.5v-5a2.5 2.5 0 0 0-2-2.5 2.5 2.5 0 0 1-2-2.5 2.5 2.5 0 0 1-2-2.5h-.5A2.5 2.5 0 0 0 14.5 2z"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/memory</div>
 						<div class="slash-command-description">Edit CLAUDE.md memory files</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('model')">
-					<div class="slash-command-icon">🤖</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="9" x2="15" y2="9"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/model</div>
 						<div class="slash-command-description">Select or change the AI model</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('permissions')">
-					<div class="slash-command-icon">🔒</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/permissions</div>
 						<div class="slash-command-description">View or update permissions</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('pr_comments')">
-					<div class="slash-command-icon">💬</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/pr_comments</div>
 						<div class="slash-command-description">View pull request comments</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('review')">
-					<div class="slash-command-icon">👀</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/review</div>
 						<div class="slash-command-description">Request code review</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('rewind')">
-					<div class="slash-command-icon">⏪</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/rewind</div>
 						<div class="slash-command-description">Rewind the conversation and/or code</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('status')">
-					<div class="slash-command-icon">📊</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="20" y2="10"></line><line x1="18" x2="18" y1="20" y2="4"></line><line x1="6" x2="6" y1="20" y2="16"></line></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/status</div>
 						<div class="slash-command-description">Open the Settings interface (Status tab) showing version, model, account, and connectivity</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('terminal-setup')">
-					<div class="slash-command-icon">⌨️</div>
+					
 					<div class="slash-command-content">
 						<div class="slash-command-title">/terminal-setup</div>
 						<div class="slash-command-description">Install Shift+Enter key binding for newlines (iTerm2 and VSCode only)</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('usage')">
-					<div class="slash-command-icon">📈</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">/usage</div>
 						<div class="slash-command-description">Show plan usage limits and rate limit status (subscription plans only)</div>
 					</div>
 				</div>
 				<div class="slash-command-item" onclick="executeSlashCommand('vim')">
-					<div class="slash-command-icon">📝</div>
+					
 					<div class="slash-command-content">
 						<div class="slash-command-title">/vim</div>
 						<div class="slash-command-description">Enter vim mode for alternating insert and command modes</div>
 					</div>
 				</div>
 				<div class="slash-command-item custom-command-item">
-					<div class="slash-command-icon">⚡</div>
+					<div class="slash-command-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></div>
 					<div class="slash-command-content">
 						<div class="slash-command-title">Quick Command</div>
 						<div class="slash-command-description">
