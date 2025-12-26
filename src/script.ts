@@ -2338,16 +2338,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					selectedFileIndex = -1;
 					renderFileList();
 					break;
-					
-				case 'imagePath':
-					// Add the image path to the textarea
-					const currentText = messageInput.value;
-					const pathIndicator = \`@\${message.path} \`;
-					messageInput.value = currentText + pathIndicator;
-					messageInput.focus();
-					adjustTextareaHeight();
-					break;
-					
+
 				case 'conversationList':
 					displayConversationList(message.data);
 					break;
