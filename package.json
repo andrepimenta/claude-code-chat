@@ -2,12 +2,12 @@
   "name": "claude-code-chat",
   "displayName": "Chat for Claude Code",
   "description": "Beautiful Claude Code Chat Interface for VS Code",
-  "version": "1.1.0",
-  "publisher": "AndrePimenta",
-  "author": "Andre Pimenta",
+  "version": "1.1.0-secure",
+  "publisher": "Bansko-Secure",
+  "author": "Bansko (based on work by Andre Pimenta)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/andrepimenta/claude-code-chat"
+    "url": "https://github.com/crunkycrokeydrog9/claude-code-chat"
   },
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -180,11 +180,6 @@
           ],
           "default": "think",
           "description": "Thinking mode intensity level. Higher levels provide more detailed reasoning but consume more tokens."
-        },
-        "claudeCodeChat.permissions.yoloMode": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Yolo Mode to skip all permission checks. Use with caution as Claude can execute any command without asking."
         }
       }
     }

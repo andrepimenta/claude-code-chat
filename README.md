@@ -1,5 +1,10 @@
 # 🚀 Claude Code Chat - Beautiful Claude Code Chat Interface for VS Code
 
+## Security Fork
+
+This is a security-hardened fork of claude-code-chat with YOLO Mode permanently disabled.
+All operations require explicit permission approval.
+
 [![VS Code Extension](https://img.shields.io/badge/VS%20Code-Extension-blue?style=for-the-badge&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=andrepimenta.claude-code-chat)
 [![Claude Code](https://img.shields.io/badge/Powered%20by-Claude%20Code-orange?style=for-the-badge)](https://claude.ai/code)
 [![TypeScript](https://img.shields.io/badge/Built%20with-TypeScript-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
@@ -64,7 +69,6 @@ Ditch the command line and experience Claude Code like never before. This extens
 ### 🔒 **Advanced Permissions System** ⭐ **NEW IN V1.0**
 - **Interactive Permission Dialogs** - Detailed tool information with command previews
 - **Always Allow Functionality** - Smart command pattern matching for common tools (npm, git, docker)
-- **YOLO Mode** - Skip all permission checks for power users
 - **Workspace Permissions** - Granular control over what tools can execute
 - **Real-time Permission Management** - Add/remove permissions through intuitive UI
 
@@ -258,10 +262,6 @@ Example configuration in `settings.json`:
 - **Creates checkpoints automatically** before changes for safe experimentation
 - **Restore instantly** if changes don't work out as expected
 - **NEW**: Permission system prevents accidental tool execution
-- **NEW**: YOLO mode for power users who want speed over safety
-- Use the stop button to cancel long-running operations
-- Copy message contents to reuse Claude's responses
-- Open history panel to reference previous conversations
 - **NEW**: Sidebar integration for multi-panel workflow
 
 ### 🎨 **Interface Customization**
