@@ -109,24 +109,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				contentDiv.appendChild(preElement);
 			}
 			
-			messageDiv.appendChild(contentDiv);
-			
-			// Check if this is a permission-related error and add yolo mode button
-			if (type === 'error' && isPermissionError(content)) {
-				const yoloSuggestion = document.createElement('div');
-				yoloSuggestion.className = 'yolo-suggestion';
-				yoloSuggestion.innerHTML = \`
-					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
-					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
-				\`;
-				messageDiv.appendChild(yoloSuggestion);
-			}
-			
-			messagesDiv.appendChild(messageDiv);
-			moveProcessingIndicatorToLast();
-			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
 
@@ -380,24 +362,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				contentDiv.appendChild(preElement);
 			}
 			
-			messageDiv.appendChild(contentDiv);
-			
-			// Check if this is a permission-related error and add yolo mode button
-			if (data.isError && isPermissionError(content)) {
-				const yoloSuggestion = document.createElement('div');
-				yoloSuggestion.className = 'yolo-suggestion';
-				yoloSuggestion.innerHTML = \`
-					<div class="yolo-suggestion-text">
-						<span>💡 This looks like a permission issue. You can enable Yolo Mode to skip all permission checks.</span>
-					</div>
-					<button class="yolo-suggestion-btn" onclick="enableYoloMode()">Enable Yolo Mode</button>
-				\`;
-				messageDiv.appendChild(yoloSuggestion);
-			}
-			
-			messagesDiv.appendChild(messageDiv);
-			moveProcessingIndicatorToLast();
-			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
 		function formatToolInputUI(input) {
@@ -1215,17 +1179,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			loadMCPServers();
 		}
 		
-		function updateYoloWarning() {
-			const yoloModeCheckbox = document.getElementById('yolo-mode');
-			const warning = document.getElementById('yoloWarning');
-			
-			if (!yoloModeCheckbox || !warning) {
-				return; // Elements not ready yet
-			}
-			
-			const yoloMode = yoloModeCheckbox.checked;
-			warning.style.display = yoloMode ? 'block' : 'none';
-		}
 		
 		function isPermissionError(content) {
 			const permissionErrorPatterns = [
@@ -1246,24 +1199,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			);
 		}
 		
-		function enableYoloMode() {
-			sendStats('YOLO mode enabled');
-			
-			// Update the checkbox
-			const yoloModeCheckbox = document.getElementById('yolo-mode');
-			if (yoloModeCheckbox) {
-				yoloModeCheckbox.checked = true;
-				
-				// Trigger the settings update
-				updateSettings();
-				
-				// Show confirmation message
-				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
-				
-				// Update the warning banner
-				updateYoloWarning();
-			}
-		}
 
 		function hideMCPModal() {
 			document.getElementById('mcpModal').style.display = 'none';
@@ -2424,13 +2359,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						<div class="permission-menu">
 							<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
 							<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
-								<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
-									<span class="menu-icon">⚡</span>
-									<div class="menu-content">
-										<span class="menu-title">Enable YOLO Mode</span>
-										<span class="menu-subtitle">Auto-allow all permissions</span>
-									</div>
-								</button>
 							</div>
 						</div>
 					</div>
@@ -2579,23 +2507,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			menu.style.display = isVisible ? 'none' : 'block';
 		}
 
-		function enableYoloMode(permissionId) {
-			sendStats('YOLO mode enabled');
-			
-			// Hide the menu
-			document.getElementById(\`permissionMenu-\${permissionId}\`).style.display = 'none';
-			
-			// Send message to enable YOLO mode
-			vscode.postMessage({
-				type: 'enableYoloMode'
-			});
-			
-			// Auto-approve this permission
-			respondToPermission(permissionId, true);
-			
-			// Show notification
-			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
-		}
 
 		// Close permission menus when clicking outside
 		document.addEventListener('click', function(event) {
@@ -3085,7 +2996,6 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const wslDistro = document.getElementById('wsl-distro').value;
 			const wslNodePath = document.getElementById('wsl-node-path').value;
 			const wslClaudePath = document.getElementById('wsl-claude-path').value;
-			const yoloMode = document.getElementById('yolo-mode').checked;
 
 			// Update WSL options visibility
 			document.getElementById('wslOptions').style.display = wslEnabled ? 'block' : 'none';
@@ -3097,8 +3007,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					'wsl.enabled': wslEnabled,
 					'wsl.distro': wslDistro || 'Ubuntu',
 					'wsl.nodePath': wslNodePath || '/usr/bin/node',
-					'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude',
-					'permissions.yoloMode': yoloMode
+					'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude'
 				}
 			});
 		}
@@ -3306,10 +3215,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				document.getElementById('wsl-distro').value = message.data['wsl.distro'] || 'Ubuntu';
 				document.getElementById('wsl-node-path').value = message.data['wsl.nodePath'] || '/usr/bin/node';
 				document.getElementById('wsl-claude-path').value = message.data['wsl.claudePath'] || '/usr/local/bin/claude';
-				document.getElementById('yolo-mode').checked = message.data['permissions.yoloMode'] || false;
 				
-				// Update yolo warning visibility
-				updateYoloWarning();
 				
 				// Show/hide WSL options
 				document.getElementById('wslOptions').style.display = message.data['wsl.enabled'] ? 'block' : 'none';

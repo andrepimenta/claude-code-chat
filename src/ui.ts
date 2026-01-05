@@ -135,10 +135,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</button>
 	</div>
 
-			<div id="yoloWarning" class="yolo-warning" style="display: none;">
-			⚠️ Yolo Mode Active: Claude Code will auto-approve all tool requests.
-		</div>
-
 	<!-- File picker modal -->
 	<div id="filePickerModal" class="file-picker-modal" style="display: none;">
 		<div class="file-picker-content">
@@ -340,10 +336,6 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 						<button id="showAddPermissionBtn" class="permissions-show-add-btn" onclick="showAddPermissionForm()">
 							+ Add permission
 						</button>
-						<div class="yolo-mode-section">
-							<input type="checkbox" id="yolo-mode" onchange="updateSettings(); updateYoloWarning();">
-							<label for="yolo-mode">Enable Yolo Mode (Auto-allow all permissions)</label>
-						</div>
 					</div>
 				</div>
 

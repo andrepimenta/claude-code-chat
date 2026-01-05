@@ -380,9 +380,6 @@ class ClaudeChatProvider {
 			case 'deleteCustomSnippet':
 				this._deleteCustomSnippet(message.snippetId);
 				return;
-			case 'enableYoloMode':
-				this._enableYoloMode();
-				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
 				return;
@@ -529,15 +526,9 @@ class ClaudeChatProvider {
 
 		// Get configuration
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const yoloMode = config.get<boolean>('permissions.yoloMode', false);
-
-		if (yoloMode) {
-			// Yolo mode: skip all permissions
-			args.push('--dangerously-skip-permissions');
-		} else {
-			// Use stdio-based permission prompts (no MCP server needed)
-			args.push('--permission-prompt-tool', 'stdio');
-		}
+		// MED:
+		// YOLO Mode permanently disabled for security
+		args.push('--permission-prompt-tool', 'stdio');
 
 		// Add MCP config if user has custom servers configured
 		const mcpConfigPath = this.getMCPConfigPath();
@@ -2592,8 +2583,7 @@ class ClaudeChatProvider {
 			'wsl.enabled': config.get<boolean>('wsl.enabled', false),
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
 			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
-			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
-			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false)
+			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude')
 		};
 
 		this._postMessage({
@@ -2602,48 +2592,35 @@ class ClaudeChatProvider {
 		});
 	}
 
-	private async _enableYoloMode(): Promise<void> {
-		try {
-			// Update VS Code configuration to enable YOLO mode
-			const config = vscode.workspace.getConfiguration('claudeCodeChat');
-
-			// Clear any global setting and set workspace setting
-			await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace);
-
-			console.log('YOLO Mode enabled - all future permissions will be skipped');
-
-			// Send updated settings to UI
-			this._sendCurrentSettings();
-
-		} catch (error) {
-			console.error('Error enabling YOLO mode:', error);
-		}
-	}
+	// YOLO Mode permanently disabled for security
+	// private async _enableYoloMode(): Promise<void> { ... }
+	
 
 	private _saveInputText(text: string): void {
 		this._draftMessage = text || '';
 	}
 
 	private async _updateSettings(settings: { [key: string]: any }): Promise<void> {
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+    const config = vscode.workspace.getConfiguration('claudeCodeChat');
 
-		try {
-			for (const [key, value] of Object.entries(settings)) {
-				if (key === 'permissions.yoloMode') {
-					// YOLO mode is workspace-specific
-					await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-				} else {
-					// Other settings are global (user-wide)
-					await config.update(key, value, vscode.ConfigurationTarget.Global);
-				}
-			}
+    try {
+        for (const [key, value] of Object.entries(settings)) {
+            // SECURITY: YOLO Mode permanently disabled - ignore if passed
+            if (key === 'permissions.yoloMode') {
+                console.log('YOLO Mode is permanently disabled for security');
+                continue; // Skip this setting
+            }
+            
+            // All other settings are global (user-wide)
+            await config.update(key, value, vscode.ConfigurationTarget.Global);
+        }
 
-			console.log('Settings updated:', settings);
-		} catch (error) {
-			console.error('Failed to update settings:', error);
-			vscode.window.showErrorMessage('Failed to update settings');
-		}
-	}
+        console.log('Settings updated:', settings);
+    } catch (error) {
+        console.error('Failed to update settings:', error);
+        vscode.window.showErrorMessage('Failed to update settings');
+    }
+}
 
 	private async _getClipboardText(): Promise<void> {
 		try {
