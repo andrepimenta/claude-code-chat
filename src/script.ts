@@ -123,7 +123,22 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				\`;
 				messageDiv.appendChild(yoloSuggestion);
 			}
-			
+
+			// Add "Edit Plan" button if this is a Claude message with plan content
+			if (type === 'claude' && isPlanContent(content)) {
+				const planActionDiv = document.createElement('div');
+				planActionDiv.className = 'plan-action';
+				planActionDiv.innerHTML = \`
+					<button class="plan-edit-btn" onclick="openPlanFile()" title="Open plan file in editor for editing">
+						<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+							<path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+						</svg>
+						Edit Plan
+					</button>
+				\`;
+				messageDiv.appendChild(planActionDiv);
+			}
+
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
@@ -858,6 +873,24 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			} else {
 				switchElement.classList.remove('active');
 			}
+		}
+
+		function openPlanFile() {
+			vscode.postMessage({ type: 'openPlanFile' });
+		}
+
+		// Check if message content looks like a plan (contains plan-like headings/structure)
+		function isPlanContent(text) {
+			const planIndicators = [
+				/^#+\\s*(plan|implementation plan|approach|strategy)/im,
+				/^#+\\s*step\\s+\\d/im,
+				/^#+\\s*phase\\s+\\d/im,
+				/\\bplan\\s*mode\\b/i,
+				/here('|\u2019)?s\\s+(my|the|a)\\s+plan/i,
+				/implementation\\s+plan/i,
+				/I('|\u2019)?ll\\s+plan/i
+			];
+			return planIndicators.some(regex => regex.test(text));
 		}
 
 		function toggleThinkingMode() {
@@ -2167,6 +2200,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					if (message.data.trim()) {
 						addMessage('💭 Thinking...' + parseSimpleMarkdown(message.data), 'thinking');
 					}
+					break;
+
+				case 'planFileUpdated':
+					addMessage('Plan file "' + message.data.fileName + '" was updated.', 'system');
 					break;
 					
 				case 'sessionInfo':
