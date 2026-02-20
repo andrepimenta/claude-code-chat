@@ -351,7 +351,7 @@ class ClaudeChatProvider {
 				this._createImageFile(message.imageData, message.imageType);
 				return;
 			case 'permissionResponse':
-				this._handlePermissionResponse(message.id, message.approved, message.alwaysAllow);
+				this._handlePermissionResponse(message.id, message.approved, message.alwaysAllow, message.scope);
 				return;
 			case 'getPermissions':
 				this._sendPermissions();
@@ -1500,6 +1500,7 @@ class ClaudeChatProvider {
 		const toolUseId = request.tool_use_id;
 
 		console.log(`Permission request for tool: ${toolName}, requestId: ${requestId}`);
+		console.log('Permission suggestions:', JSON.stringify(suggestions));
 
 		// Check if this tool is pre-approved
 		const isPreApproved = await this._isToolPreApproved(toolName, input);
@@ -1532,6 +1533,20 @@ class ClaudeChatProvider {
 			pattern = this.getCommandPattern(input.command as string);
 		}
 
+		// Compute scope availability from suggestions
+		let hasProjectScope = false;
+		let hasUserScope = false;
+		if (Array.isArray(suggestions)) {
+			for (const suggestion of suggestions) {
+				if (suggestion.destination === 'projectSettings' || suggestion.destination === 'localSettings') {
+					hasProjectScope = true;
+				}
+				if (suggestion.destination === 'userSettings') {
+					hasUserScope = true;
+				}
+			}
+		}
+
 		// Send permission request to the UI with pending status
 		this._sendAndSaveMessage({
 			type: 'permissionRequest',
@@ -1543,7 +1558,9 @@ class ClaudeChatProvider {
 				suggestions: suggestions,
 				decisionReason: request.decision_reason,
 				blockedPath: request.blocked_path,
-				status: 'pending'
+				status: 'pending',
+				hasProjectScope: hasProjectScope,
+				hasUserScope: hasUserScope
 			}
 		});
 	}
@@ -1561,11 +1578,31 @@ class ClaudeChatProvider {
 			suggestions?: any[];
 			toolUseId: string;
 		},
-		alwaysAllow?: boolean
+		alwaysAllow?: boolean,
+		scope?: string
 	): void {
 		if (!this._currentClaudeProcess?.stdin || this._currentClaudeProcess.stdin.destroyed) {
 			console.error('Cannot send permission response: stdin not available');
 			return;
+		}
+
+		// Filter suggestions by scope if specified
+		let filteredSuggestions = pendingRequest.suggestions;
+		if (alwaysAllow && Array.isArray(pendingRequest.suggestions) && scope) {
+			let scopeFiltered: any[];
+			if (scope === 'project') {
+				scopeFiltered = pendingRequest.suggestions.filter(
+					(s: any) => s.destination === 'projectSettings' || s.destination === 'localSettings'
+				);
+			} else if (scope === 'allProjects') {
+				scopeFiltered = pendingRequest.suggestions.filter(
+					(s: any) => s.destination === 'userSettings'
+				);
+			} else {
+				scopeFiltered = pendingRequest.suggestions;
+			}
+			// Fall back to all suggestions if filtering yields empty array
+			filteredSuggestions = scopeFiltered.length > 0 ? scopeFiltered : pendingRequest.suggestions;
 		}
 
 		let response: any;
@@ -1578,8 +1615,8 @@ class ClaudeChatProvider {
 					response: {
 						behavior: 'allow',
 						updatedInput: pendingRequest.input,
-						// Pass back suggestions if user chose "always allow"
-						updatedPermissions: alwaysAllow ? pendingRequest.suggestions : undefined,
+						// Pass back filtered suggestions if user chose "always allow"
+						updatedPermissions: alwaysAllow ? filteredSuggestions : undefined,
 						toolUseID: pendingRequest.toolUseId
 					}
 				}
@@ -1615,7 +1652,7 @@ class ClaudeChatProvider {
 	 * Handle permission response from webview UI
 	 * Sends control_response back to Claude CLI via stdin
 	 */
-	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean): void {
+	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean, scope?: string): void {
 		const pendingRequest = this._pendingPermissionRequests.get(id);
 		if (!pendingRequest) {
 			console.error('No pending permission request found for id:', id);
@@ -1626,7 +1663,7 @@ class ClaudeChatProvider {
 		this._pendingPermissionRequests.delete(id);
 
 		// Send the response to Claude via stdin
-		this._sendPermissionResponse(id, approved, pendingRequest, alwaysAllow);
+		this._sendPermissionResponse(id, approved, pendingRequest, alwaysAllow, scope);
 
 		// Update the permission request status in UI
 		this._postMessage({
