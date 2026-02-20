@@ -17,6 +17,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let thinkingModeEnabled = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
+		let permissionScopes = {}; // Track selected scope per permission request ID
 
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
@@ -2402,16 +2403,28 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			const toolName = data.tool || 'Unknown Tool';
 			const status = data.status || 'pending';
 
-			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
+			// Create always allow label - command pattern for Bash, tool name otherwise
+			let alwaysAllowLabel = toolName;
 			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
-				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
 				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+				alwaysAllowLabel = '<code>' + truncatedPattern + '</code>';
+				alwaysAllowTooltip = displayPattern.length > 30 ? 'title="' + displayPattern + '"' : '';
+			}
+
+			// Show scope toggle only when CLI provides suggestions with scope info
+			permissionScopes[data.id] = 'project';
+
+			let scopeHtml = '';
+			if (data.hasProjectScope && data.hasUserScope) {
+				scopeHtml = ' for <span class="scope-toggle" onclick="togglePermissionScope(\\'' + data.id + '\\', event)" title="Click to toggle between this project and all projects">this project</span><span class="scope-suffix" id="scopeSuffix-' + data.id + '"> (just you)</span>';
+			} else if (data.hasProjectScope) {
+				scopeHtml = ' for this project (just you)';
+			} else if (data.hasUserScope) {
+				scopeHtml = ' for all projects';
+				permissionScopes[data.id] = 'allProjects';
 			}
 
 			// Show different content based on status
@@ -2437,9 +2450,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					<div class="permission-content">
 						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
 						<div class="permission-buttons">
-							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-							<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">No</button>
+							<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>Yes, allow \${alwaysAllowLabel}\${scopeHtml}</button>
+							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Yes</button>
 						</div>
 					</div>
 				\`;
@@ -2531,38 +2544,65 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		}
 		
 		function respondToPermission(id, approved, alwaysAllow = false) {
+			const scope = alwaysAllow ? (permissionScopes[id] || 'project') : undefined;
+
 			// Send response back to extension
 			vscode.postMessage({
 				type: 'permissionResponse',
 				id: id,
 				approved: approved,
-				alwaysAllow: alwaysAllow
+				alwaysAllow: alwaysAllow,
+				scope: scope
 			});
-			
+
 			// Update the UI to show the decision
 			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`);
 			if (permissionMsg) {
 				const buttons = permissionMsg.querySelector('.permission-buttons');
 				const permissionContent = permissionMsg.querySelector('.permission-content');
 				let decision = approved ? 'You allowed this' : 'You denied this';
-				
+
 				if (alwaysAllow && approved) {
-					decision = 'You allowed this and set it to always allow';
+					const scopeLabel = scope === 'allProjects' ? 'all projects' : 'this project';
+					decision = 'You allowed this for ' + scopeLabel;
 				}
-				
+
 				const emoji = approved ? '✅' : '❌';
 				const decisionClass = approved ? 'allowed' : 'denied';
-				
+
 				// Hide buttons
 				buttons.style.display = 'none';
-				
+
 				// Add decision div to permission-content
 				const decisionDiv = document.createElement('div');
 				decisionDiv.className = \`permission-decision \${decisionClass}\`;
 				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
 				permissionContent.appendChild(decisionDiv);
-				
+
 				permissionMsg.classList.add('permission-decided', decisionClass);
+			}
+
+			// Clean up scope tracking
+			delete permissionScopes[id];
+		}
+
+		function togglePermissionScope(permissionId, event) {
+			event.stopPropagation();
+			event.preventDefault();
+
+			const currentScope = permissionScopes[permissionId] || 'project';
+			const newScope = currentScope === 'project' ? 'allProjects' : 'project';
+			permissionScopes[permissionId] = newScope;
+
+			const toggleEl = event.target;
+			const suffixEl = document.getElementById('scopeSuffix-' + permissionId);
+
+			if (newScope === 'allProjects') {
+				toggleEl.textContent = 'all projects';
+				if (suffixEl) suffixEl.textContent = '';
+			} else {
+				toggleEl.textContent = 'this project';
+				if (suffixEl) suffixEl.textContent = ' (just you)';
 			}
 		}
 

@@ -265,7 +265,11 @@ const styles = `
         font-weight: 500;
         min-width: auto;
         padding: 6px 14px;
-        height: 28px;
+        white-space: normal;
+        text-align: left;
+        line-height: 1.3;
+        height: auto;
+        min-height: 28px;
     }
 
     .permission-buttons .btn.always-allow:hover {
@@ -285,6 +289,24 @@ const styles = `
         display: inline;
         line-height: 1;
         vertical-align: baseline;
+    }
+
+    .scope-toggle {
+        text-decoration: underline;
+        cursor: pointer;
+        color: var(--vscode-textLink-foreground);
+        font-weight: 600;
+        transition: color 0.2s ease;
+    }
+
+    .scope-toggle:hover {
+        color: var(--vscode-textLink-activeForeground);
+    }
+
+    .scope-suffix {
+        font-weight: 400;
+        opacity: 0.8;
+        font-size: 11px;
     }
 
     .permission-decision {
