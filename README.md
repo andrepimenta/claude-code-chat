@@ -122,6 +122,12 @@ Ditch the command line and experience Claude Code like never before. This extens
 - **Intelligent Prompting** - Different prompts based on selected thinking intensity
 - **Token Awareness** - Higher thinking levels consume more tokens but provide deeper reasoning
 
+### 📋 **Editable Plan Files** ⭐ **NEW**
+- **Edit Plan Button** - Appears on Claude's plan messages so you can open and edit the plan directly in VS Code
+- **Show Plan Button** - Header toolbar button to quickly open the latest plan file (`~/.claude/plans/`) at any time
+- **File Watcher** - Automatically detects when you save changes to a plan file and prompts you to notify Claude
+- **Command Palette** - `Claude Code Chat: Show Latest Plan File` command for quick access
+
 ---
 
 ## 🚀 **Getting Started**
@@ -318,7 +324,12 @@ git clone https://github.com/andrepimenta/claude-code-chat
 cd claude-code-chat
 npm install
 
-Click "F5" to run the extension or access the "Run and Debug" section in VSCode
+# Option A: Press F5 to launch Extension Development Host (fastest iteration)
+# or access the "Run and Debug" section in VSCode
+
+# Option B: Build, package, and install locally
+npm run deploy
+# Then reload VS Code: Ctrl+Shift+P > "Developer: Reload Window"
 ```
 
 ---

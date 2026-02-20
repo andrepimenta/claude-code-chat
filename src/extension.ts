@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import getHtml from './ui';
 
 const exec = util.promisify(cp.exec);
@@ -46,6 +48,14 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register showPlan command
+	const showPlanDisposable = vscode.commands.registerCommand('claude-code-chat.showPlan', () => {
+		provider.openLatestPlanFile();
+	});
+
+	// Set up plan file watcher
+	const planWatcherDisposable = provider.setupPlanFileWatcher();
+
 	// Create status bar item
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusBarItem.text = "Claude";
@@ -53,7 +63,7 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.command = 'claude-code-chat.openChat';
 	statusBarItem.show();
 
-	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem);
+	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, showPlanDisposable, planWatcherDisposable, statusBarItem);
 	console.log('Claude Code Chat extension activation completed successfully!');
 }
 
@@ -385,6 +395,9 @@ class ClaudeChatProvider {
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
+				return;
+			case 'openPlanFile':
+				this.openLatestPlanFile();
 				return;
 		}
 	}
@@ -2864,6 +2877,115 @@ class ClaudeChatProvider {
 			vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
 			console.error('Error opening file:', error);
 		}
+	}
+
+	/**
+	 * Get the path to the ~/.claude/plans/ directory
+	 */
+	private _getPlansDir(): string {
+		return path.join(os.homedir(), '.claude', 'plans');
+	}
+
+	/**
+	 * Find the most recently modified plan file in ~/.claude/plans/
+	 */
+	private _getLatestPlanFile(): string | undefined {
+		const plansDir = this._getPlansDir();
+		if (!fs.existsSync(plansDir)) {
+			return undefined;
+		}
+
+		const files = fs.readdirSync(plansDir)
+			.filter(f => f.endsWith('.md'))
+			.map(f => ({
+				name: f,
+				path: path.join(plansDir, f),
+				mtime: fs.statSync(path.join(plansDir, f)).mtimeMs
+			}))
+			.sort((a, b) => b.mtime - a.mtime);
+
+		return files.length > 0 ? files[0].path : undefined;
+	}
+
+	/**
+	 * Open the latest plan file in a VS Code editor tab
+	 */
+	public async openLatestPlanFile() {
+		const planFile = this._getLatestPlanFile();
+		if (!planFile) {
+			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
+			return;
+		}
+
+		try {
+			const uri = vscode.Uri.file(planFile);
+			const document = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to open plan file: ${planFile}`);
+			console.error('Error opening plan file:', error);
+		}
+	}
+
+	/**
+	 * Set up a file watcher on ~/.claude/plans/ to detect plan file changes
+	 */
+	public setupPlanFileWatcher(): vscode.Disposable {
+		const plansDir = this._getPlansDir();
+
+		// Ensure the plans directory exists
+		if (!fs.existsSync(plansDir)) {
+			try {
+				fs.mkdirSync(plansDir, { recursive: true });
+			} catch {
+				console.log('Could not create plans directory:', plansDir);
+				return new vscode.Disposable(() => {});
+			}
+		}
+
+		const watcher = vscode.workspace.createFileSystemWatcher(
+			new vscode.RelativePattern(vscode.Uri.file(plansDir), '**/*.md')
+		);
+
+		// Debounce to avoid multiple triggers on rapid saves
+		let debounceTimer: NodeJS.Timeout | undefined;
+
+		const onPlanFileChanged = (uri: vscode.Uri) => {
+			if (debounceTimer) {
+				clearTimeout(debounceTimer);
+			}
+			debounceTimer = setTimeout(() => {
+				const fileName = path.basename(uri.fsPath);
+				console.log('Plan file changed:', fileName);
+
+				// Show notification suggesting the user tell Claude about changes
+				vscode.window.showInformationMessage(
+					`Plan file "${fileName}" was updated. Tell Claude about your changes?`,
+					'Send Update to Claude',
+					'Dismiss'
+				).then(selection => {
+					if (selection === 'Send Update to Claude') {
+						// Send a message to Claude about the plan update
+						this._sendMessageToClaude(
+							'I updated the plan file, please review my changes and adjust your approach accordingly.',
+							false,
+							false
+						);
+					}
+				});
+
+				// Also notify the webview that the plan was updated
+				this._postMessage({
+					type: 'planFileUpdated',
+					data: { fileName }
+				});
+			}, 1000);
+		};
+
+		watcher.onDidChange(onPlanFileChanged);
+		watcher.onDidCreate(onPlanFileChanged);
+
+		return watcher;
 	}
 
 	private async _openDiffByMessageIndex(messageIndex: number) {
