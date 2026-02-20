@@ -3730,6 +3730,40 @@ const styles = `
         color: var(--vscode-descriptionForeground);
     }
 
+    /* Plan action button styles */
+    .plan-action {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+    }
+
+    .plan-edit-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: var(--vscode-button-secondaryBackground, #3a3d41);
+        color: var(--vscode-button-secondaryForeground, #cccccc);
+        border: 1px solid var(--vscode-button-border, transparent);
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        font-family: var(--vscode-font-family);
+        transition: background-color 0.15s;
+    }
+
+    .plan-edit-btn:hover {
+        background: var(--vscode-button-secondaryHoverBackground, #45494e);
+    }
+
+    .plan-edit-btn svg {
+        flex-shrink: 0;
+    }
+
+    #showPlanBtn {
+        font-size: 11px;
+    }
+
 </style>`
 
 export default styles

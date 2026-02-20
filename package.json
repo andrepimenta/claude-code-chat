@@ -57,6 +57,11 @@
         "title": "Open Claude Code Chat",
         "category": "Claude Code Chat",
         "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.showPlan",
+        "title": "Show Latest Plan File",
+        "category": "Claude Code Chat"
       }
     ],
     "keybindings": [
@@ -70,6 +75,9 @@
       "commandPalette": [
         {
           "command": "claude-code-chat.openChat"
+        },
+        {
+          "command": "claude-code-chat.showPlan"
         }
       ],
       "editor/context": [
@@ -196,7 +204,8 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
-    "build": "node build.js"
+    "build": "node build.js",
+    "deploy": "vsce package && code --install-extension claude-code-chat-1.1.0.vsix --force"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
