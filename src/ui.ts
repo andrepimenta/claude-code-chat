@@ -21,7 +21,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			</div> -->
 		</div>
 		<div style="display: flex; gap: 8px; align-items: center;">
+			<span class="version-badge" id="versionBadge">v--</span>
 			<div id="sessionStatus" class="session-status" style="display: none;">No session</div>
+			<button class="btn outlined" id="showPlanBtn" onclick="openPlanFile()" title="Open latest plan file">Show Plan</button>
 			<button class="btn outlined" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
 			<button class="btn outlined" id="historyBtn" onclick="toggleConversationHistory()">📚 History</button>
 			<button class="btn primary" id="newSessionBtn" onclick="newSession()">New Chat</button>
@@ -40,7 +42,23 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 
 	<div class="chat-container" id="chatContainer">
 		<div class="messages" id="messages"></div>
-		
+
+		<!-- Fixed Permission Bar -->
+		<div id="permissionBar" class="permission-bar" style="display: none;">
+			<div class="permission-bar-content">
+				<span class="permission-bar-icon">!</span>
+				<span class="permission-bar-tool"></span>
+				<span class="permission-bar-desc"></span>
+				<span class="permission-bar-queue" style="display: none;"></span>
+			</div>
+			<div class="permission-bar-actions">
+				<button class="btn deny" onclick="respondFromBar(false)">Deny</button>
+				<button class="btn allow-all" onclick="allowAllPending()">Allow All</button>
+				<button class="btn always-allow" onclick="respondFromBar(true, true)">Always Allow</button>
+				<button class="btn allow" onclick="respondFromBar(true)">Allow</button>
+			</div>
+		</div>
+
 		<!-- WSL Alert for Windows users -->
 		<div id="wslAlert" class="wsl-alert" style="display: none;">
 			<div class="wsl-alert-content">
@@ -347,7 +365,18 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					</div>
 				</div>
 
-				
+				<!-- Sync Section -->
+				<div class="settings-section">
+					<h4>Sync .claude Folder</h4>
+					<p class="settings-description">Refresh user commands and skills from your .claude folder</p>
+					<div class="sync-buttons">
+						<button class="btn outlined" onclick="syncClaudeFolder()">
+							🔄 Sync Now
+						</button>
+					</div>
+					<div id="syncStatus" class="sync-status" style="display: none;"></div>
+				</div>
+
 			</div>
 		</div>
 	</div>
@@ -493,7 +522,26 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					<input type="text" id="slashCommandsSearch" placeholder="Search commands and snippets..." oninput="filterSlashCommands()">
 				</div>
 			</div>
-			
+
+			<!-- User Commands Section (from ~/.claude/commands/ and .claude/commands/) -->
+			<div class="slash-commands-section" id="projectCommandsSection" style="display: none;">
+				<div class="collapsible-header" onclick="toggleProjectCommandsCollapse()">
+					<span class="collapse-arrow" id="projectCommandsArrow">▼</span>
+					<h3>User Commands <span class="command-count" id="projectCommandsCount"></span></h3>
+				</div>
+				<div class="collapsible-content" id="projectCommandsContent">
+					<div class="slash-commands-info">
+						<p>📂 Project • 👤 Global (~/.claude/commands/)</p>
+					</div>
+					<div class="duplicate-commands-warning" id="duplicateCommandsWarning" style="display: none;">
+						<!-- Duplicate warning will be shown here -->
+					</div>
+					<div class="slash-commands-list" id="projectCommandsList">
+						<!-- Discovered commands will be loaded here -->
+					</div>
+				</div>
+			</div>
+
 			<!-- Custom Commands Section -->
 			<div class="slash-commands-section">
 				<h3>Custom Commands</h3>

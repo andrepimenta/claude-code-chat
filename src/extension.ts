@@ -2,6 +2,9 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
+import * as https from 'https';
 import getHtml from './ui';
 
 const exec = util.promisify(cp.exec);
@@ -46,6 +49,14 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
+	// Register showPlan command
+	const showPlanDisposable = vscode.commands.registerCommand('claude-code-chat.showPlan', () => {
+		provider.openLatestPlanFile();
+	});
+
+	// Set up plan file watcher
+	const planWatcherDisposable = provider.setupPlanFileWatcher();
+
 	// Create status bar item
 	const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	statusBarItem.text = "Claude";
@@ -53,7 +64,7 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.command = 'claude-code-chat.openChat';
 	statusBarItem.show();
 
-	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem);
+	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, showPlanDisposable, planWatcherDisposable, statusBarItem);
 	console.log('Claude Code Chat extension activation completed successfully!');
 }
 
@@ -120,6 +131,12 @@ class ClaudeChatProvider {
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
 	private _requestCount: number = 0;
+	private _lastInputTokens: number = 0;
+	private _lastCacheCreateTokens: number = 0;
+	private _lastCacheReadTokens: number = 0;
+	private _usageLimits: any = null;
+	private _usageLimitsTimer: ReturnType<typeof setInterval> | undefined;
+	private _modelDisplayName: string = '';
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _currentSessionId: string | undefined;
@@ -132,6 +149,17 @@ class ClaudeChatProvider {
 		toolName: string;
 		input: Record<string, unknown>;
 		suggestions?: any[];
+		toolUseId: string;
+	}> = new Map();
+	// Pending AskUserQuestion requests from stdio control_request messages
+	private _pendingQuestionRequests: Map<string, {
+		requestId: string;
+		questions: Array<{
+			question: string;
+			header: string;
+			multiSelect: boolean;
+			options: Array<{ label: string; description: string }>;
+		}>;
 		toolUseId: string;
 	}> = new Map();
 	private _currentConversation: Array<{ timestamp: string, messageType: string, data: any }> = [];
@@ -153,6 +181,7 @@ class ClaudeChatProvider {
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
+	private _planModeEnabled: boolean = false; // Track plan mode state from webview
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -254,6 +283,14 @@ class ClaudeChatProvider {
 			data: this._isProcessing ? 'Claude is working...' : 'Ready to chat with Claude Code! Type your message below.'
 		});
 
+		// Send extension version to webview
+		this._postMessage({
+			type: 'versionInfo',
+			data: {
+				extensionVersion: this._context.extension.packageJSON.version
+			}
+		});
+
 		// Send current model to webview
 		this._postMessage({
 			type: 'modelSelected',
@@ -283,6 +320,9 @@ class ClaudeChatProvider {
 				data: this._draftMessage
 			});
 		}
+
+		// Start polling usage limits for subscription users
+		this._startUsageLimitsPolling();
 	}
 
 	private _handleWebviewMessage(message: any) {
@@ -374,6 +414,12 @@ class ClaudeChatProvider {
 			case 'getCustomSnippets':
 				this._sendCustomSnippets();
 				return;
+			case 'getProjectCommands':
+				this._discoverProjectCommands();
+				return;
+			case 'syncClaudeFolder':
+				this._syncClaudeFolder();
+				return;
 			case 'saveCustomSnippet':
 				this._saveCustomSnippet(message.snippet);
 				return;
@@ -385,6 +431,19 @@ class ClaudeChatProvider {
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
+				return;
+			case 'planModeChanged':
+				this._planModeEnabled = message.enabled;
+				return;
+			case 'questionResponse':
+				this._handleQuestionResponse(message.id, message.answers);
+				return;
+			case 'triggerTestQuestion':
+				// Debug: trigger test AskUserQuestion UI
+				this._postMessage({ type: 'testAskUserQuestion' });
+				return;
+			case 'openPlanFile':
+				this.openLatestPlanFile();
 				return;
 		}
 	}
@@ -813,6 +872,9 @@ class ClaudeChatProvider {
 					// Reset tokens since the conversation is now summarized
 					this._totalTokensInput = 0;
 					this._totalTokensOutput = 0;
+					this._lastInputTokens = 0;
+					this._lastCacheCreateTokens = 0;
+					this._lastCacheReadTokens = 0;
 
 					this._sendAndSaveMessage({
 						type: 'compactBoundary',
@@ -830,6 +892,9 @@ class ClaudeChatProvider {
 					if (jsonData.message.usage) {
 						this._totalTokensInput += jsonData.message.usage.input_tokens || 0;
 						this._totalTokensOutput += jsonData.message.usage.output_tokens || 0;
+						this._lastInputTokens = jsonData.message.usage.input_tokens || 0;
+						this._lastCacheCreateTokens = jsonData.message.usage.cache_creation_input_tokens || 0;
+						this._lastCacheReadTokens = jsonData.message.usage.cache_read_input_tokens || 0;
 
 						// Send real-time token update to webview
 						this._sendAndSaveMessage({
@@ -839,8 +904,10 @@ class ClaudeChatProvider {
 								totalTokensOutput: this._totalTokensOutput,
 								currentInputTokens: jsonData.message.usage.input_tokens || 0,
 								currentOutputTokens: jsonData.message.usage.output_tokens || 0,
-								cacheCreationTokens: jsonData.message.usage.cache_creation_input_tokens || 0,
-								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0
+								cacheCreationTokens: this._lastCacheCreateTokens,
+								cacheReadTokens: this._lastCacheReadTokens,
+								contextUsed: this._getContextUsed(),
+								contextSize: 200000
 							}
 						});
 					}
@@ -1058,6 +1125,22 @@ class ClaudeChatProvider {
 						turns: jsonData.num_turns
 					});
 
+					// Extract model display name
+					if (jsonData.modelUsage) {
+						const models = Object.keys(jsonData.modelUsage);
+						const primaryModel = models.find(m => jsonData.modelUsage[m].outputTokens > 0) || models[0];
+						if (primaryModel) {
+							this._modelDisplayName = this._formatModelName(primaryModel);
+							this._postMessage({
+								type: 'modelInfo',
+								data: {
+									modelId: primaryModel,
+									displayName: this._modelDisplayName
+								}
+							});
+						}
+					}
+
 					// Send updated totals to webview
 					this._postMessage({
 						type: 'updateTotals',
@@ -1068,7 +1151,10 @@ class ClaudeChatProvider {
 							requestCount: this._requestCount,
 							currentCost: jsonData.total_cost_usd,
 							currentDuration: jsonData.duration_ms,
-							currentTurns: jsonData.num_turns
+							currentTurns: jsonData.num_turns,
+							contextUsed: this._getContextUsed(),
+							contextSize: 200000,
+							modelDisplayName: this._modelDisplayName
 						}
 					});
 				}
@@ -1076,6 +1162,16 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private _formatModelName(modelId: string): string {
+		// claude-sonnet-4-5-20250929 -> Sonnet 4.5
+		// claude-opus-4-5-20251101 -> Opus 4.5
+		const match = modelId.match(/claude-(\w+)-(\d+)-(\d+)/);
+		if (match) {
+			const [, name, major, minor] = match;
+			return `${name.charAt(0).toUpperCase() + name.slice(1)} ${major}.${minor}`;
+		}
+		return modelId;
+	}
 
 	private async _newSession(): Promise<void> {
 		this._isProcessing = false;
@@ -1102,6 +1198,10 @@ class ClaudeChatProvider {
 		this._totalTokensInput = 0;
 		this._totalTokensOutput = 0;
 		this._requestCount = 0;
+		this._lastInputTokens = 0;
+		this._lastCacheCreateTokens = 0;
+		this._lastCacheReadTokens = 0;
+		this._modelDisplayName = '';
 
 		// Notify webview to clear all messages and reset session
 		this._postMessage({
@@ -1501,6 +1601,26 @@ class ClaudeChatProvider {
 
 		console.log(`Permission request for tool: ${toolName}, requestId: ${requestId}`);
 
+		// Handle AskUserQuestion tool specially - show question UI instead of permission dialog
+		if (toolName === 'AskUserQuestion') {
+			this._handleAskUserQuestion(requestId, input.questions || [], toolUseId);
+			return;
+		}
+
+		// Auto-deny EnterPlanMode if Plan First toggle is OFF
+		// This prevents Claude from entering plan mode on its own when user hasn't enabled it
+		if (toolName === 'EnterPlanMode' && !this._planModeEnabled) {
+			console.log('Auto-denying EnterPlanMode because Plan First toggle is OFF');
+			this._sendPermissionResponse(requestId, false, {
+				requestId,
+				toolName,
+				input,
+				suggestions,
+				toolUseId
+			}, false);
+			return;
+		}
+
 		// Check if this tool is pre-approved
 		const isPreApproved = await this._isToolPreApproved(toolName, input);
 
@@ -1580,7 +1700,7 @@ class ClaudeChatProvider {
 						updatedInput: pendingRequest.input,
 						// Pass back suggestions if user chose "always allow"
 						updatedPermissions: alwaysAllow ? pendingRequest.suggestions : undefined,
-						toolUseID: pendingRequest.toolUseId
+						tool_use_id: pendingRequest.toolUseId
 					}
 				}
 			};
@@ -1594,7 +1714,7 @@ class ClaudeChatProvider {
 						behavior: 'deny',
 						message: 'User denied permission',
 						interrupt: true,
-						toolUseID: pendingRequest.toolUseId
+						tool_use_id: pendingRequest.toolUseId
 					}
 				}
 			};
@@ -1628,6 +1748,14 @@ class ClaudeChatProvider {
 		// Send the response to Claude via stdin
 		this._sendPermissionResponse(id, approved, pendingRequest, alwaysAllow);
 
+		// Sync plan mode state when ExitPlanMode is allowed
+		// This ensures the UI toggle turns OFF when Claude exits plan mode
+		if (pendingRequest.toolName === 'ExitPlanMode' && approved) {
+			console.log('ExitPlanMode allowed - syncing plan mode state to OFF');
+			this._planModeEnabled = false;
+			this._postMessage({ type: 'planModeExited' });
+		}
+
 		// Update the permission request status in UI
 		this._postMessage({
 			type: 'updatePermissionStatus',
@@ -1644,9 +1772,113 @@ class ClaudeChatProvider {
 	}
 
 	/**
-	 * Cancel all pending permission requests (called when process ends)
+	 * Handle AskUserQuestion tool requests from Claude CLI
+	 * Shows interactive question UI to user and sends response back
+	 */
+	private _handleAskUserQuestion(
+		requestId: string,
+		questions: Array<{
+			question: string;
+			header: string;
+			multiSelect: boolean;
+			options: Array<{ label: string; description: string }>;
+		}>,
+		toolUseId: string
+	): void {
+		console.log(`AskUserQuestion request: ${requestId}, ${questions.length} questions`);
+
+		// Store the pending request
+		this._pendingQuestionRequests.set(requestId, {
+			requestId,
+			questions,
+			toolUseId
+		});
+
+		// Send to webview for display
+		this._sendAndSaveMessage({
+			type: 'askUserQuestion',
+			data: {
+				id: requestId,
+				questions: questions,
+				status: 'pending'
+			}
+		});
+	}
+
+	/**
+	 * Handle user's answer to AskUserQuestion from webview
+	 */
+	private _handleQuestionResponse(id: string, answers: Record<string, string | string[]>): void {
+		const pendingRequest = this._pendingQuestionRequests.get(id);
+		if (!pendingRequest) {
+			console.error('No pending question request found for id:', id);
+			return;
+		}
+
+		// Remove from pending
+		this._pendingQuestionRequests.delete(id);
+
+		// Send response to Claude CLI via stdin
+		this._sendQuestionResponse(id, answers, pendingRequest);
+
+		// Update UI to show answered state
+		this._postMessage({
+			type: 'updateQuestionStatus',
+			data: {
+				id: id,
+				status: 'answered',
+				answers: answers
+			}
+		});
+	}
+
+	/**
+	 * Send AskUserQuestion response back to Claude CLI via stdin
+	 */
+	private _sendQuestionResponse(
+		requestId: string,
+		answers: Record<string, string | string[]>,
+		pendingRequest: {
+			requestId: string;
+			questions: Array<{
+				question: string;
+				header: string;
+				multiSelect: boolean;
+				options: Array<{ label: string; description: string }>;
+			}>;
+			toolUseId: string;
+		}
+	): void {
+		if (!this._currentClaudeProcess?.stdin || this._currentClaudeProcess.stdin.destroyed) {
+			console.error('Cannot send question response: stdin not available');
+			return;
+		}
+
+		const response = {
+			type: 'control_response',
+			response: {
+				subtype: 'success',
+				request_id: requestId,
+				response: {
+					behavior: 'allow',
+					updatedInput: {
+						answers: answers
+					},
+					tool_use_id: pendingRequest.toolUseId
+				}
+			}
+		};
+
+		const responseJson = JSON.stringify(response) + '\n';
+		console.log('Sending question response:', responseJson);
+		this._currentClaudeProcess.stdin.write(responseJson);
+	}
+
+	/**
+	 * Cancel all pending permission and question requests (called when process ends)
 	 */
 	private _cancelPendingPermissionRequests(): void {
+		// Cancel permission requests
 		for (const [id, _request] of this._pendingPermissionRequests) {
 			this._postMessage({
 				type: 'updatePermissionStatus',
@@ -1657,6 +1889,18 @@ class ClaudeChatProvider {
 			});
 		}
 		this._pendingPermissionRequests.clear();
+
+		// Cancel question requests
+		for (const [id, _request] of this._pendingQuestionRequests) {
+			this._postMessage({
+				type: 'updateQuestionStatus',
+				data: {
+					id: id,
+					status: 'cancelled'
+				}
+			});
+		}
+		this._pendingQuestionRequests.clear();
 	}
 
 	/**
@@ -2080,6 +2324,148 @@ class ClaudeChatProvider {
 			this._postMessage({
 				type: 'customSnippetsData',
 				data: {}
+			});
+		}
+	}
+
+	/**
+	 * Discover project commands from .claude/commands/ folder
+	 * Parses markdown files with YAML frontmatter for descriptions
+	 * Project commands override global commands with the same name
+	 */
+	private async _discoverProjectCommands(): Promise<void> {
+		try {
+			// 1. Scan user home ~/.claude/commands/
+			const homeDir = os.homedir();
+			const userCommandsUri = vscode.Uri.file(path.join(homeDir, '.claude', 'commands'));
+			const userCommands = await this._scanCommandsFolder(userCommandsUri, 'user');
+
+			// 2. Scan workspace .claude/commands/
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			let projectCommands: Array<{ name: string; description: string; filePath: string; source: string }> = [];
+			if (workspaceFolder) {
+				const projectCommandsUri = vscode.Uri.joinPath(workspaceFolder.uri, '.claude', 'commands');
+				projectCommands = await this._scanCommandsFolder(projectCommandsUri, 'project');
+			}
+
+			// 3. Detect duplicates (project commands override user commands with same name)
+			const userCommandNames = new Set(userCommands.map(cmd => cmd.name));
+			const projectCommandNames = new Set(projectCommands.map(cmd => cmd.name));
+			const duplicates = [...userCommandNames].filter(name => projectCommandNames.has(name));
+
+			// 4. Build final command list (project overrides user)
+			const commandMap = new Map<string, { name: string; description: string; filePath: string; source: string }>();
+			for (const cmd of userCommands) {
+				commandMap.set(cmd.name, cmd);
+			}
+			for (const cmd of projectCommands) {
+				commandMap.set(cmd.name, cmd); // Project overrides user
+			}
+
+			const commands = Array.from(commandMap.values());
+			commands.sort((a, b) => a.name.localeCompare(b.name));
+
+			// Log duplicates if any
+			if (duplicates.length > 0) {
+				console.log(`Found ${duplicates.length} duplicate command(s): ${duplicates.join(', ')} (project version used)`);
+			}
+
+			console.log(`Discovered ${commands.length} user commands (${userCommands.length} global, ${projectCommands.length} project, ${duplicates.length} duplicates)`);
+			this._postMessage({
+				type: 'projectCommandsData',
+				data: commands,
+				duplicates: duplicates
+			});
+		} catch (error) {
+			console.error('Error discovering project commands:', error);
+			this._postMessage({ type: 'projectCommandsData', data: [], duplicates: [] });
+		}
+	}
+
+	/**
+	 * Scan a commands folder and return array of command objects
+	 */
+	private async _scanCommandsFolder(
+		commandsUri: vscode.Uri,
+		source: 'project' | 'user'
+	): Promise<Array<{ name: string; description: string; filePath: string; source: string }>> {
+		const commands: Array<{ name: string; description: string; filePath: string; source: string }> = [];
+
+		let files: [string, vscode.FileType][];
+		try {
+			files = await vscode.workspace.fs.readDirectory(commandsUri);
+		} catch {
+			// Directory doesn't exist - no commands to discover
+			return commands;
+		}
+
+		for (const [fileName, fileType] of files) {
+			if (fileType !== vscode.FileType.File || !fileName.endsWith('.md')) {
+				continue;
+			}
+
+			const fileUri = vscode.Uri.joinPath(commandsUri, fileName);
+			try {
+				const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+				const content = Buffer.from(contentBytes).toString('utf8');
+
+				// Parse YAML frontmatter
+				const frontmatter = this._parseCommandFrontmatter(content);
+				const name = fileName.replace(/\.md$/, '');
+
+				commands.push({
+					name,
+					description: frontmatter?.description || `Run /${name} command`,
+					filePath: fileUri.fsPath,
+					source
+				});
+			} catch (error) {
+				console.error(`Error reading command file ${fileName}:`, error);
+			}
+		}
+
+		return commands;
+	}
+
+	/**
+	 * Parse YAML frontmatter from markdown file content
+	 */
+	private _parseCommandFrontmatter(content: string): { description: string } | null {
+		const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+		if (!match) {
+			return null;
+		}
+
+		const frontmatter = match[1];
+		const descMatch = frontmatter.match(/description:\s*(.+)/);
+
+		return {
+			description: descMatch ? descMatch[1].trim() : ''
+		};
+	}
+
+	/**
+	 * Sync .claude folder - refresh user commands and other discoverable content
+	 */
+	private async _syncClaudeFolder(): Promise<void> {
+		try {
+			console.log('Syncing .claude folder...');
+
+			// Re-discover project commands from both user home and workspace
+			await this._discoverProjectCommands();
+
+			// Send success response
+			this._postMessage({
+				type: 'syncComplete',
+				data: { message: 'Successfully synced .claude folder' }
+			});
+
+			console.log('.claude folder sync complete');
+		} catch (error) {
+			console.error('Error syncing .claude folder:', error);
+			this._postMessage({
+				type: 'syncError',
+				data: { message: error instanceof Error ? error.message : 'Unknown error' }
 			});
 		}
 	}
@@ -2550,7 +2936,10 @@ class ClaudeChatProvider {
 							totalCost: this._totalCost,
 							totalTokensInput: this._totalTokensInput,
 							totalTokensOutput: this._totalTokensOutput,
-							requestCount: this._requestCount
+							requestCount: this._requestCount,
+							contextUsed: this._getContextUsed(),
+							contextSize: 200000,
+							modelDisplayName: this._modelDisplayName
 						}
 					});
 
@@ -2866,6 +3255,115 @@ class ClaudeChatProvider {
 		}
 	}
 
+	/**
+	 * Get the path to the ~/.claude/plans/ directory
+	 */
+	private _getPlansDir(): string {
+		return path.join(os.homedir(), '.claude', 'plans');
+	}
+
+	/**
+	 * Find the most recently modified plan file in ~/.claude/plans/
+	 */
+	private _getLatestPlanFile(): string | undefined {
+		const plansDir = this._getPlansDir();
+		if (!fs.existsSync(plansDir)) {
+			return undefined;
+		}
+
+		const files = fs.readdirSync(plansDir)
+			.filter(f => f.endsWith('.md'))
+			.map(f => ({
+				name: f,
+				path: path.join(plansDir, f),
+				mtime: fs.statSync(path.join(plansDir, f)).mtimeMs
+			}))
+			.sort((a, b) => b.mtime - a.mtime);
+
+		return files.length > 0 ? files[0].path : undefined;
+	}
+
+	/**
+	 * Open the latest plan file in a VS Code editor tab
+	 */
+	public async openLatestPlanFile() {
+		const planFile = this._getLatestPlanFile();
+		if (!planFile) {
+			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
+			return;
+		}
+
+		try {
+			const uri = vscode.Uri.file(planFile);
+			const document = await vscode.workspace.openTextDocument(uri);
+			await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+		} catch (error) {
+			vscode.window.showErrorMessage(`Failed to open plan file: ${planFile}`);
+			console.error('Error opening plan file:', error);
+		}
+	}
+
+	/**
+	 * Set up a file watcher on ~/.claude/plans/ to detect plan file changes
+	 */
+	public setupPlanFileWatcher(): vscode.Disposable {
+		const plansDir = this._getPlansDir();
+
+		// Ensure the plans directory exists
+		if (!fs.existsSync(plansDir)) {
+			try {
+				fs.mkdirSync(plansDir, { recursive: true });
+			} catch {
+				console.log('Could not create plans directory:', plansDir);
+				return new vscode.Disposable(() => {});
+			}
+		}
+
+		const watcher = vscode.workspace.createFileSystemWatcher(
+			new vscode.RelativePattern(vscode.Uri.file(plansDir), '**/*.md')
+		);
+
+		// Debounce to avoid multiple triggers on rapid saves
+		let debounceTimer: NodeJS.Timeout | undefined;
+
+		const onPlanFileChanged = (uri: vscode.Uri) => {
+			if (debounceTimer) {
+				clearTimeout(debounceTimer);
+			}
+			debounceTimer = setTimeout(() => {
+				const fileName = path.basename(uri.fsPath);
+				console.log('Plan file changed:', fileName);
+
+				// Show notification suggesting the user tell Claude about changes
+				vscode.window.showInformationMessage(
+					`Plan file "${fileName}" was updated. Tell Claude about your changes?`,
+					'Send Update to Claude',
+					'Dismiss'
+				).then(selection => {
+					if (selection === 'Send Update to Claude') {
+						// Send a message to Claude about the plan update
+						this._sendMessageToClaude(
+							'I updated the plan file, please review my changes and adjust your approach accordingly.',
+							false,
+							false
+						);
+					}
+				});
+
+				// Also notify the webview that the plan was updated
+				this._postMessage({
+					type: 'planFileUpdated',
+					data: { fileName }
+				});
+			}, 1000);
+		};
+
+		watcher.onDidChange(onPlanFileChanged);
+		watcher.onDidCreate(onPlanFileChanged);
+
+		return watcher;
+	}
+
 	private async _openDiffByMessageIndex(messageIndex: number) {
 		try {
 			const message = this._currentConversation[messageIndex];
@@ -3017,7 +3515,110 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private async _getOAuthToken(): Promise<string | null> {
+		try {
+			// Try native credentials file first
+			const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+			if (fs.existsSync(credPath)) {
+				const data = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+				const token = data?.claudeAiOauth?.accessToken;
+				if (token && token !== 'null') {
+					return token;
+				}
+			}
+
+			// For WSL: try reading from WSL filesystem
+			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const wslEnabled = config.get<boolean>('wsl.enabled', false);
+			if (wslEnabled) {
+				const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
+				try {
+					const { stdout } = await exec(`wsl -d ${wslDistro} cat ~/.claude/.credentials.json`);
+					const data = JSON.parse(stdout.trim());
+					const token = data?.claudeAiOauth?.accessToken;
+					if (token && token !== 'null') {
+						return token;
+					}
+				} catch {
+					// WSL read failed, continue
+				}
+			}
+		} catch {
+			// Credentials not available
+		}
+		return null;
+	}
+
+	private _fetchUsageLimits(): void {
+		this._getOAuthToken().then(token => {
+			if (!token) {
+				return;
+			}
+
+			const options = {
+				hostname: 'api.anthropic.com',
+				path: '/api/oauth/usage',
+				method: 'GET',
+				headers: {
+					'Authorization': `Bearer ${token}`,
+					'anthropic-beta': 'oauth-2025-04-20',
+					'Accept': 'application/json',
+					'Content-Type': 'application/json'
+				},
+				timeout: 10000
+			};
+
+			const req = https.request(options, (res) => {
+				let body = '';
+				res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+				res.on('end', () => {
+					try {
+						const data = JSON.parse(body);
+						this._usageLimits = data;
+						this._postMessage({
+							type: 'usageLimits',
+							data: data
+						});
+					} catch {
+						console.log('Failed to parse usage limits response');
+					}
+				});
+			});
+
+			req.on('error', (err) => {
+				console.log('Usage limits fetch error:', err.message);
+			});
+
+			req.on('timeout', () => {
+				req.destroy();
+			});
+
+			req.end();
+		});
+	}
+
+	private _startUsageLimitsPolling(): void {
+		this._stopUsageLimitsPolling();
+		this._fetchUsageLimits();
+		this._usageLimitsTimer = setInterval(() => {
+			this._fetchUsageLimits();
+		}, 60000);
+	}
+
+	private _stopUsageLimitsPolling(): void {
+		if (this._usageLimitsTimer) {
+			clearInterval(this._usageLimitsTimer);
+			this._usageLimitsTimer = undefined;
+		}
+	}
+
+	private _getContextUsed(): number {
+		return this._lastInputTokens + this._lastCacheCreateTokens + this._lastCacheReadTokens;
+	}
+
 	public dispose() {
+		this._stopUsageLimitsPolling();
+
 		if (this._panel) {
 			this._panel.dispose();
 			this._panel = undefined;

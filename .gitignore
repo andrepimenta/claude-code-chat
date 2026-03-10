@@ -4,3 +4,6 @@ node_modules
 .vscode-test/
 *.vsix
 backup
+.claude/
+CLAUDE.md
+claude-code-chat-permissions-mcp/

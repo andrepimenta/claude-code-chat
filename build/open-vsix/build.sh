@@ -6,7 +6,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VERSION="1.1.0"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# Read version from package.json (no hardcoding!)
+VERSION=$(node -p "require('${PROJECT_DIR}/package.json').version")
 OUTPUT_NAME="vsix-claude-code-chat-${VERSION}.vsix"
 
 echo "Building Open VSIX version ${VERSION}..."

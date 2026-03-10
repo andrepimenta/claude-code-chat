@@ -4,6 +4,45 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [1.2.1] - 2026-01-05
+
+### 🚀 Features Added
+
+#### **User Commands Discovery**
+- Commands now discovered from both global (`~/.claude/commands/`) and project (`.claude/commands/`) folders
+- Different icons distinguish command sources: 📂 for project commands, 👤 for global commands
+- Project commands override global commands with the same name
+- Duplicate detection with visual warning showing which commands exist in both locations
+
+#### **Sync .claude Folder**
+- New "Sync Now" button in Settings to refresh user commands
+- Instantly re-scans both global and project `.claude/commands/` folders
+- Visual feedback with success/error status messages
+
+#### **AskUserQuestion Tool Support**
+- Full UI support for Claude's `AskUserQuestion` tool
+- Purple-themed question cards with multiple choice options
+- Support for single and multi-select questions
+- "Other" option with custom text input
+- Smooth animations and visual feedback
+
+#### **Plan Mode Improvements**
+- Fixed plan mode state synchronization when ExitPlanMode is allowed
+- UI toggle now correctly syncs to OFF when plan mode exits
+
+#### **Version Badge**
+- Extension version now displayed in header
+- Easy visibility of current installed version
+
+### 🐛 Bug Fixes
+- **Critical**: Fixed `tool_use_id` field naming mismatch in control_response messages (was sending `toolUseID` instead of `tool_use_id`)
+- Fixed plan mode toggle not syncing when Claude exits plan mode via ExitPlanMode tool
+
+### 🔧 Technical Improvements
+- Renamed "Custom Commands" section to "User Commands" to avoid confusion with user-created snippets
+- Added cross-platform build script (`build.js`) with version prompting
+- Improved command discovery with proper deduplication logic
+
 ## [1.1.0] - 2025-12-06
 
 ### 🚀 Features Added
