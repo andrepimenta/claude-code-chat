@@ -338,6 +338,190 @@ const styles = `
         background-color: rgba(128, 128, 128, 0.05);
     }
 
+    /* Fixed Permission Bar */
+    .permission-bar {
+        position: sticky;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(42, 42, 42, 0.98) 0%, rgba(26, 26, 26, 0.98) 100%);
+        border-top: 2px solid #fcbc00;
+        padding: 12px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        z-index: 100;
+        animation: permissionBarSlideUp 0.2s ease-out;
+        backdrop-filter: blur(8px);
+    }
+
+    @keyframes permissionBarSlideUp {
+        from { transform: translateY(100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    .permission-bar-content {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .permission-bar-icon {
+        width: 24px;
+        height: 24px;
+        min-width: 24px;
+        background: #fcbc00;
+        color: #1a1a1a;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 14px;
+        animation: permissionBarPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes permissionBarPulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(252, 188, 0, 0.4); }
+        50% { box-shadow: 0 0 0 8px rgba(252, 188, 0, 0); }
+    }
+
+    .permission-bar-tool {
+        font-weight: 600;
+        color: #fcbc00;
+        white-space: nowrap;
+    }
+
+    .permission-bar-desc {
+        color: var(--vscode-foreground);
+        font-size: 13px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        opacity: 0.9;
+    }
+
+    .permission-bar-queue {
+        font-size: 11px;
+        color: #fcbc00;
+        background: rgba(252, 188, 0, 0.15);
+        padding: 2px 8px;
+        border-radius: 10px;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+
+    .permission-bar-actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .permission-bar-actions .btn {
+        padding: 6px 14px;
+        font-size: 12px;
+        font-weight: 500;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .permission-bar-actions .btn.deny {
+        background: transparent;
+        border: 1px solid rgba(231, 76, 60, 0.5);
+        color: #e74c3c;
+    }
+
+    .permission-bar-actions .btn.deny:hover {
+        background: rgba(231, 76, 60, 0.15);
+        border-color: #e74c3c;
+    }
+
+    .permission-bar-actions .btn.allow-all {
+        background: transparent;
+        border: 1px solid rgba(46, 204, 113, 0.5);
+        color: #2ecc71;
+    }
+
+    .permission-bar-actions .btn.allow-all:hover {
+        background: rgba(46, 204, 113, 0.15);
+        border-color: #2ecc71;
+    }
+
+    .permission-bar-actions .btn.always-allow {
+        background: transparent;
+        border: 1px solid rgba(252, 188, 0, 0.5);
+        color: #fcbc00;
+    }
+
+    .permission-bar-actions .btn.always-allow:hover {
+        background: rgba(252, 188, 0, 0.15);
+        border-color: #fcbc00;
+    }
+
+    .permission-bar-actions .btn.allow {
+        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        border: none;
+        color: white;
+    }
+
+    .permission-bar-actions .btn.allow:hover {
+        background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+        transform: translateY(-1px);
+    }
+
+    /* Permission Placeholder in Chat */
+    .permission-placeholder {
+        margin: 4px 12px;
+        padding: 8px 12px;
+        background: rgba(252, 188, 0, 0.08);
+        border-left: 3px solid #fcbc00;
+        border-radius: 4px;
+        font-size: 12px;
+        color: var(--vscode-foreground);
+        opacity: 0.8;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .permission-placeholder .icon {
+        color: #fcbc00;
+        font-weight: bold;
+    }
+
+    .permission-placeholder.resolved {
+        opacity: 0.6;
+    }
+
+    .permission-placeholder.resolved.approved {
+        border-left-color: #2ecc71;
+        background: rgba(46, 204, 113, 0.08);
+    }
+
+    .permission-placeholder.resolved.approved .icon {
+        color: #2ecc71;
+    }
+
+    .permission-placeholder.resolved.denied {
+        border-left-color: #e74c3c;
+        background: rgba(231, 76, 60, 0.08);
+    }
+
+    .permission-placeholder.resolved.denied .icon {
+        color: #e74c3c;
+    }
+
+    .permission-placeholder.resolved.expired {
+        border-left-color: #888;
+        background: rgba(128, 128, 128, 0.08);
+    }
+
+    .permission-placeholder.resolved.expired .icon {
+        color: #888;
+    }
+
     /* AskUserQuestion Styles */
     .ask-user-question {
         margin: 4px 12px 20px 12px;
@@ -2720,6 +2904,19 @@ const styles = `
         width: 12px;
         height: 12px;
         flex-shrink: 0;
+    }
+
+    .usage-green { color: #00d26a; }
+    .usage-yellow { color: #e6c800; }
+    .usage-orange { color: #ffb055; }
+    .usage-red { color: #ff5555; }
+
+    .status-model {
+        font-weight: 600;
+    }
+
+    .reset-time {
+        opacity: 0.6;
     }
 
     pre {

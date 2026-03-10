@@ -3,6 +3,8 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
+import * as https from 'https';
 import getHtml from './ui';
 
 const exec = util.promisify(cp.exec);
@@ -121,6 +123,12 @@ class ClaudeChatProvider {
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
 	private _requestCount: number = 0;
+	private _lastInputTokens: number = 0;
+	private _lastCacheCreateTokens: number = 0;
+	private _lastCacheReadTokens: number = 0;
+	private _usageLimits: any = null;
+	private _usageLimitsTimer: ReturnType<typeof setInterval> | undefined;
+	private _modelDisplayName: string = '';
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _currentSessionId: string | undefined;
@@ -304,6 +312,9 @@ class ClaudeChatProvider {
 				data: this._draftMessage
 			});
 		}
+
+		// Start polling usage limits for subscription users
+		this._startUsageLimitsPolling();
 	}
 
 	private _handleWebviewMessage(message: any) {
@@ -850,6 +861,9 @@ class ClaudeChatProvider {
 					// Reset tokens since the conversation is now summarized
 					this._totalTokensInput = 0;
 					this._totalTokensOutput = 0;
+					this._lastInputTokens = 0;
+					this._lastCacheCreateTokens = 0;
+					this._lastCacheReadTokens = 0;
 
 					this._sendAndSaveMessage({
 						type: 'compactBoundary',
@@ -867,6 +881,9 @@ class ClaudeChatProvider {
 					if (jsonData.message.usage) {
 						this._totalTokensInput += jsonData.message.usage.input_tokens || 0;
 						this._totalTokensOutput += jsonData.message.usage.output_tokens || 0;
+						this._lastInputTokens = jsonData.message.usage.input_tokens || 0;
+						this._lastCacheCreateTokens = jsonData.message.usage.cache_creation_input_tokens || 0;
+						this._lastCacheReadTokens = jsonData.message.usage.cache_read_input_tokens || 0;
 
 						// Send real-time token update to webview
 						this._sendAndSaveMessage({
@@ -876,8 +893,10 @@ class ClaudeChatProvider {
 								totalTokensOutput: this._totalTokensOutput,
 								currentInputTokens: jsonData.message.usage.input_tokens || 0,
 								currentOutputTokens: jsonData.message.usage.output_tokens || 0,
-								cacheCreationTokens: jsonData.message.usage.cache_creation_input_tokens || 0,
-								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0
+								cacheCreationTokens: this._lastCacheCreateTokens,
+								cacheReadTokens: this._lastCacheReadTokens,
+								contextUsed: this._getContextUsed(),
+								contextSize: 200000
 							}
 						});
 					}
@@ -1095,6 +1114,22 @@ class ClaudeChatProvider {
 						turns: jsonData.num_turns
 					});
 
+					// Extract model display name
+					if (jsonData.modelUsage) {
+						const models = Object.keys(jsonData.modelUsage);
+						const primaryModel = models.find(m => jsonData.modelUsage[m].outputTokens > 0) || models[0];
+						if (primaryModel) {
+							this._modelDisplayName = this._formatModelName(primaryModel);
+							this._postMessage({
+								type: 'modelInfo',
+								data: {
+									modelId: primaryModel,
+									displayName: this._modelDisplayName
+								}
+							});
+						}
+					}
+
 					// Send updated totals to webview
 					this._postMessage({
 						type: 'updateTotals',
@@ -1105,7 +1140,10 @@ class ClaudeChatProvider {
 							requestCount: this._requestCount,
 							currentCost: jsonData.total_cost_usd,
 							currentDuration: jsonData.duration_ms,
-							currentTurns: jsonData.num_turns
+							currentTurns: jsonData.num_turns,
+							contextUsed: this._getContextUsed(),
+							contextSize: 200000,
+							modelDisplayName: this._modelDisplayName
 						}
 					});
 				}
@@ -1113,6 +1151,16 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private _formatModelName(modelId: string): string {
+		// claude-sonnet-4-5-20250929 -> Sonnet 4.5
+		// claude-opus-4-5-20251101 -> Opus 4.5
+		const match = modelId.match(/claude-(\w+)-(\d+)-(\d+)/);
+		if (match) {
+			const [, name, major, minor] = match;
+			return `${name.charAt(0).toUpperCase() + name.slice(1)} ${major}.${minor}`;
+		}
+		return modelId;
+	}
 
 	private async _newSession(): Promise<void> {
 		this._isProcessing = false;
@@ -1139,6 +1187,10 @@ class ClaudeChatProvider {
 		this._totalTokensInput = 0;
 		this._totalTokensOutput = 0;
 		this._requestCount = 0;
+		this._lastInputTokens = 0;
+		this._lastCacheCreateTokens = 0;
+		this._lastCacheReadTokens = 0;
+		this._modelDisplayName = '';
 
 		// Notify webview to clear all messages and reset session
 		this._postMessage({
@@ -2873,7 +2925,10 @@ class ClaudeChatProvider {
 							totalCost: this._totalCost,
 							totalTokensInput: this._totalTokensInput,
 							totalTokensOutput: this._totalTokensOutput,
-							requestCount: this._requestCount
+							requestCount: this._requestCount,
+							contextUsed: this._getContextUsed(),
+							contextSize: 200000,
+							modelDisplayName: this._modelDisplayName
 						}
 					});
 
@@ -3340,7 +3395,110 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private async _getOAuthToken(): Promise<string | null> {
+		try {
+			// Try native credentials file first
+			const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
+			if (fs.existsSync(credPath)) {
+				const data = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+				const token = data?.claudeAiOauth?.accessToken;
+				if (token && token !== 'null') {
+					return token;
+				}
+			}
+
+			// For WSL: try reading from WSL filesystem
+			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const wslEnabled = config.get<boolean>('wsl.enabled', false);
+			if (wslEnabled) {
+				const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
+				try {
+					const { stdout } = await exec(`wsl -d ${wslDistro} cat ~/.claude/.credentials.json`);
+					const data = JSON.parse(stdout.trim());
+					const token = data?.claudeAiOauth?.accessToken;
+					if (token && token !== 'null') {
+						return token;
+					}
+				} catch {
+					// WSL read failed, continue
+				}
+			}
+		} catch {
+			// Credentials not available
+		}
+		return null;
+	}
+
+	private _fetchUsageLimits(): void {
+		this._getOAuthToken().then(token => {
+			if (!token) {
+				return;
+			}
+
+			const options = {
+				hostname: 'api.anthropic.com',
+				path: '/api/oauth/usage',
+				method: 'GET',
+				headers: {
+					'Authorization': `Bearer ${token}`,
+					'anthropic-beta': 'oauth-2025-04-20',
+					'Accept': 'application/json',
+					'Content-Type': 'application/json'
+				},
+				timeout: 10000
+			};
+
+			const req = https.request(options, (res) => {
+				let body = '';
+				res.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+				res.on('end', () => {
+					try {
+						const data = JSON.parse(body);
+						this._usageLimits = data;
+						this._postMessage({
+							type: 'usageLimits',
+							data: data
+						});
+					} catch {
+						console.log('Failed to parse usage limits response');
+					}
+				});
+			});
+
+			req.on('error', (err) => {
+				console.log('Usage limits fetch error:', err.message);
+			});
+
+			req.on('timeout', () => {
+				req.destroy();
+			});
+
+			req.end();
+		});
+	}
+
+	private _startUsageLimitsPolling(): void {
+		this._stopUsageLimitsPolling();
+		this._fetchUsageLimits();
+		this._usageLimitsTimer = setInterval(() => {
+			this._fetchUsageLimits();
+		}, 60000);
+	}
+
+	private _stopUsageLimitsPolling(): void {
+		if (this._usageLimitsTimer) {
+			clearInterval(this._usageLimitsTimer);
+			this._usageLimitsTimer = undefined;
+		}
+	}
+
+	private _getContextUsed(): number {
+		return this._lastInputTokens + this._lastCacheCreateTokens + this._lastCacheReadTokens;
+	}
+
 	public dispose() {
+		this._stopUsageLimitsPolling();
+
 		if (this._panel) {
 			this._panel.dispose();
 			this._panel = undefined;

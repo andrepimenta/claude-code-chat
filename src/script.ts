@@ -18,6 +18,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 
+		// Permission queue system - fixed bar that never scrolls
+		const permissionQueue = [];
+		let currentPermission = null;
+
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
 			if (lastPendingEditData) {
@@ -893,6 +897,10 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		let totalTokensOutput = 0;
 		let requestCount = 0;
 		let isProcessing = false;
+		let contextUsed = 0;
+		let contextSize = 200000;
+		let modelDisplayName = '';
+		let usageLimits = null;
 		let requestStartTime = null;
 		let requestTimer = null;
 		let subscriptionType = null;  // 'pro', 'max', or null for API users
@@ -924,46 +932,111 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			vscode.postMessage({ type: 'viewUsage', usageType: usageType });
 		}
 
+		function formatTokenCount(num) {
+			if (num >= 1000000) {
+				return (num / 1000000).toFixed(1) + 'm';
+			} else if (num >= 1000) {
+				return Math.round(num / 1000) + 'k';
+			}
+			return String(num);
+		}
+
+		function usageColorClass(pct) {
+			if (pct >= 90) return 'usage-red';
+			if (pct >= 70) return 'usage-orange';
+			if (pct >= 50) return 'usage-yellow';
+			return 'usage-green';
+		}
+
+		function formatResetTime(isoString) {
+			if (!isoString || isoString === 'null') return '';
+			try {
+				const d = new Date(isoString);
+				if (isNaN(d.getTime())) return '';
+				const now = new Date();
+				const hours = d.getHours();
+				const minutes = d.getMinutes();
+				const ampm = hours >= 12 ? 'pm' : 'am';
+				const h = hours % 12 || 12;
+				const timeStr = minutes > 0 ? \`\${h}:\${String(minutes).padStart(2, '0')}\${ampm}\` : \`\${h}\${ampm}\`;
+
+				// Same day: just time
+				if (d.toDateString() === now.toDateString()) {
+					return timeStr;
+				}
+				// Within 7 days: day name + time
+				const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+				if (diffDays > 0 && diffDays <= 7) {
+					const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+					return \`\${dayName} \${timeStr}\`;
+				}
+				// Further out: date + time
+				const month = d.toLocaleDateString('en-US', { month: 'short' });
+				return \`\${month} \${d.getDate()}, \${timeStr}\`;
+			} catch {
+				return '';
+			}
+		}
+
 		function updateStatusWithTotals() {
+			const pct = contextSize > 0 ? Math.round(contextUsed * 100 / contextSize) : 0;
+			const ctxStr = \`\${formatTokenCount(contextUsed)}/\${formatTokenCount(contextSize)}\`;
+
 			if (isProcessing) {
-				// While processing, show tokens and elapsed time
-				const totalTokens = totalTokensInput + totalTokensOutput;
-				const tokensStr = totalTokens > 0 ? 
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-				
 				let elapsedStr = '';
 				if (requestStartTime) {
 					const elapsedSeconds = Math.floor((Date.now() - requestStartTime) / 1000);
-					elapsedStr = \` • \${elapsedSeconds}s\`;
+					elapsedStr = \`\${elapsedSeconds}s\`;
 				}
-				
-				const statusText = \`Processing • \${tokensStr}\${elapsedStr}\`;
-				updateStatus(statusText, 'processing');
+
+				const parts = ['Processing'];
+				if (elapsedStr) parts.push(elapsedStr);
+				parts.push(\`\${ctxStr} (<span class="\${usageColorClass(pct)}">\${pct}%</span>)\`);
+				updateStatusHtml(parts.join(' \\u2022 '), 'processing');
 			} else {
-				// When ready, show full info
-				// Show plan type for subscription users, cost for API users
-				let usageStr;
 				const usageIcon = \`<svg class="usage-icon" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
 					<rect x="1" y="8" width="3" height="6" rx="0.5" fill="currentColor" opacity="0.5"/>
 					<rect x="5.5" y="5" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.7"/>
 					<rect x="10" y="2" width="3" height="12" rx="0.5" fill="currentColor"/>
 				</svg>\`;
+				let usageBadge;
 				if (subscriptionType) {
-					// Extract just the plan type (e.g., "Claude Max" -> "Max", "pro" -> "Pro")
 					let planName = subscriptionType.replace(/^claude\\s*/i, '').trim();
 					planName = planName.charAt(0).toUpperCase() + planName.slice(1);
-					usageStr = \`<a href="#" onclick="event.preventDefault(); viewUsage('plan');" class="usage-badge" title="View live usage">\${planName} Plan\${usageIcon}</a>\`;
+					usageBadge = \`<a href="#" onclick="event.preventDefault(); viewUsage('plan');" class="usage-badge" title="View live usage">\${planName} Plan\${usageIcon}</a>\`;
 				} else {
 					const costStr = totalCost > 0 ? \`$\${totalCost.toFixed(4)}\` : '$0.00';
-					usageStr = \`<a href="#" onclick="event.preventDefault(); viewUsage('api');" class="usage-badge" title="View usage">\${costStr}\${usageIcon}</a>\`;
+					usageBadge = \`<a href="#" onclick="event.preventDefault(); viewUsage('api');" class="usage-badge" title="View usage">\${costStr}\${usageIcon}</a>\`;
 				}
-				const totalTokens = totalTokensInput + totalTokensOutput;
-				const tokensStr = totalTokens > 0 ?
-					\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-				const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 
-				const statusText = \`Ready • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
-				updateStatusHtml(statusText, 'ready');
+				const parts = [];
+				if (modelDisplayName) {
+					parts.push(\`<span class="status-model">\${modelDisplayName}</span>\`);
+				}
+				parts.push(\`\${ctxStr} (<span class="\${usageColorClass(pct)}">\${pct}%</span>)\`);
+
+				// Rate limits (subscription users only)
+				if (usageLimits) {
+					if (usageLimits.five_hour) {
+						const p = Math.round(usageLimits.five_hour.utilization || 0);
+						const reset = formatResetTime(usageLimits.five_hour.resets_at);
+						parts.push(\`5h <span class="\${usageColorClass(p)}">\${p}%</span>\${reset ? \` <span class="reset-time">@\${reset}</span>\` : ''}\`);
+					}
+					if (usageLimits.seven_day) {
+						const p = Math.round(usageLimits.seven_day.utilization || 0);
+						const reset = formatResetTime(usageLimits.seven_day.resets_at);
+						parts.push(\`7d <span class="\${usageColorClass(p)}">\${p}%</span>\${reset ? \` <span class="reset-time">@\${reset}</span>\` : ''}\`);
+					}
+					if (usageLimits.extra_usage && usageLimits.extra_usage.is_enabled) {
+						const used = (usageLimits.extra_usage.used_credits || 0) / 100;
+						const limit = (usageLimits.extra_usage.monthly_limit || 0) / 100;
+						const ep = Math.round(usageLimits.extra_usage.utilization || 0);
+						parts.push(\`extra <span class="\${usageColorClass(ep)}">$\${used.toFixed(2)}/$\${limit.toFixed(2)}</span>\`);
+					}
+				}
+
+				parts.push(usageBadge);
+				updateStatusHtml(parts.join(' \\u2022 '), 'ready');
 			}
 		}
 
@@ -1580,6 +1653,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		// Model selector functions
 		let currentModel = 'opus'; // Default model
+		const modelVersions = {}; // alias -> display name, e.g. { opus: 'Opus 4.5' }
 
 		function showModelSelector() {
 			document.getElementById('modelModal').style.display = 'flex';
@@ -2011,7 +2085,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 
 		function selectModel(model, fromBackend = false) {
 			currentModel = model;
-			
+
 			// Update the display text
 			const displayNames = {
 				'opus': 'Opus',
@@ -2019,25 +2093,52 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				'default': 'Model'
 			};
 			document.getElementById('selectedModel').textContent = displayNames[model] || model;
-			
+
 			// Only send model selection to VS Code extension if not from backend
 			if (!fromBackend) {
 				vscode.postMessage({
 					type: 'selectModel',
 					model: model
 				});
-				
+
 				// Save preference
 				localStorage.setItem('selectedModel', model);
 			}
-			
+
 			// Update radio button if modal is open
 			const radioButton = document.getElementById('model-' + model);
 			if (radioButton) {
 				radioButton.checked = true;
 			}
-			
+
 			hideModelModal();
+		}
+
+		// Update model display with actual version from CLI response
+		function updateModelDisplay(data) {
+			const modelBtn = document.getElementById('selectedModel');
+			const modelSelector = document.getElementById('modelSelector');
+			if (modelBtn && data.displayName) {
+				modelBtn.textContent = data.displayName;
+			}
+			// Show full model ID on hover
+			if (modelSelector && data.modelId) {
+				modelSelector.title = data.modelId;
+			}
+			// Store the version for the current model alias and update modal title
+			if (data.displayName && currentModel && currentModel !== 'default') {
+				modelVersions[currentModel] = data.displayName;
+				const radioEl = document.getElementById('model-' + currentModel);
+				const labelEl = radioEl && radioEl.nextElementSibling;
+				const titleEl = labelEl && labelEl.querySelector('.model-title');
+				if (titleEl) {
+					const descriptions = {
+						opus: 'Most capable model',
+						sonnet: 'Balanced model'
+					};
+					titleEl.textContent = data.displayName + ' - ' + (descriptions[currentModel] || '');
+				}
+			}
 		}
 
 		// Initialize model display without sending message
@@ -2309,7 +2410,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Update token totals in real-time
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
-					
+					if (message.data.contextUsed !== undefined) contextUsed = message.data.contextUsed;
+					if (message.data.contextSize !== undefined) contextSize = message.data.contextSize;
+
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
@@ -2335,6 +2438,9 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
 					requestCount = message.data.requestCount || 0;
+					if (message.data.contextUsed !== undefined) contextUsed = message.data.contextUsed;
+					if (message.data.contextSize !== undefined) contextSize = message.data.contextSize;
+					if (message.data.modelDisplayName) modelDisplayName = message.data.modelDisplayName;
 
 					// Update status bar with new totals
 					updateStatusWithTotals();
@@ -2352,6 +2458,11 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					subscriptionType = message.data.subscriptionType || null;
 					console.log('Account info received:', subscriptionType);
 					// Update status bar to reflect plan type
+					updateStatusWithTotals();
+					break;
+
+				case 'usageLimits':
+					usageLimits = message.data;
 					updateStatusWithTotals();
 					break;
 					
@@ -2372,7 +2483,13 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
 					requestCount = 0;
+					contextUsed = 0;
+					modelDisplayName = '';
 					updateStatusWithTotals();
+					// Clear permission queue
+					permissionQueue.length = 0;
+					currentPermission = null;
+					hidePermissionBar();
 					break;
 
 				case 'compacting':
@@ -2385,6 +2502,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					// Reset token counts since conversation was compacted
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					contextUsed = 0;
 					updateStatusWithTotals();
 
 					const preTokens = message.data.preTokens ? message.data.preTokens.toLocaleString() : 'unknown';
@@ -2453,6 +2571,14 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 					currentModel = message.model;
 					selectModel(message.model, true);
 					break;
+				case 'modelInfo':
+					// Update UI with actual model version from CLI response
+					updateModelDisplay(message.data);
+					if (message.data.displayName) {
+						modelDisplayName = message.data.displayName;
+						updateStatusWithTotals();
+					}
+					break;
 				case 'terminalOpened':
 					// Display notification about checking the terminal
 					addMessage(message.data, 'system');
@@ -2501,93 +2627,168 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			}
 		});
 		
+		// Permission queue management functions
+		function queuePermission(data) {
+			permissionQueue.push(data);
+			if (!currentPermission) {
+				showNextPermission();
+			} else {
+				updateQueueCount();
+			}
+		}
+
+		function showNextPermission() {
+			if (permissionQueue.length === 0) {
+				hidePermissionBar();
+				currentPermission = null;
+				return;
+			}
+
+			currentPermission = permissionQueue.shift();
+			const bar = document.getElementById('permissionBar');
+			if (!bar) return;
+
+			// Only animate if bar was hidden
+			const wasHidden = bar.style.display === 'none';
+			bar.style.display = 'flex';
+			if (wasHidden) {
+				bar.style.animation = 'none';
+				bar.offsetHeight; // Force reflow
+				bar.style.animation = '';
+			}
+
+			bar.querySelector('.permission-bar-tool').textContent = currentPermission.tool || 'Unknown Tool';
+			bar.querySelector('.permission-bar-desc').textContent = getPermissionBarDesc(currentPermission);
+
+			updateQueueCount();
+		}
+
+		function getPermissionBarDesc(data) {
+			if (data.tool === 'Bash' && data.pattern) {
+				return data.pattern.replace(' *', '');
+			}
+			return 'Allow this tool call?';
+		}
+
+		function respondFromBar(allowed, alwaysAllow = false) {
+			if (!currentPermission) return;
+			respondToPermission(currentPermission.id, allowed, alwaysAllow);
+			showNextPermission();
+		}
+
+		function allowAllPending() {
+			// Allow current permission
+			if (currentPermission) {
+				respondToPermission(currentPermission.id, true, false);
+			}
+			// Allow all queued permissions
+			while (permissionQueue.length > 0) {
+				const perm = permissionQueue.shift();
+				respondToPermission(perm.id, true, false);
+			}
+			// Clear state and hide bar
+			currentPermission = null;
+			hidePermissionBar();
+		}
+
+		function updateQueueCount() {
+			const queueDiv = document.querySelector('.permission-bar-queue');
+			if (!queueDiv) return;
+
+			if (permissionQueue.length > 0) {
+				queueDiv.style.display = 'inline';
+				queueDiv.textContent = '+' + permissionQueue.length + ' more';
+			} else {
+				queueDiv.style.display = 'none';
+			}
+		}
+
+		function hidePermissionBar() {
+			const bar = document.getElementById('permissionBar');
+			if (bar) {
+				bar.style.display = 'none';
+			}
+		}
+
+		function removeFromPermissionQueue(id) {
+			const idx = permissionQueue.findIndex(p => p.id === id);
+			if (idx !== -1) {
+				permissionQueue.splice(idx, 1);
+				updateQueueCount();
+			}
+			// If this was the current permission, move to next
+			if (currentPermission && currentPermission.id === id) {
+				showNextPermission();
+			}
+		}
+
 		// Permission request functions
 		function addPermissionRequestMessage(data) {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
-
-			const messageDiv = document.createElement('div');
-			messageDiv.className = 'message permission-request';
-			messageDiv.id = \`permission-\${data.id}\`;
-			messageDiv.dataset.status = data.status || 'pending';
-
 			const toolName = data.tool || 'Unknown Tool';
 			const status = data.status || 'pending';
 
-			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
-			let alwaysAllowTooltip = '';
-			if (toolName === 'Bash' && data.pattern) {
-				const pattern = data.pattern;
-				// Remove the asterisk for display - show "npm i" instead of "npm i *"
-				const displayPattern = pattern.replace(' *', '');
-				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+			// For pending permissions: queue to fixed bar + add placeholder
+			if (status === 'pending') {
+				queuePermission(data);
+
+				// Add minimal placeholder in chat for context
+				const placeholder = document.createElement('div');
+				placeholder.className = 'message permission-placeholder';
+				placeholder.id = \`permission-\${data.id}\`;
+				placeholder.dataset.status = 'pending';
+
+				let desc = toolName;
+				if (toolName === 'Bash' && data.pattern) {
+					desc = toolName + ': ' + data.pattern.replace(' *', '');
+				}
+				placeholder.innerHTML = \`<span class="icon">!</span> Permission requested for \${desc}\`;
+				messagesDiv.appendChild(placeholder);
+				scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+				return;
 			}
 
-			// Show different content based on status
+			// For resolved permissions (history restore): show full inline message
+			const messageDiv = document.createElement('div');
+			messageDiv.className = 'message permission-request';
+			messageDiv.id = \`permission-\${data.id}\`;
+			messageDiv.dataset.status = status;
+
 			let contentHtml = '';
-			if (status === 'pending') {
+			if (status === 'approved') {
 				contentHtml = \`
 					<div class="permission-header">
-						<span class="icon">🔐</span>
-						<span>Permission Required</span>
-						<div class="permission-menu">
-							<button class="permission-menu-btn" onclick="togglePermissionMenu('\${data.id}')" title="More options">⋮</button>
-							<div class="permission-menu-dropdown" id="permissionMenu-\${data.id}" style="display: none;">
-								<button class="permission-menu-item" onclick="enableYoloMode('\${data.id}')">
-									<span class="menu-icon">⚡</span>
-									<div class="menu-content">
-										<span class="menu-title">Enable YOLO Mode</span>
-										<span class="menu-subtitle">Auto-allow all permissions</span>
-									</div>
-								</button>
-							</div>
-						</div>
-					</div>
-					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-						<div class="permission-buttons">
-							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-							<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
-						</div>
-					</div>
-				\`;
-			} else if (status === 'approved') {
-				contentHtml = \`
-					<div class="permission-header">
-						<span class="icon">🔐</span>
+						<span class="icon">~</span>
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
 						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-						<div class="permission-decision allowed">✅ You allowed this</div>
+						<div class="permission-decision allowed">Allowed</div>
 					</div>
 				\`;
 				messageDiv.classList.add('permission-decided', 'allowed');
 			} else if (status === 'denied') {
 				contentHtml = \`
 					<div class="permission-header">
-						<span class="icon">🔐</span>
+						<span class="icon">~</span>
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
 						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-						<div class="permission-decision denied">❌ You denied this</div>
+						<div class="permission-decision denied">Denied</div>
 					</div>
 				\`;
 				messageDiv.classList.add('permission-decided', 'denied');
 			} else if (status === 'cancelled' || status === 'expired') {
 				contentHtml = \`
 					<div class="permission-header">
-						<span class="icon">🔐</span>
+						<span class="icon">~</span>
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
 						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
-						<div class="permission-decision expired">⏱️ This request expired</div>
+						<div class="permission-decision expired">Expired</div>
 					</div>
 				\`;
 				messageDiv.classList.add('permission-decided', 'expired');
@@ -2599,38 +2800,26 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 		}
 
 		function updatePermissionStatus(id, status) {
-			const permissionMsg = document.getElementById(\`permission-\${id}\`);
-			if (!permissionMsg) return;
+			// Update placeholder in chat
+			const placeholder = document.getElementById(\`permission-\${id}\`);
+			if (placeholder) {
+				placeholder.dataset.status = status;
+				placeholder.classList.add('resolved');
 
-			permissionMsg.dataset.status = status;
-			const permissionContent = permissionMsg.querySelector('.permission-content');
-			const buttons = permissionMsg.querySelector('.permission-buttons');
-			const menuDiv = permissionMsg.querySelector('.permission-menu');
-
-			// Hide buttons and menu if present
-			if (buttons) buttons.style.display = 'none';
-			if (menuDiv) menuDiv.style.display = 'none';
-
-			// Remove existing decision div if any
-			const existingDecision = permissionContent.querySelector('.permission-decision');
-			if (existingDecision) existingDecision.remove();
-
-			// Add new decision div
-			const decisionDiv = document.createElement('div');
-			if (status === 'approved') {
-				decisionDiv.className = 'permission-decision allowed';
-				decisionDiv.innerHTML = '✅ You allowed this';
-				permissionMsg.classList.add('permission-decided', 'allowed');
-			} else if (status === 'denied') {
-				decisionDiv.className = 'permission-decision denied';
-				decisionDiv.innerHTML = '❌ You denied this';
-				permissionMsg.classList.add('permission-decided', 'denied');
-			} else if (status === 'cancelled' || status === 'expired') {
-				decisionDiv.className = 'permission-decision expired';
-				decisionDiv.innerHTML = '⏱️ This request expired';
-				permissionMsg.classList.add('permission-decided', 'expired');
+				if (status === 'approved') {
+					placeholder.classList.add('approved');
+					placeholder.innerHTML = '<span class="icon">+</span> Permission granted';
+				} else if (status === 'denied') {
+					placeholder.classList.add('denied');
+					placeholder.innerHTML = '<span class="icon">x</span> Permission denied';
+				} else if (status === 'cancelled' || status === 'expired') {
+					placeholder.classList.add('expired');
+					placeholder.innerHTML = '<span class="icon">-</span> Permission expired';
+				}
 			}
-			permissionContent.appendChild(decisionDiv);
+
+			// Remove from queue and update bar
+			removeFromPermissionQueue(id);
 		}
 
 		// AskUserQuestion functions

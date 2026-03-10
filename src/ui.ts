@@ -41,7 +41,23 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 
 	<div class="chat-container" id="chatContainer">
 		<div class="messages" id="messages"></div>
-		
+
+		<!-- Fixed Permission Bar -->
+		<div id="permissionBar" class="permission-bar" style="display: none;">
+			<div class="permission-bar-content">
+				<span class="permission-bar-icon">!</span>
+				<span class="permission-bar-tool"></span>
+				<span class="permission-bar-desc"></span>
+				<span class="permission-bar-queue" style="display: none;"></span>
+			</div>
+			<div class="permission-bar-actions">
+				<button class="btn deny" onclick="respondFromBar(false)">Deny</button>
+				<button class="btn allow-all" onclick="allowAllPending()">Allow All</button>
+				<button class="btn always-allow" onclick="respondFromBar(true, true)">Always Allow</button>
+				<button class="btn allow" onclick="respondFromBar(true)">Allow</button>
+			</div>
+		</div>
+
 		<!-- WSL Alert for Windows users -->
 		<div id="wslAlert" class="wsl-alert" style="display: none;">
 			<div class="wsl-alert-content">

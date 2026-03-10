@@ -5,3 +5,5 @@ node_modules
 *.vsix
 backup
 .claude/
+CLAUDE.md
+claude-code-chat-permissions-mcp/
