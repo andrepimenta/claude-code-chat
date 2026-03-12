@@ -258,6 +258,24 @@ const styles = `
         border-color: var(--vscode-focusBorder);
     }
 
+    .permission-buttons .btn.deny-continue {
+        background-color: transparent;
+        color: var(--vscode-foreground);
+        border-color: var(--vscode-panel-border);
+    }
+
+    .permission-buttons .btn.deny-continue:hover {
+        background-color: var(--vscode-list-hoverBackground);
+        border-color: var(--vscode-focusBorder);
+    }
+
+    .permission-buttons .change-mind-text {
+        color: var(--vscode-descriptionForeground);
+        font-size: 12px;
+        margin-right: 8px;
+        font-style: italic;
+    }
+
     .permission-buttons .btn.always-allow {
         background-color: rgba(0, 122, 204, 0.1);
         color: var(--vscode-charts-blue);
@@ -336,6 +354,176 @@ const styles = `
     .permission-decided.expired {
         border-color: var(--vscode-panel-border);
         background-color: rgba(128, 128, 128, 0.05);
+    }
+
+    /* User Question UI */
+    .user-question {
+        margin: 4px 12px 20px 12px;
+        background-color: rgba(100, 100, 255, 0.08);
+        border: 1px solid rgba(100, 100, 255, 0.25);
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        animation: slideUp 0.3s ease;
+    }
+
+    .question-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+        font-weight: 600;
+        color: var(--vscode-foreground);
+        font-size: 13px;
+    }
+
+    .question-header .icon {
+        font-size: 16px;
+    }
+
+    .question-header .header-chip {
+        background-color: rgba(100, 100, 255, 0.15);
+        color: var(--vscode-foreground);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .question-item {
+        margin-bottom: 16px;
+    }
+
+    .question-item:last-child {
+        margin-bottom: 8px;
+    }
+
+    .question-text {
+        font-size: 13px;
+        margin-bottom: 10px;
+        color: var(--vscode-foreground);
+        line-height: 1.4;
+    }
+
+    .question-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .question-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 8px 12px;
+        border: 1px solid var(--vscode-panel-border);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .question-option:hover {
+        background-color: var(--vscode-list-hoverBackground);
+        border-color: var(--vscode-focusBorder);
+    }
+
+    .question-option.selected {
+        background-color: rgba(100, 100, 255, 0.12);
+        border-color: var(--vscode-focusBorder);
+    }
+
+    .question-option input[type="radio"],
+    .question-option input[type="checkbox"] {
+        margin-top: 3px;
+        flex-shrink: 0;
+        cursor: pointer;
+    }
+
+    .option-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        cursor: pointer;
+    }
+
+    .option-label {
+        font-weight: 500;
+        font-size: 13px;
+    }
+
+    .option-description {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    .other-text-input {
+        width: 100%;
+        padding: 6px 10px;
+        margin-top: 6px;
+        border: 1px solid var(--vscode-input-border);
+        background-color: var(--vscode-input-background);
+        color: var(--vscode-input-foreground);
+        border-radius: 4px;
+        font-size: 13px;
+        font-family: var(--vscode-font-family);
+        box-sizing: border-box;
+        display: none;
+    }
+
+    .other-text-input:focus {
+        outline: none;
+        border-color: var(--vscode-focusBorder);
+    }
+
+    .question-buttons {
+        margin-top: 12px;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .question-buttons .btn {
+        background-color: var(--vscode-button-background);
+        color: var(--vscode-button-foreground);
+        border: none;
+        padding: 6px 16px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        transition: background-color 0.15s ease;
+    }
+
+    .question-buttons .btn:hover {
+        background-color: var(--vscode-button-hoverBackground);
+    }
+
+    .question-decision {
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 12px;
+        text-align: center;
+        border-radius: 4px;
+        margin-top: 8px;
+    }
+
+    .question-decision.answered {
+        background-color: rgba(0, 122, 204, 0.15);
+        color: var(--vscode-charts-blue, #3794ff);
+        border: 1px solid rgba(0, 122, 204, 0.3);
+    }
+
+    .question-decision.cancelled {
+        background-color: rgba(128, 128, 128, 0.15);
+        color: var(--vscode-descriptionForeground);
+        border: 1px solid rgba(128, 128, 128, 0.3);
+    }
+
+    .question-decided {
+        opacity: 0.7;
+        pointer-events: none;
+    }
+
+    .question-decided .question-buttons {
+        display: none;
     }
 
     /* Permissions Management */
