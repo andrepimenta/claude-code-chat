@@ -2369,6 +2369,12 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 				case 'updatePermissionStatus':
 					updatePermissionStatus(message.data.id, message.data.status);
 					break;
+				case 'userQuestion':
+					addUserQuestionMessage(message.data);
+					break;
+				case 'updateQuestionStatus':
+					updateQuestionStatus(message.data.id, message.data.status);
+					break;
 				case 'expirePendingPermissions':
 					expireAllPendingPermissions();
 					break;
@@ -2438,6 +2444,7 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
 						<div class="permission-buttons">
 							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
+							<button class="btn deny-continue" onclick="respondToPermission('\${data.id}', false, false, true)">Deny &amp; Continue</button>
 							<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
 							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
 						</div>
@@ -2530,38 +2537,61 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			});
 		}
 		
-		function respondToPermission(id, approved, alwaysAllow = false) {
+		function respondToPermission(id, approved, alwaysAllow = false, denyAndContinue = false) {
 			// Send response back to extension
 			vscode.postMessage({
 				type: 'permissionResponse',
 				id: id,
 				approved: approved,
-				alwaysAllow: alwaysAllow
+				alwaysAllow: alwaysAllow,
+				denyAndContinue: denyAndContinue
 			});
-			
+
 			// Update the UI to show the decision
 			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`);
 			if (permissionMsg) {
 				const buttons = permissionMsg.querySelector('.permission-buttons');
 				const permissionContent = permissionMsg.querySelector('.permission-content');
 				let decision = approved ? 'You allowed this' : 'You denied this';
-				
+
 				if (alwaysAllow && approved) {
 					decision = 'You allowed this and set it to always allow';
+				} else if (denyAndContinue) {
+					decision = 'You denied this (Claude will continue without it)';
 				}
-				
+
 				const emoji = approved ? '✅' : '❌';
 				const decisionClass = approved ? 'allowed' : 'denied';
-				
-				// Hide buttons
-				buttons.style.display = 'none';
-				
+
+				// For regular deny (not deny & continue), keep Allow button visible so user can change mind
+				if (!approved && !denyAndContinue) {
+					// Hide all buttons except Allow
+					const denyBtn = buttons.querySelector('.btn.deny');
+					const denyContinueBtn = buttons.querySelector('.btn.deny-continue');
+					const alwaysAllowBtn = buttons.querySelector('.btn.always-allow');
+					if (denyBtn) denyBtn.style.display = 'none';
+					if (denyContinueBtn) denyContinueBtn.style.display = 'none';
+					if (alwaysAllowBtn) alwaysAllowBtn.style.display = 'none';
+
+					// Add "Changed your mind?" text before Allow button
+					const allowBtn = buttons.querySelector('.btn.allow');
+					if (allowBtn && !buttons.querySelector('.change-mind-text')) {
+						const changeMindText = document.createElement('span');
+						changeMindText.className = 'change-mind-text';
+						changeMindText.textContent = 'Changed your mind?';
+						buttons.insertBefore(changeMindText, allowBtn);
+					}
+				} else {
+					// Hide all buttons for approve or deny & continue
+					buttons.style.display = 'none';
+				}
+
 				// Add decision div to permission-content
 				const decisionDiv = document.createElement('div');
 				decisionDiv.className = \`permission-decision \${decisionClass}\`;
 				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
 				permissionContent.appendChild(decisionDiv);
-				
+
 				permissionMsg.classList.add('permission-decided', decisionClass);
 			}
 		}
@@ -2595,6 +2625,131 @@ const getScript = (isTelemetryEnabled: boolean) => `<script>
 			
 			// Show notification
 			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
+		}
+
+		// User Question functions
+		function addUserQuestionMessage(data) {
+			const messagesDiv = document.getElementById('messages');
+			const shouldScroll = shouldAutoScroll(messagesDiv);
+
+			const messageDiv = document.createElement('div');
+			messageDiv.className = 'message user-question';
+			messageDiv.id = \`question-\${data.id}\`;
+			messageDiv.dataset.status = data.status || 'pending';
+
+			let contentHtml = \`<div class="question-header"><span class="icon">&#10067;</span><span>Claude has a question</span></div>\`;
+
+			if (data.questions && data.questions.length > 0) {
+				for (let qi = 0; qi < data.questions.length; qi++) {
+					const q = data.questions[qi];
+					const inputType = q.multiSelect ? 'checkbox' : 'radio';
+					const groupName = \`question-\${data.id}-\${qi}\`;
+
+					contentHtml += \`<div class="question-item">\`;
+
+					if (q.header) {
+						contentHtml += \`<span class="header-chip">\${escapeHtml(q.header)}</span> \`;
+					}
+					contentHtml += \`<div class="question-text">\${escapeHtml(q.question)}</div>\`;
+
+					if (q.options && q.options.length > 0) {
+						contentHtml += \`<div class="question-options">\`;
+						for (let oi = 0; oi < q.options.length; oi++) {
+							const opt = q.options[oi];
+							contentHtml += \`
+								<label class="question-option" onclick="this.querySelector('input').checked = true; this.closest('.question-options').querySelectorAll('.question-option').forEach(o => o.classList.remove('selected')); this.classList.add('selected');">
+									<input type="\${inputType}" name="\${groupName}" value="\${escapeHtml(opt.label)}" \${inputType === 'checkbox' ? \`onclick="event.stopPropagation(); this.closest('.question-option').classList.toggle('selected', this.checked);"\` : ''}>
+									<div class="option-content">
+										<span class="option-label">\${escapeHtml(opt.label)}</span>
+										\${opt.description ? \`<span class="option-description">\${escapeHtml(opt.description)}</span>\` : ''}
+									</div>
+								</label>\`;
+						}
+						// "Other" option
+						contentHtml += \`
+							<label class="question-option" onclick="var r = this.querySelector('input[type=&quot;\${inputType}&quot;]'); r.checked = true; if ('\${inputType}' === 'radio') { this.closest('.question-options').querySelectorAll('.question-option').forEach(o => o.classList.remove('selected')); } this.classList.add('selected'); var ti = this.querySelector('.other-text-input'); ti.style.display = 'block'; ti.focus();">
+								<input type="\${inputType}" name="\${groupName}" value="__other__" \${inputType === 'checkbox' ? \`onclick="event.stopPropagation(); this.closest('.question-option').classList.toggle('selected', this.checked); this.closest('.question-option').querySelector('.other-text-input').style.display = this.checked ? 'block' : 'none';"\` : ''}>
+								<div class="option-content">
+									<span class="option-label">Other</span>
+									<input type="text" class="other-text-input" placeholder="Type your answer..." onclick="event.stopPropagation();">
+								</div>
+							</label>\`;
+						contentHtml += \`</div>\`;
+					}
+
+					contentHtml += \`</div>\`;
+				}
+
+				contentHtml += \`<div class="question-buttons"><button class="btn" onclick="submitQuestionResponse('\${data.id}', \${data.questions.length})">Submit</button></div>\`;
+			}
+
+			messageDiv.innerHTML = contentHtml;
+			messagesDiv.appendChild(messageDiv);
+			moveProcessingIndicatorToLast();
+			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+
+		function submitQuestionResponse(questionId, questionCount) {
+			const questionDiv = document.getElementById(\`question-\${questionId}\`);
+			if (!questionDiv) return;
+
+			const answers = [];
+			for (let qi = 0; qi < questionCount; qi++) {
+				const groupName = \`question-\${questionId}-\${qi}\`;
+				const checked = questionDiv.querySelectorAll(\`input[name="\${groupName}"]:checked\`);
+				const selectedOptions = [];
+				let otherText = '';
+
+				checked.forEach(function(input) {
+					if (input.value === '__other__') {
+						const textInput = input.closest('.question-option').querySelector('.other-text-input');
+						otherText = textInput ? textInput.value : '';
+						if (otherText) selectedOptions.push(otherText);
+					} else {
+						selectedOptions.push(input.value);
+					}
+				});
+
+				answers.push({
+					questionIndex: qi,
+					selectedOptions: selectedOptions,
+					otherText: otherText
+				});
+			}
+
+			vscode.postMessage({
+				type: 'questionResponse',
+				id: questionId,
+				answers: answers
+			});
+
+			// Update UI to show answered state
+			updateQuestionStatus(questionId, 'answered');
+		}
+
+		function updateQuestionStatus(id, status) {
+			const questionMsg = document.getElementById(\`question-\${id}\`);
+			if (!questionMsg) return;
+
+			questionMsg.dataset.status = status;
+			const buttons = questionMsg.querySelector('.question-buttons');
+			if (buttons) buttons.style.display = 'none';
+
+			// Remove existing decision div
+			const existing = questionMsg.querySelector('.question-decision');
+			if (existing) existing.remove();
+
+			const decisionDiv = document.createElement('div');
+			if (status === 'answered') {
+				decisionDiv.className = 'question-decision answered';
+				decisionDiv.innerHTML = '&#9989; Response submitted';
+				questionMsg.classList.add('question-decided');
+			} else if (status === 'cancelled') {
+				decisionDiv.className = 'question-decision cancelled';
+				decisionDiv.innerHTML = '&#9203; This question expired';
+				questionMsg.classList.add('question-decided');
+			}
+			questionMsg.appendChild(decisionDiv);
 		}
 
 		// Close permission menus when clicking outside

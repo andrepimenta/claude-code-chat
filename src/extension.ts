@@ -134,6 +134,13 @@ class ClaudeChatProvider {
 		suggestions?: any[];
 		toolUseId: string;
 	}> = new Map();
+	// Pending AskUserQuestion requests from stdio control_request messages
+	private _pendingQuestionRequests: Map<string, {
+		requestId: string;
+		questions: any[];
+		toolUseId: string;
+		input: Record<string, unknown>;
+	}> = new Map();
 	private _currentConversation: Array<{ timestamp: string, messageType: string, data: any }> = [];
 	private _conversationStartTime: string | undefined;
 	private _conversationIndex: Array<{
@@ -147,6 +154,7 @@ class ClaudeChatProvider {
 		lastUserMessage: string
 	}> = [];
 	private _currentClaudeProcess: cp.ChildProcess | undefined;
+	private _processGeneration: number = 0;
 	private _abortController: AbortController | undefined;
 	private _isWslProcess: boolean = false;
 	private _wslDistro: string = 'Ubuntu';
@@ -164,8 +172,9 @@ class ClaudeChatProvider {
 		this._initializeConversations();
 		this._initializeMCPConfig();
 
-		// Load conversation index from workspace state
+		// Load conversation index from workspace state, then recover any orphaned files
 		this._conversationIndex = this._context.workspaceState.get('claude.conversationIndex', []);
+		this._recoverOrphanedConversations();
 
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
@@ -351,7 +360,10 @@ class ClaudeChatProvider {
 				this._createImageFile(message.imageData, message.imageType);
 				return;
 			case 'permissionResponse':
-				this._handlePermissionResponse(message.id, message.approved, message.alwaysAllow);
+				this._handlePermissionResponse(message.id, message.approved, message.alwaysAllow, message.denyAndContinue);
+				return;
+			case 'questionResponse':
+				this._handleQuestionResponse(message.id, message.answers);
 				return;
 			case 'getPermissions':
 				this._sendPermissions();
@@ -487,7 +499,17 @@ class ClaudeChatProvider {
 			actualMessage = thinkingPrompt + thinkingMesssage + actualMessage;
 		}
 
+		// Kill any existing process before starting a new one (prevents ghost double-runs)
+		if (this._currentClaudeProcess) {
+			console.log('Killing existing Claude process before starting new one');
+			await this._killClaudeProcess();
+		}
+
 		this._isProcessing = true;
+
+		// Increment generation counter — used to ignore output from killed processes
+		this._processGeneration++;
+		const thisGeneration = this._processGeneration;
 
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
@@ -617,6 +639,23 @@ class ClaudeChatProvider {
 		// Store process reference for potential termination
 		this._currentClaudeProcess = claudeProcess;
 
+		// Handle stream errors gracefully to prevent "Stream closed" crashes
+		if (claudeProcess.stdin) {
+			claudeProcess.stdin.on('error', (err) => {
+				console.log('Claude stdin error (expected during stop):', err.message);
+			});
+		}
+		if (claudeProcess.stdout) {
+			claudeProcess.stdout.on('error', (err) => {
+				console.log('Claude stdout error (expected during stop):', err.message);
+			});
+		}
+		if (claudeProcess.stderr) {
+			claudeProcess.stderr.on('error', (err) => {
+				console.log('Claude stderr error (expected during stop):', err.message);
+			});
+		}
+
 		// Send the message to Claude's stdin as JSON (stream-json input format)
 		// Don't end stdin yet - we need to keep it open for permission responses
 		if (claudeProcess.stdin) {
@@ -650,6 +689,11 @@ class ClaudeChatProvider {
 
 		if (claudeProcess.stdout) {
 			claudeProcess.stdout.on('data', (data) => {
+				// Ignore output from killed/old processes
+				if (!this._currentClaudeProcess || thisGeneration !== this._processGeneration) {
+					return;
+				}
+
 				rawOutput += data.toString();
 
 				// Process JSON stream line by line
@@ -657,6 +701,11 @@ class ClaudeChatProvider {
 				rawOutput = lines.pop() || ''; // Keep incomplete line for next chunk
 
 				for (const line of lines) {
+					// Check again in case stop was called while processing lines
+					if (!this._currentClaudeProcess || thisGeneration !== this._processGeneration) {
+						return;
+					}
+
 					if (line.trim()) {
 						try {
 							const jsonData = JSON.parse(line.trim());
@@ -701,15 +750,18 @@ class ClaudeChatProvider {
 			console.log('Claude process closed with code:', code);
 			console.log('Claude stderr output:', errorOutput);
 
-			if (!this._currentClaudeProcess) {
+			// Always cancel pending permission requests when process closes
+			// Do this before the early return check so permissions are cleaned up
+			// even when stop button was clicked (which clears _currentClaudeProcess first)
+			this._cancelPendingPermissionRequests();
+
+			// Ignore close events from old/killed processes
+			if (!this._currentClaudeProcess || thisGeneration !== this._processGeneration) {
 				return;
 			}
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			// Clear loading indicator and set processing to false
 			this._postMessage({
@@ -737,15 +789,18 @@ class ClaudeChatProvider {
 		claudeProcess.on('error', (error) => {
 			console.log('Claude process error:', error.message);
 
-			if (!this._currentClaudeProcess) {
+			// Always cancel pending permission requests on error
+			// Do this before the early return check so permissions are cleaned up
+			// even when stop button was clicked (which clears _currentClaudeProcess first)
+			this._cancelPendingPermissionRequests();
+
+			// Ignore error events from old/killed processes
+			if (!this._currentClaudeProcess || thisGeneration !== this._processGeneration) {
 				return;
 			}
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			this._postMessage({
 				type: 'clearLoading'
@@ -1488,18 +1543,31 @@ class ClaudeChatProvider {
 		const request = controlRequest.request;
 		const requestId = controlRequest.request_id;
 
-		// Only handle can_use_tool requests (permission requests)
+		// Check if this is an AskUserQuestion request
+		const input = request?.input || {};
 		if (request?.subtype !== 'can_use_tool') {
-			console.log('Ignoring non-permission control request:', request?.subtype);
+			// Check if this looks like an AskUserQuestion (has questions array in input, or tool_name matches)
+			if (input.questions || request?.tool_name === 'AskUserQuestion') {
+				console.log('AskUserQuestion control request received, requestId:', requestId);
+				this._handleAskUserQuestion(requestId, request);
+				return;
+			}
+			console.log('Ignoring unknown control request subtype:', request?.subtype, JSON.stringify(controlRequest).substring(0, 500));
 			return;
 		}
 
 		const toolName = request.tool_name || 'Unknown Tool';
-		const input = request.input || {};
 		const suggestions = request.permission_suggestions;
 		const toolUseId = request.tool_use_id;
 
 		console.log(`Permission request for tool: ${toolName}, requestId: ${requestId}`);
+
+		// Intercept AskUserQuestion — show interactive question UI instead of permission dialog
+		if (toolName === 'AskUserQuestion' && input.questions) {
+			console.log('Intercepting AskUserQuestion as interactive question UI, requestId:', requestId);
+			this._handleAskUserQuestion(requestId, request);
+			return;
+		}
 
 		// Check if this tool is pre-approved
 		const isPreApproved = await this._isToolPreApproved(toolName, input);
@@ -1549,6 +1617,104 @@ class ClaudeChatProvider {
 	}
 
 	/**
+	 * Handle AskUserQuestion control_request from Claude CLI
+	 */
+	private _handleAskUserQuestion(requestId: string, request: any): void {
+		const input = request.input || {};
+		const questions = input.questions || [];
+		const toolUseId = request.tool_use_id;
+
+		// Store the request so we can respond later
+		this._pendingQuestionRequests.set(requestId, {
+			requestId,
+			questions,
+			toolUseId,
+			input
+		});
+
+		// Send question to the webview UI
+		this._sendAndSaveMessage({
+			type: 'userQuestion',
+			data: {
+				id: requestId,
+				questions: questions,
+				status: 'pending'
+			}
+		});
+	}
+
+	/**
+	 * Send AskUserQuestion response back to Claude CLI via stdin
+	 * Uses the same control_response format as permissions, with answers in updatedInput
+	 */
+	private _sendQuestionResponse(requestId: string, answers: any, pendingRequest: any): void {
+		if (!this._currentClaudeProcess?.stdin || this._currentClaudeProcess.stdin.destroyed) {
+			console.error('Cannot send question response: stdin not available');
+			return;
+		}
+
+		// Format answers as a flat map that Claude CLI can serialize cleanly
+		// The tool result format is: "User has answered your questions: key=value"
+		// So we build a simple object with question text -> selected option(s)
+		const formattedAnswers: Record<string, string> = {};
+		const questions = pendingRequest.questions || [];
+		if (Array.isArray(answers)) {
+			for (const answer of answers) {
+				const qi = answer.questionIndex || 0;
+				const question = questions[qi];
+				const key = question?.question || `Question ${qi + 1}`;
+				const selected = answer.selectedOptions || [];
+				formattedAnswers[key] = selected.join(', ') || answer.otherText || '(no selection)';
+			}
+		}
+
+		const updatedInput = { ...pendingRequest.input, answers: formattedAnswers };
+
+		const response = {
+			type: 'control_response',
+			response: {
+				subtype: 'success',
+				request_id: requestId,
+				response: {
+					behavior: 'allow',
+					updatedInput: updatedInput,
+					toolUseID: pendingRequest.toolUseId
+				}
+			}
+		};
+
+		const responseJson = JSON.stringify(response) + '\n';
+		console.log('Sending question response:', responseJson);
+		this._currentClaudeProcess.stdin.write(responseJson);
+	}
+
+	/**
+	 * Handle question response from webview UI
+	 */
+	private _handleQuestionResponse(id: string, answers: any): void {
+		const pendingRequest = this._pendingQuestionRequests.get(id);
+		if (!pendingRequest) {
+			console.error('No pending question request found for id:', id);
+			return;
+		}
+
+		// Remove from pending requests
+		this._pendingQuestionRequests.delete(id);
+
+		// Send the response to Claude via stdin
+		this._sendQuestionResponse(id, answers, pendingRequest);
+
+		// Update the question status in UI
+		this._postMessage({
+			type: 'updateQuestionStatus',
+			data: {
+				id: id,
+				status: 'answered'
+			}
+		});
+	}
+
+	/**
 	 * Send permission response back to Claude CLI via stdin
 	 */
 	private _sendPermissionResponse(
@@ -1561,7 +1727,8 @@ class ClaudeChatProvider {
 			suggestions?: any[];
 			toolUseId: string;
 		},
-		alwaysAllow?: boolean
+		alwaysAllow?: boolean,
+		denyAndContinue?: boolean
 	): void {
 		if (!this._currentClaudeProcess?.stdin || this._currentClaudeProcess.stdin.destroyed) {
 			console.error('Cannot send permission response: stdin not available');
@@ -1585,6 +1752,11 @@ class ClaudeChatProvider {
 				}
 			};
 		} else {
+			// Different message based on whether user wants Claude to continue or not
+			const denyMessage = denyAndContinue
+				? 'User denied permission. Continue without this tool and try a different approach or skip this step.'
+				: 'User denied permission';
+
 			response = {
 				type: 'control_response',
 				response: {
@@ -1592,8 +1764,7 @@ class ClaudeChatProvider {
 					request_id: requestId,
 					response: {
 						behavior: 'deny',
-						message: 'User denied permission',
-						interrupt: true,
+						message: denyMessage,
 						toolUseID: pendingRequest.toolUseId
 					}
 				}
@@ -1602,7 +1773,7 @@ class ClaudeChatProvider {
 
 		const responseJson = JSON.stringify(response) + '\n';
 		console.log('Sending permission response:', responseJson);
-		console.log('Always allow:', alwaysAllow, 'Suggestions included:', !!pendingRequest.suggestions);
+		console.log('Always allow:', alwaysAllow, 'Deny and continue:', denyAndContinue, 'Suggestions included:', !!pendingRequest.suggestions);
 		this._currentClaudeProcess.stdin.write(responseJson);
 	}
 
@@ -1615,7 +1786,7 @@ class ClaudeChatProvider {
 	 * Handle permission response from webview UI
 	 * Sends control_response back to Claude CLI via stdin
 	 */
-	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean): void {
+	private _handlePermissionResponse(id: string, approved: boolean, alwaysAllow?: boolean, denyAndContinue?: boolean): void {
 		const pendingRequest = this._pendingPermissionRequests.get(id);
 		if (!pendingRequest) {
 			console.error('No pending permission request found for id:', id);
@@ -1626,7 +1797,7 @@ class ClaudeChatProvider {
 		this._pendingPermissionRequests.delete(id);
 
 		// Send the response to Claude via stdin
-		this._sendPermissionResponse(id, approved, pendingRequest, alwaysAllow);
+		this._sendPermissionResponse(id, approved, pendingRequest, alwaysAllow, denyAndContinue);
 
 		// Update the permission request status in UI
 		this._postMessage({
@@ -1657,6 +1828,18 @@ class ClaudeChatProvider {
 			});
 		}
 		this._pendingPermissionRequests.clear();
+
+		// Also cancel pending question requests
+		for (const [id, _request] of this._pendingQuestionRequests) {
+			this._postMessage({
+				type: 'updateQuestionStatus',
+				data: {
+					id: id,
+					status: 'cancelled'
+				}
+			});
+		}
+		this._pendingQuestionRequests.clear();
 	}
 
 	/**
@@ -2369,23 +2552,36 @@ class ClaudeChatProvider {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
 
-		// 1. Abort via controller (clean API)
-		this._abortController?.abort();
-		this._abortController = undefined;
-
-		// 2. Clear reference immediately
+		// Clear reference immediately to prevent double-kill and ghost output
 		this._currentClaudeProcess = undefined;
 
 		if (!pid) {
+			this._abortController?.abort();
+			this._abortController = undefined;
 			return;
 		}
 
 		console.log(`Terminating Claude process group (PID: ${pid})...`);
 
-		// 3. Kill process group (handles children)
+		// 1. Close stdin first — graceful shutdown signal (like Ctrl+D)
+		try {
+			if (processToKill?.stdin && !processToKill.stdin.destroyed) {
+				processToKill.stdin.end();
+			}
+		} catch {
+			// stdin may already be closed
+		}
+
+		// 2. Kill process tree BEFORE abort — on Windows with shell:true,
+		// abort() kills cmd.exe which orphans the actual node/claude child.
+		// taskkill /t needs the tree intact to find children.
 		await this._killProcessGroup(pid, 'SIGTERM');
 
-		// 4. Wait for process to exit, with timeout
+		// 3. Now abort via controller (backup, also cancels any pending signal listeners)
+		this._abortController?.abort();
+		this._abortController = undefined;
+
+		// 4. Wait for process to exit, with short timeout
 		const exitPromise = new Promise<void>((resolve) => {
 			if (processToKill?.killed) {
 				resolve();
@@ -2404,6 +2600,15 @@ class ClaudeChatProvider {
 		if (processToKill && !processToKill.killed) {
 			console.log(`Force killing Claude process group (PID: ${pid})...`);
 			await this._killProcessGroup(pid, 'SIGKILL');
+
+			// On Windows, also try to kill any orphaned claude/node child processes
+			if (process.platform === 'win32' && !this._isWslProcess) {
+				try {
+					await exec(`wmic process where "ParentProcessId=${pid}" delete`);
+				} catch {
+					// Children may already be dead
+				}
+			}
 		}
 
 		console.log('Claude process group terminated');
@@ -2419,6 +2624,10 @@ class ClaudeChatProvider {
 			type: 'setProcessing',
 			data: { isProcessing: false }
 		});
+
+		// Cancel pending permission requests immediately (before killing process)
+		// This ensures permissions are cleared even if close event handler returns early
+		this._cancelPendingPermissionRequests();
 
 		await this._killClaudeProcess();
 
@@ -2468,6 +2677,44 @@ class ClaudeChatProvider {
 
 	private _getLatestConversation(): any | undefined {
 		return this._conversationIndex.length > 0 ? this._conversationIndex[0] : undefined;
+	}
+
+	/**
+	 * Scan conversations directory for files not in the index and re-add them.
+	 * Recovers orphaned conversations whose index entries were lost.
+	 */
+	private async _recoverOrphanedConversations(): Promise<void> {
+		if (!this._conversationsPath) { return; }
+
+		try {
+			const dirUri = vscode.Uri.file(this._conversationsPath);
+			const entries = await vscode.workspace.fs.readDirectory(dirUri);
+			const indexedFilenames = new Set(this._conversationIndex.map(e => e.filename));
+			let recovered = 0;
+
+			for (const [name, type] of entries) {
+				if (type !== vscode.FileType.File || !name.endsWith('.json')) { continue; }
+				if (indexedFilenames.has(name)) { continue; }
+
+				// Orphaned file — read it and rebuild the index entry
+				try {
+					const filePath = path.join(this._conversationsPath, name);
+					const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+					const conversationData = JSON.parse(new TextDecoder().decode(content));
+					this._updateConversationIndex(name, conversationData);
+					recovered++;
+					console.log(`Recovered orphaned conversation: ${name}`);
+				} catch {
+					// Skip files that can't be parsed
+				}
+			}
+
+			if (recovered > 0) {
+				console.log(`Recovered ${recovered} orphaned conversation(s)`);
+			}
+		} catch {
+			// Conversations directory may not exist yet
+		}
 	}
 
 	private async _loadConversationHistory(filename: string): Promise<void> {
