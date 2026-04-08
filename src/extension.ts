@@ -3,6 +3,9 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import getHtml from './ui';
+import { startMcpServer, DiffManager } from './mcp-server';
+import { ensureDiffToolConfig } from './mcp-server/lockfile';
+import type { IToolExecutor, OpenFileInput, DiagnosticEntry, ExecuteCodeInput, McpIdeServer } from './mcp-server';
 
 const exec = util.promisify(cp.exec);
 
@@ -16,6 +19,10 @@ class DiffContentProvider implements vscode.TextDocumentContentProvider {
 		return content || '';
 	}
 }
+
+// ── MCP IDE Server global reference for cleanup ────────────────────────────
+let mcpIdeServer: McpIdeServer | null = null;
+let mcpDiffManager: DiffManager | null = null;
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('Claude Code Chat extension is being activated!');
@@ -54,10 +61,140 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.show();
 
 	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem);
+
+	// ── Start MCP IDE Server ────────────────────────────────────────────
+	mcpDiffManager = new DiffManager();
+	const toolExecutor = createToolExecutor(mcpDiffManager);
+	const workspaceFolders = vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || [];
+
+	// Ensure CLI config has diffTool=auto (required for CLI to show diffs in IDE)
+	ensureDiffToolConfig().catch((err) => {
+		console.error('[MCP IDE Server] Failed to set diffTool config:', err);
+	});
+
+	startMcpServer(toolExecutor, workspaceFolders).then((server) => {
+		mcpIdeServer = server;
+		console.log(`[MCP IDE Server] Started on port ${server.port}`);
+
+		// Dispose MCP server on extension deactivation
+		context.subscriptions.push({
+			dispose: () => {
+				mcpDiffManager?.dispose();
+				server.dispose();
+			}
+		});
+	}).catch((err) => {
+		console.error('[MCP IDE Server] Failed to start:', err);
+	});
+
 	console.log('Claude Code Chat extension activation completed successfully!');
 }
 
-export function deactivate() { }
+export async function deactivate() {
+	if (mcpIdeServer) {
+		await mcpIdeServer.dispose();
+		mcpIdeServer = null;
+	}
+	if (mcpDiffManager) {
+		mcpDiffManager.dispose();
+		mcpDiffManager = null;
+	}
+}
+
+// ── MCP IDE Server Tool Executor ────────────────────────────────────────────
+// Bridges MCP tool calls to VS Code APIs without expanding ClaudeChatProvider.
+
+function createToolExecutor(diffManager: DiffManager): IToolExecutor {
+	return {
+		executeDiff: (input) => diffManager.openInteractiveDiff(input),
+		closeTab: (name) => diffManager.closeTab(name),
+		closeAllDiffTabs: () => diffManager.closeAllDiffTabs(),
+		openFile: (input) => enhancedOpenFile(input),
+		getDiagnostics: (uri) => getVscodeDiagnostics(uri),
+		executeCode: (input) => executeInTerminal(input),
+	};
+}
+
+async function enhancedOpenFile(input: OpenFileInput): Promise<void> {
+	const doc = await vscode.workspace.openTextDocument(input.filePath);
+	const editor = await vscode.window.showTextDocument(doc, {
+		preview: input.preview ?? false,
+		preserveFocus: !input.makeFrontmost,
+	});
+
+	if (input.startText) {
+		const text = doc.getText();
+		const startIdx = text.indexOf(input.startText);
+		if (startIdx >= 0) {
+			const startPos = doc.positionAt(startIdx);
+			let endPos: vscode.Position;
+			if (input.endText) {
+				const endIdx = text.indexOf(input.endText, startIdx);
+				if (endIdx >= 0) {
+					endPos = doc.positionAt(endIdx + input.endText.length);
+				} else {
+					endPos = doc.positionAt(startIdx + input.startText.length);
+				}
+			} else if (input.selectToEndOfLine) {
+				endPos = doc.lineAt(startPos.line).range.end;
+			} else {
+				endPos = doc.positionAt(startIdx + input.startText.length);
+			}
+			editor.selection = new vscode.Selection(startPos, endPos);
+			editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
+		}
+	}
+}
+
+async function getVscodeDiagnostics(uri?: string): Promise<DiagnosticEntry[]> {
+	const entries: DiagnosticEntry[] = [];
+	const severityMap = ['Error', 'Warning', 'Info', 'Hint'] as const;
+
+	if (uri) {
+		const fileUri = vscode.Uri.parse(uri);
+		const diags = vscode.languages.getDiagnostics(fileUri);
+		entries.push({
+			uri: fileUri.toString(),
+			diagnostics: diags.map(d => ({
+				message: d.message,
+				severity: severityMap[d.severity] ?? 'Error',
+				range: {
+					start: { line: d.range.start.line, character: d.range.start.character },
+					end: { line: d.range.end.line, character: d.range.end.character },
+				},
+				source: d.source,
+				code: typeof d.code === 'object' ? String(d.code.value) : d.code?.toString(),
+			})),
+		});
+	} else {
+		const allDiags = vscode.languages.getDiagnostics();
+		for (const [fileUri, diags] of allDiags) {
+			entries.push({
+				uri: fileUri.toString(),
+				diagnostics: diags.map(d => ({
+					message: d.message,
+					severity: severityMap[d.severity] ?? 'Error',
+					range: {
+						start: { line: d.range.start.line, character: d.range.start.character },
+						end: { line: d.range.end.line, character: d.range.end.character },
+					},
+					source: d.source,
+					code: typeof d.code === 'object' ? String(d.code.value) : d.code?.toString(),
+				})),
+			});
+		}
+	}
+	return entries;
+}
+
+async function executeInTerminal(input: ExecuteCodeInput): Promise<string> {
+	const terminal = vscode.window.createTerminal({ name: 'Claude Code Execute' });
+	terminal.show();
+	terminal.sendText(input.code);
+	return 'Code sent to terminal';
+}
+
+// ── Data Types ──────────────────────────────────────────────────────────────
 
 interface ConversationData {
 	sessionId: string;

@@ -11,7 +11,7 @@ vsc-extension-quickstart.md
 **/.vscode-test.*
 backup
 .claude
-claude-code-chat-permissions-mcp/**
+.omc/**
 node_modules
-mcp-permissions.js
 build
+.github/**
