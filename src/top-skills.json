@@ -1,0 +1,289 @@
+[
+  {
+    "id": "vercel-labs/skills/find-skills",
+    "name": "find-skills",
+    "installs": 654260,
+    "source": "vercel-labs/skills",
+    "rawUrl": "https://raw.githubusercontent.com/vercel-labs/skills/main/skills/find-skills/SKILL.md"
+  },
+  {
+    "id": "vercel-labs/agent-skills/vercel-react-best-practices",
+    "name": "vercel-react-best-practices",
+    "installs": 234225,
+    "source": "vercel-labs/agent-skills",
+    "rawUrl": "https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/react-best-practices/SKILL.md"
+  },
+  {
+    "id": "vercel-labs/agent-skills/web-design-guidelines",
+    "name": "web-design-guidelines",
+    "installs": 187122,
+    "source": "vercel-labs/agent-skills",
+    "rawUrl": "https://raw.githubusercontent.com/vercel-labs/agent-skills/main/skills/web-design-guidelines/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/frontend-design",
+    "name": "frontend-design",
+    "installs": 184608,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/frontend-design/SKILL.md"
+  },
+  {
+    "id": "vercel-labs/agent-browser/agent-browser",
+    "name": "agent-browser",
+    "installs": 119125,
+    "source": "vercel-labs/agent-browser",
+    "rawUrl": "https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/skill-creator",
+    "name": "skill-creator",
+    "installs": 97605,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/skill-creator/SKILL.md"
+  },
+  {
+    "id": "nextlevelbuilder/ui-ux-pro-max-skill/ui-ux-pro-max",
+    "name": "ui-ux-pro-max",
+    "installs": 74564,
+    "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+    "rawUrl": "https://raw.githubusercontent.com/nextlevelbuilder/ui-ux-pro-max-skill/main/.claude/skills/ui-ux-pro-max/SKILL.md"
+  },
+  {
+    "id": "microsoft/azure-skills/microsoft-foundry",
+    "name": "microsoft-foundry",
+    "installs": 74376,
+    "source": "microsoft/azure-skills",
+    "rawUrl": "https://raw.githubusercontent.com/microsoft/azure-skills/main/skills/microsoft-foundry/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/brainstorming",
+    "name": "brainstorming",
+    "installs": 66697,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/brainstorming/SKILL.md"
+  },
+  {
+    "id": "browser-use/browser-use/browser-use",
+    "name": "browser-use",
+    "installs": 52773,
+    "source": "browser-use/browser-use",
+    "rawUrl": "https://raw.githubusercontent.com/browser-use/browser-use/main/skills/browser-use/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/seo-audit",
+    "name": "seo-audit",
+    "installs": 50157,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/seo-audit/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/pdf",
+    "name": "pdf",
+    "installs": 45709,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/pdf/SKILL.md"
+  },
+  {
+    "id": "supabase/agent-skills/supabase-postgres-best-practices",
+    "name": "supabase-postgres-best-practices",
+    "installs": 43862,
+    "source": "supabase/agent-skills",
+    "rawUrl": "https://raw.githubusercontent.com/supabase/agent-skills/main/skills/supabase-postgres-best-practices/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/copywriting",
+    "name": "copywriting",
+    "installs": 42743,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/copywriting/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/pptx",
+    "name": "pptx",
+    "installs": 41526,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/pptx/SKILL.md"
+  },
+  {
+    "id": "vercel-labs/next-skills/next-best-practices",
+    "name": "next-best-practices",
+    "installs": 40732,
+    "source": "vercel-labs/next-skills",
+    "rawUrl": "https://raw.githubusercontent.com/vercel-labs/next-skills/main/skills/next-best-practices/SKILL.md"
+  },
+  {
+    "id": "squirrelscan/skills/audit-website",
+    "name": "audit-website",
+    "installs": 37654,
+    "source": "squirrelscan/skills",
+    "rawUrl": "https://raw.githubusercontent.com/squirrelscan/skills/main/audit-website/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/systematic-debugging",
+    "name": "systematic-debugging",
+    "installs": 36470,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/systematic-debugging/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/docx",
+    "name": "docx",
+    "installs": 35928,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/docx/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/writing-plans",
+    "name": "writing-plans",
+    "installs": 35010,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/writing-plans/SKILL.md"
+  },
+  {
+    "id": "shadcn/ui/shadcn",
+    "name": "shadcn",
+    "installs": 33897,
+    "source": "shadcn/ui",
+    "rawUrl": "https://raw.githubusercontent.com/shadcn/ui/main/skills/shadcn/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/xlsx",
+    "name": "xlsx",
+    "installs": 32936,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/xlsx/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/using-superpowers",
+    "name": "using-superpowers",
+    "installs": 30937,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/using-superpowers/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/marketing-psychology",
+    "name": "marketing-psychology",
+    "installs": 30917,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/marketing-psychology/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/test-driven-development",
+    "name": "test-driven-development",
+    "installs": 30410,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/test-driven-development/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/webapp-testing",
+    "name": "webapp-testing",
+    "installs": 29748,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/webapp-testing/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/executing-plans",
+    "name": "executing-plans",
+    "installs": 28743,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/executing-plans/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/requesting-code-review",
+    "name": "requesting-code-review",
+    "installs": 28421,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/requesting-code-review/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/content-strategy",
+    "name": "content-strategy",
+    "installs": 27875,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/content-strategy/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/programmatic-seo",
+    "name": "programmatic-seo",
+    "installs": 27820,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/programmatic-seo/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/social-content",
+    "name": "social-content",
+    "installs": 26700,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/social-content/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/product-marketing-context",
+    "name": "product-marketing-context",
+    "installs": 25930,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/product-marketing-context/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/marketing-ideas",
+    "name": "marketing-ideas",
+    "installs": 25516,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/marketing-ideas/SKILL.md"
+  },
+  {
+    "id": "roin-orca/skills/simple",
+    "name": "simple",
+    "installs": 25467,
+    "source": "roin-orca/skills",
+    "rawUrl": "https://raw.githubusercontent.com/roin-orca/skills/main/skills/simple/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/pricing-strategy",
+    "name": "pricing-strategy",
+    "installs": 25142,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/pricing-strategy/SKILL.md"
+  },
+  {
+    "id": "anthropics/skills/mcp-builder",
+    "name": "mcp-builder",
+    "installs": 24764,
+    "source": "anthropics/skills",
+    "rawUrl": "https://raw.githubusercontent.com/anthropics/skills/main/skills/mcp-builder/SKILL.md"
+  },
+  {
+    "id": "obra/superpowers/subagent-driven-development",
+    "name": "subagent-driven-development",
+    "installs": 24432,
+    "source": "obra/superpowers",
+    "rawUrl": "https://raw.githubusercontent.com/obra/superpowers/main/skills/subagent-driven-development/SKILL.md"
+  },
+  {
+    "id": "coreyhaines31/marketingskills/copy-editing",
+    "name": "copy-editing",
+    "installs": 24073,
+    "source": "coreyhaines31/marketingskills",
+    "rawUrl": "https://raw.githubusercontent.com/coreyhaines31/marketingskills/main/skills/copy-editing/SKILL.md"
+  },
+  {
+    "id": "pbakaus/impeccable/frontend-design",
+    "name": "frontend-design",
+    "installs": 23984,
+    "source": "pbakaus/impeccable",
+    "rawUrl": "https://raw.githubusercontent.com/pbakaus/impeccable/main/.claude/skills/frontend-design/SKILL.md"
+  },
+  {
+    "id": "pbakaus/impeccable/polish",
+    "name": "polish",
+    "installs": 23360,
+    "source": "pbakaus/impeccable",
+    "rawUrl": "https://raw.githubusercontent.com/pbakaus/impeccable/main/.claude/skills/polish/SKILL.md"
+  },
+  {
+    "id": "google-labs-code/stitch-skills/design-md",
+    "name": "design-md",
+    "installs": 19272,
+    "source": "google-labs-code/stitch-skills",
+    "rawUrl": "https://raw.githubusercontent.com/google-labs-code/stitch-skills/main/skills/design-md/SKILL.md"
+  }
+]

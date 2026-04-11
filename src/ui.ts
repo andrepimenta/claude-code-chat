@@ -1,12 +1,19 @@
 import getScript from './script';
 import styles from './ui-styles'
+import recommendedModels from './recommended-models.json'
+import topMcpServers from './top-mcp-servers.json'
+import topSkills from './top-skills.json'
+import topPlugins from './top-plugins.json'
+import getSkillsHtml from './skills-ui'
+import getPluginsHtml from './plugins-ui'
 
 
-const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
+const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src *;">
 	<title>Claude Code Chat</title>
 	${styles}
 </head>
@@ -57,33 +64,48 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 		
 		<div class="input-container" id="inputContainer">
-			<div class="input-modes">
-				<div class="mode-toggle">
-					<span onclick="togglePlanMode()">Plan First</span>
-					<div class="mode-switch" id="planModeSwitch" onclick="togglePlanMode()"></div>
+			<div class="model-selector-row">
+				<button class="model-selector-main" id="modelDropdownBtn" onclick="showModelSelector()" title="Select model">
+					<span id="modelDropdownText">Opus</span>
+					<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M1 2.5l3 3 3-3"></path></svg>
+				</button>
+				<button class="model-selector-main" id="modelSelector" onclick="showModelSelector()" title="Select model" style="display: none;">
+					<span class="model-selector-new" id="modelSelectorBadge">NEW</span>
+					<span id="modelSelectorText">Try other models</span>
+				</button>
+				<div class="model-quick-select" id="modelQuickSelect">
 				</div>
-				<div class="mode-toggle">
-					<span id="thinkingModeLabel" onclick="toggleThinkingMode()">Thinking Mode</span>
-					<div class="mode-switch" id="thinkingModeSwitch" onclick="toggleThinkingMode()"></div>
-				</div>
+				<button class="model-more-btn" id="modelMoreBtn" onclick="showModelSelector()" style="display: none;">+</button>
 			</div>
 			<div class="textarea-container">
 				<div class="textarea-wrapper">
+					<div class="image-preview-container" id="imagePreviewContainer" style="display: none;"></div>
 					<textarea class="input-field" id="messageInput" placeholder="Type your message to Claude Code..." rows="1"></textarea>
 					<div class="input-controls">
 						<div class="left-controls">
-							<button class="model-selector" id="modelSelector" onclick="showModelSelector()" title="Select model">
-								<span id="selectedModel">Opus</span>
-								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-									<path d="M1 2.5l3 3 3-3"></path>
-								</svg>
-							</button>
-							<button class="tools-btn" onclick="showMCPModal()" title="Configure MCP servers">
-								MCP
-								<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor">
-									<path d="M1 2.5l3 3 3-3"></path>
-								</svg>
-							</button>
+							<div class="connect-dropdown-wrapper">
+								<button class="input-dropdown-btn" id="connectBtn" onclick="toggleConnectMenu()">
+									<span>Add</span>
+									<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M1 2.5l3 3 3-3"></path></svg>
+								</button>
+								<div class="connect-menu" id="connectMenu" style="display: none;">
+									<div class="connect-menu-header">Add</div>
+									<button class="connect-menu-item" onclick="hideConnectMenu(); showPluginsModal();">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+										<span>Plugins</span>
+									</button>
+									<button class="connect-menu-item" onclick="hideConnectMenu(); showSkillsModal();">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+										<span>Skills</span>
+									</button>
+									<button class="connect-menu-item" onclick="hideConnectMenu(); showMCPModal();">
+										<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>
+										<span>MCP Servers</span>
+									</button>
+								</div>
+							</div>
+							<button class="input-toggle-btn" id="planToggleBtn" onclick="cyclePlanMode()">Plan</button>
+							<button class="input-toggle-btn" id="thinkToggleBtn" onclick="toggleThinkingMode()">Ultrathink</button>
 						</div>
 						<div class="right-controls">
 							<button class="slash-btn" onclick="showSlashCommandsModal()" title="Slash commands">/</button>
@@ -102,20 +124,18 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 							</svg>
 							</button>
 							<button class="send-btn" id="sendBtn" onclick="sendMessage()">
-							<div>
-							<span>Send </span>
-							   <svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 24 24"
-								width="11"
-								height="11"
-								>
-								<path
-									fill="currentColor"
-									d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"
-								></path>
+								<div>
+								<span>Send </span>
+								<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="11" height="11">
+									<path fill="currentColor" d="M20 4v9a4 4 0 0 1-4 4H6.914l2.5 2.5L8 20.914L3.086 16L8 11.086L9.414 12.5l-2.5 2.5H16a2 2 0 0 0 2-2V4z"></path>
 								</svg>
 								</div>
+							</button>
+							<button class="stop-inline-btn" id="stopInlineBtn" onclick="stopRequest()" style="display: none;">
+								<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+									<path d="M6 6h12v12H6z"/>
+								</svg>
+								Stop
 							</button>
 						</div>
 					</div>
@@ -127,11 +147,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 	<div class="status ready" id="status">
 		<div class="status-indicator"></div>
 		<div class="status-text" id="statusText">Initializing...</div>
-		<button class="btn stop" id="stopBtn" onclick="stopRequest()" style="display: none;">
-			<svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-				<path d="M6 6h12v12H6z"/>
-			</svg>
-			Stop
+		<button class="support-btn" onclick="showSupportModal()" title="Send feedback">
+			<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+			Support
 		</button>
 	</div>
 
@@ -163,60 +181,28 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				<div class="mcp-servers-list" id="mcpServersList">
 					<!-- MCP servers will be loaded here -->
 				</div>
-				<div class="mcp-add-server">
-					<button class="btn outlined" onclick="showAddServerForm()" id="addServerBtn">+ Add MCP Server</button>
-				</div>
 				<div class="mcp-popular-servers" id="popularServers">
-					<h4>Popular MCP Servers</h4>
-					<div class="popular-servers-grid">
-						<div class="popular-server-item" onclick="addPopularServer('context7', { type: 'http', url: 'https://context7.liam.sh/mcp' })">
-							<div class="popular-server-icon">📚</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Context7</div>
-								<div class="popular-server-desc">Up-to-date Code Docs For Any Prompt</div>
-							</div>
-						</div>
-						<div class="popular-server-item" onclick="addPopularServer('sequential-thinking', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] })">
-							<div class="popular-server-icon">🔗</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Sequential Thinking</div>
-								<div class="popular-server-desc">Step-by-step reasoning capabilities</div>
-							</div>
-						</div>
-						<div class="popular-server-item" onclick="addPopularServer('memory', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] })">
-							<div class="popular-server-icon">🧠</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Memory</div>
-								<div class="popular-server-desc">Knowledge graph storage</div>
-							</div>
-						</div>
-						<div class="popular-server-item" onclick="addPopularServer('puppeteer', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-puppeteer'] })">
-							<div class="popular-server-icon">🎭</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Puppeteer</div>
-								<div class="popular-server-desc">Browser automation</div>
-							</div>
-						</div>
-						<div class="popular-server-item" onclick="addPopularServer('fetch', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-fetch'] })">
-							<div class="popular-server-icon">🌐</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Fetch</div>
-								<div class="popular-server-desc">HTTP requests & web scraping</div>
-							</div>
-						</div>
-						<div class="popular-server-item" onclick="addPopularServer('filesystem', { type: 'stdio', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] })">
-							<div class="popular-server-icon">📁</div>
-							<div class="popular-server-info">
-								<div class="popular-server-name">Filesystem</div>
-								<div class="popular-server-desc">File operations & management</div>
-							</div>
-						</div>
+					<h4>Search MCP Servers</h4>
+					<div class="marketplace-search">
+						<input type="text" id="marketplaceSearch" placeholder="Search MCP servers..." oninput="filterMarketplace(this.value)" />
+					</div>
+					<div class="marketplace-grid" id="marketplaceGrid">
+					</div>
+					<div class="marketplace-load-more" id="marketplaceLoadMore" style="display: none;">
+						<button class="btn outlined" onclick="loadMoreMarketplace()">Load more</button>
 					</div>
 				</div>
 				<div class="mcp-add-form" id="addServerForm" style="display: none;">
 				<div class="form-group">
 					<label for="serverName">Server Name:</label>
 					<input type="text" id="serverName" placeholder="my-server" required>
+				</div>
+				<div class="form-group">
+					<label for="serverScope">Install to:</label>
+					<select id="serverScope">
+						<option value="project">Project (.mcp.json)</option>
+						<option value="global">Global (~/.claude.json)</option>
+					</select>
 				</div>
 				<div class="form-group">
 					<label for="serverType">Server Type:</label>
@@ -252,17 +238,56 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 				</div>
 			</div>
 		</div>
+		<div class="tools-list" id="mcpMarketplaceView" style="display: none;">
+			<div class="marketplace-search">
+				<input type="text" id="marketplaceSearch" placeholder="Search MCP servers..." oninput="filterMarketplace(this.value)" />
+			</div>
+			<div class="marketplace-grid" id="marketplaceGrid">
+				<div class="marketplace-loading">Loading servers...</div>
+			</div>
+			<div class="marketplace-load-more" id="marketplaceLoadMore" style="display: none;">
+				<button class="btn outlined" onclick="loadMoreMarketplace()">Load more</button>
+			</div>
+		</div>
 	</div>
+	</div>
+
+	<!-- Support modal -->
+	<div id="supportModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="max-width: 420px;">
+			<div class="tools-modal-header">
+				<h3>Send Feedback</h3>
+				<button class="tools-close-btn" onclick="hideSupportModal()">✕</button>
+			</div>
+			<div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+				<div>
+					<label style="font-size: 12px; color: var(--vscode-descriptionForeground); display: block; margin-bottom: 4px;">Type</label>
+					<select id="supportType" style="width: 100%; padding: 6px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; font-size: 13px;">
+						<option value="bug">Bug Report</option>
+						<option value="feature">Feature Request</option>
+					</select>
+				</div>
+				<div>
+					<label style="font-size: 12px; color: var(--vscode-descriptionForeground); display: block; margin-bottom: 4px;">Email (optional)</label>
+					<input type="email" id="supportEmail" placeholder="your@email.com" style="width: 100%; padding: 6px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; font-size: 13px; box-sizing: border-box;" />
+				</div>
+				<div>
+					<label style="font-size: 12px; color: var(--vscode-descriptionForeground); display: block; margin-bottom: 4px;">Message</label>
+					<textarea id="supportMessage" rows="5" placeholder="Describe the issue or suggestion..." style="width: 100%; padding: 6px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 4px; font-size: 13px; resize: vertical; box-sizing: border-box;"></textarea>
+				</div>
+				<button id="supportSubmitBtn" onclick="submitSupport()" style="padding: 8px 16px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Send</button>
+			</div>
+		</div>
 	</div>
 
 	<!-- Settings modal -->
 	<div id="settingsModal" class="tools-modal" style="display: none;">
-		<div class="tools-modal-content">
+		<div class="tools-modal-content" style="max-height: 600px;">
 			<div class="tools-modal-header">
 				<span>Claude Code Chat Settings</span>
 				<button class="tools-close-btn" onclick="hideSettingsModal()">✕</button>
 			</div>
-			<div class="tools-list">
+			<div class="tools-list" style="max-height: none;">
 				<h3 style="margin-top: 0; margin-bottom: 16px; font-size: 14px; font-weight: 600;">WSL Configuration</h3>
 				<div>
 					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0;">
@@ -347,54 +372,186 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 					</div>
 				</div>
 
-				
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Customize Claude Command</h3>
+				<div>
+					<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 0 0 12px 0;">
+						Customize the Claude Code executable and environment.
+					</p>
+					<div id="opencreditsPromo" style="margin-bottom: 16px; padding: 14px 16px; border-radius: 8px; border: 1px solid var(--vscode-panel-border); background: rgba(139, 92, 246, 0.05);"></div>
+				</div>
+				<div class="settings-group">
+					<div style="margin-bottom: 16px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Executable Path</label>
+						<input type="text" id="executable-path" class="file-search-input" style="width: 100%;" placeholder="claude (default)" onchange="updateSettings()">
+						<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+							Custom path to the Claude Code executable. Leave empty to use the default <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">claude</code> command.
+						</p>
+					</div>
+
+					<div>
+						<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+							<label id="envsLabel" style="font-size: 12px; color: var(--vscode-descriptionForeground);">Environment Variables</label>
+							<button id="envsToggleBtn" style="display: none; font-size: 10px; padding: 2px 10px; border-radius: 4px; border: 1px solid var(--vscode-panel-border); background: none; color: var(--vscode-descriptionForeground); cursor: pointer;"></button>
+						</div>
+						<div id="env-variables-list" class="env-variables-list"></div>
+						<button class="permissions-show-add-btn" style="margin-top: 8px;" onclick="addEnvVariable()">+ Add Variable</button>
+					</div>
+
+					<div class="tool-item" style="margin-top: 16px; display: none;">
+						<input type="checkbox" id="use-router" onchange="updateSettings()">
+						<label for="use-router">Enable OpenAI → Anthropic Router</label>
+					</div>
+					<p style="display: none; font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 24px;">
+						Enable this if your API provider uses OpenAI-compatible format. The router will convert requests/responses locally.
+					</p>
+
+					<div id="providerExclusionSection" class="tool-item" style="margin-top: 16px; display: none;">
+						<input type="checkbox" id="us-eu-providers-only" onchange="applyProviderExclusion()">
+						<label for="us-eu-providers-only">Only use US & EU providers</label>
+					</div>
+					<p id="providerExclusionHint" style="display: none; font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 24px;">
+						When enabled, requests are routed only through US and EU-based infrastructure providers.
+					</p>
+				</div>
+
 			</div>
 		</div>
 	</div>
 
 	<!-- Model selector modal -->
 	<div id="modelModal" class="tools-modal" style="display: none;">
-		<div class="tools-modal-content" style="width: 400px;">
+		<div class="tools-modal-content model-modal-content">
 			<div class="tools-modal-header">
-				<span>Enforce Model</span>
+				<span>Select Model</span>
 				<button class="tools-close-btn" onclick="hideModelModal()">✕</button>
 			</div>
-			<div class="model-explanatory-text">
-				This overrides your default model setting for this conversation only.
+
+			<!-- Claude Code section -->
+			<div id="claudeCodeSection" class="model-section">
+				<div class="model-section-header">
+					<span class="model-section-title">CLAUDE CODE STANDARD MODELS</span>
+				</div>
+				<div class="claude-cards-container" id="claudeModelCards">
+					<div class="claude-card" data-model="opus" onclick="selectModel('opus')">
+						<div class="claude-card-name">Opus</div>
+						<div class="claude-card-desc">Most powerful, best for complex tasks</div>
+					</div>
+					<div class="claude-card" data-model="sonnet" onclick="selectModel('sonnet')">
+						<div class="claude-card-name">Sonnet</div>
+						<div class="claude-card-desc">Balanced performance and speed</div>
+					</div>
+					<div class="claude-card" data-model="default" onclick="selectModel('default')">
+						<div class="claude-card-name">Default</div>
+						<div class="claude-card-desc">Let Claude Code choose the best model</div>
+					</div>
+				</div>
 			</div>
-			<div class="tools-list">
-				<div class="tool-item" onclick="selectModel('opus')">
-					<input type="radio" name="model" id="model-opus" value="opus" checked>
-					<label for="model-opus">
-						<div class="model-title">Opus - Most capable model</div>
-						<div class="model-description">
-							Best for complex tasks and highest quality output
-						</div>
-					</label>
+
+			<!-- Divider (only shown when both sections visible) -->
+			<div id="modelSectionDivider" class="model-section-divider" style="display: none;"></div>
+
+			<!-- Other models section -->
+			<div id="opencreditsModelsSection" class="model-section opencredits-section" style="display: none;">
+				<div class="model-section-header">
+					<span class="model-section-title">TRY OTHER MODELS <span class="new-badge">NEW</span><span class="beta-badge" data-tooltip="This feature is in beta. Experience may vary across models.">BETA</span></span>
 				</div>
-				<div class="tool-item" onclick="selectModel('sonnet')">
-					<input type="radio" name="model" id="model-sonnet" value="sonnet">
-					<label for="model-sonnet">
-						<div class="model-title">Sonnet - Balanced model</div>
-						<div class="model-description">
-							Good balance of speed and capability
-						</div>
-					</label>
+				<div id="opencreditsComparisonHeader"></div>
+				<div class="model-cards-container" id="opencreditsModelCards">
+					<!-- Cards populated by JavaScript -->
 				</div>
-				<div class="tool-item" onclick="selectModel('default')">
-					<input type="radio" name="model" id="model-default" value="default">
-					<label for="model-default" class="default-model-layout">
-						<div class="model-option-content">
-							<div class="model-title">Default - User configured</div>
-							<div class="model-description">
-								Uses the model configured in your settings
-							</div>
-						</div>
-						<button class="secondary-button configure-button" onclick="event.stopPropagation(); openModelTerminal();">
-							Configure
-						</button>
-					</label>
+				<div style="margin: 14px 0 0 0; padding: 8px 10px; border-radius: 6px; background: var(--vscode-textBlockQuote-background, rgba(127,127,127,0.1)); display: flex; gap: 6px; align-items: flex-start;">
+				<span style="font-size: 10px; line-height: 1.4; flex-shrink: 0; opacity: 0.4;">&#9432;</span>
+				<span style="font-size: 10px; color: var(--vscode-descriptionForeground); line-height: 1.4;">Savings are compared to using Claude Opus directly with Anthropic API. Models can be configured to use only US &amp; EU providers.</span>
+			</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- All Models Browser modal -->
+	<div id="allModelsModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="width: 500px; max-width: 95vw; max-height: 80vh;">
+			<div class="tools-modal-header">
+				<span>Browse All Models</span>
+				<button class="tools-close-btn" onclick="hideAllModelsModal()">✕</button>
+			</div>
+			<div class="all-models-search">
+				<input type="text" id="allModelsSearch" placeholder="Search models..." oninput="filterAllModels()">
+			</div>
+			<div class="all-models-list" id="allModelsList">
+				<!-- Models populated by JavaScript -->
+			</div>
+		</div>
+	</div>
+
+	<!-- Advanced Settings modal (OpenCredits) -->
+	<div id="advancedModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="width: 440px; max-width: 90vw; max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
+			<div class="tools-modal-header">
+				<span>Advanced Settings</span>
+				<button class="tools-close-btn" onclick="hideAdvancedModal()">✕</button>
+			</div>
+			<div style="padding: 16px;">
+				<p style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 16px;">
+					Override the default models used when you select Opus, Sonnet, or Haiku.
+				</p>
+				<div class="custom-provider-field">
+					<label>Sonnet Model</label>
+					<div class="model-combo" id="comboSonnet">
+						<input type="text" class="model-combo-input" placeholder="Default — click to search models" autocomplete="off">
+						<div class="model-combo-dropdown"></div>
+					</div>
 				</div>
+				<div class="custom-provider-field">
+					<label>Opus Model</label>
+					<div class="model-combo" id="comboOpus">
+						<input type="text" class="model-combo-input" placeholder="Default — click to search models" autocomplete="off">
+						<div class="model-combo-dropdown"></div>
+					</div>
+				</div>
+				<div class="custom-provider-field">
+					<label>Haiku Model</label>
+					<div class="model-combo" id="comboHaiku">
+						<input type="text" class="model-combo-input" placeholder="Default — click to search models" autocomplete="off">
+						<div class="model-combo-dropdown"></div>
+					</div>
+				</div>
+				<button class="install-btn" style="width: 100%; margin-top: 16px;" onclick="saveAdvancedSettings()">Save</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Custom Provider modal -->
+	<div id="customProviderModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="width: 440px;">
+			<div class="tools-modal-header">
+				<span>Custom Provider</span>
+				<button class="tools-close-btn" onclick="hideCustomProviderModal()">✕</button>
+			</div>
+			<div style="padding: 16px;">
+				<p style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 16px;">
+					Connect to any OpenAI-compatible or Anthropic-compatible API endpoint.
+				</p>
+				<div class="custom-provider-field">
+					<label>Base URL</label>
+					<input type="text" id="customProviderBaseUrl" placeholder="https://api.example.com">
+				</div>
+				<div class="custom-provider-field">
+					<label>Auth Token</label>
+					<input type="password" id="customProviderAuthToken" placeholder="sk-...">
+				</div>
+				<div class="custom-provider-field">
+					<label>Sonnet Model <span style="opacity:0.5">(optional)</span></label>
+					<input type="text" id="customProviderSonnet" placeholder="claude-sonnet-4-20250514">
+				</div>
+				<div class="custom-provider-field">
+					<label>Opus Model <span style="opacity:0.5">(optional)</span></label>
+					<input type="text" id="customProviderOpus" placeholder="claude-opus-4-20250514">
+				</div>
+				<div class="custom-provider-field">
+					<label>Haiku Model <span style="opacity:0.5">(optional)</span></label>
+					<input type="text" id="customProviderHaiku" placeholder="claude-haiku-4-20250514">
+				</div>
+				<button class="install-btn" style="width: 100%; margin-top: 16px;" onclick="saveCustomProvider()">Save & Connect</button>
 			</div>
 		</div>
 	</div>
@@ -443,9 +600,134 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 							<polyline points="20 6 9 17 4 12"></polyline>
 						</svg>
 					</div>
-					<p class="install-success-text">Installation Complete</p>
-					<p class="install-success-hint">Send a message to get started</p>
+					<p class="install-success-text">Installed!</p>
+					<p class="install-success-hint">How would you like to use Claude Code?</p>
+
+					<div class="install-options">
+						<button class="install-option" onclick="loginWithPlan()">
+							<span class="install-option-title">I have a plan</span>
+							<span class="install-option-desc">Login with Anthropic · Pro, Max, or API key</span>
+						</button>
+						<button class="install-option install-option-secondary" onclick="showFundsSelection()">
+							<span class="install-option-title">Just try it</span>
+							<span class="install-option-desc">No account needed · Pay as you go with OpenCredits</span>
+						</button>
+					</div>
 				</div>
+
+				<div class="install-funds" id="installFunds" style="display: none;">
+					<p class="install-funds-title">Add funds to get started</p>
+					<p class="install-funds-hint">Pay as you go - no subscription required</p>
+
+					<div class="install-amounts">
+						<button class="install-amount" onclick="selectFundsAmount(5)">$5</button>
+						<button class="install-amount" onclick="selectFundsAmount(10)">$10</button>
+						<button class="install-amount" onclick="selectFundsAmount(25)">$25</button>
+						<button class="install-amount" onclick="selectFundsAmount(50)">$50</button>
+						<button class="install-amount" onclick="selectFundsAmount(100)">$100</button>
+					</div>
+
+					<div class="install-custom-amount">
+						<span class="install-custom-currency">$</span>
+						<input type="number" id="customAmountInput" class="install-custom-input" placeholder="Other" min="1" max="500" />
+						<button class="install-custom-btn" onclick="selectCustomAmount()">Add</button>
+					</div>
+
+					<div class="install-powered-by">
+						Powered by <a href="${opencreditsWebUrl}" target="_blank">OpenCredits</a>
+					</div>
+					<p style="font-size: 10px; color: var(--vscode-descriptionForeground); margin: 8px 0 0; opacity: 0.7;">By continuing, you agree to OpenCredits' <a href="#" onclick="event.preventDefault(); vscode.postMessage({ type: 'openExternalUrl', url: '${opencreditsWebUrl}/legal/terms-of-service' });" style="color: var(--vscode-textLink-foreground);">Terms of Service</a> and <a href="#" onclick="event.preventDefault(); vscode.postMessage({ type: 'openExternalUrl', url: '${opencreditsWebUrl}/legal/privacy-policy' });" style="color: var(--vscode-textLink-foreground);">Privacy Policy</a>.</p>
+
+					<button class="install-back-btn" onclick="showInstallOptions()">
+						← Back
+					</button>
+				</div>
+
+				<div class="install-checkout" id="installCheckout" style="display: none;">
+					<div id="checkoutPreparing" style="text-align: center;">
+						<div class="install-spinner" style="margin: 0 auto 16px;"></div>
+						<p class="install-funds-title">Preparing checkout...</p>
+						<p class="install-funds-hint">Please wait while we set up your payment</p>
+					</div>
+
+					<div id="checkoutReady" style="display: none; text-align: center;">
+						<p class="install-funds-title">Checkout opened in your browser</p>
+						<p class="install-funds-hint">Complete your payment, then come back here.</p>
+						<div id="checkoutUrlBox" style="display: flex; align-items: center; gap: 6px; margin: 12px 0; padding: 8px 12px; background: var(--vscode-textBlockQuote-background, rgba(255,255,255,0.05)); border-radius: 6px; border: 1px solid var(--vscode-panel-border); overflow: hidden; min-width: 0; max-width: 100%;">
+							<span id="checkoutUrlDisplay" style="flex: 1; min-width: 0; font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block;"></span>
+							<button id="checkoutUrlCopyBtn" title="Copy URL" style="flex-shrink: 0; background: none; border: none; color: var(--vscode-foreground); cursor: pointer; padding: 2px; opacity: 0.7;">
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+							</button>
+						</div>
+						<button id="checkoutOpenBtn" class="install-btn" style="margin-top: 8px;">Open Checkout Again</button>
+					</div>
+
+					<div id="checkoutComplete" style="display: none; text-align: center;">
+						<div class="install-success-icon" style="margin: 0 auto 16px;">
+							<svg class="install-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+								<polyline points="20 6 9 17 4 12"></polyline>
+							</svg>
+						</div>
+						<p class="install-funds-title">Payment successful!</p>
+						<p class="install-funds-hint">Your account has been funded.</p>
+						<button class="install-btn" style="margin-top: 12px;" onclick="hideInstallModal()">Close</button>
+					</div>
+
+					<div id="checkoutError" style="display: none; text-align: center;">
+						<div style="width: 40px; height: 40px; margin: 0 auto 12px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); display: flex; align-items: center; justify-content: center;">
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5">
+								<line x1="18" y1="6" x2="6" y2="18"></line>
+								<line x1="6" y1="6" x2="18" y2="18"></line>
+							</svg>
+						</div>
+						<p class="install-funds-title">Something went wrong</p>
+						<p class="install-funds-hint" id="checkoutErrorMsg">Could not complete checkout. Please try again.</p>
+						<button id="checkoutRetryBtn" class="install-btn" style="margin-top: 12px;">Try Again</button>
+					</div>
+
+					<p style="font-size: 10px; color: var(--vscode-descriptionForeground); margin: 16px 0 0; opacity: 0.7;">By continuing, you agree to OpenCredits' <a href="#" onclick="event.preventDefault(); vscode.postMessage({ type: 'openExternalUrl', url: 'https://opencredits.ai/terms' });" style="color: var(--vscode-textLink-foreground);">Terms of Service</a> and <a href="#" onclick="event.preventDefault(); vscode.postMessage({ type: 'openExternalUrl', url: 'https://opencredits.ai/privacy' });" style="color: var(--vscode-textLink-foreground);">Privacy Policy</a>.</p>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Provider choice modal -->
+	<div id="providerChoiceModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="width: 300px;">
+			<div class="tools-modal-header">
+				<span id="providerChoiceTitle">Use model via</span>
+				<button class="tools-close-btn" onclick="document.getElementById('providerChoiceModal').style.display='none'">✕</button>
+			</div>
+			<div style="padding: 16px; display: flex; flex-direction: column; gap: 10px;">
+				<button id="providerChoiceOpenCredits" style="padding: 12px 16px; border-radius: 8px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); color: var(--vscode-foreground); cursor: pointer; text-align: left;">
+					<div style="font-weight: 600; font-size: 13px;">OpenCredits</div>
+					<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 2px;">Pay as you go with your OpenCredits balance</div>
+				</button>
+				<button id="providerChoiceAnthropic" style="padding: 12px 16px; border-radius: 8px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-editor-background); color: var(--vscode-foreground); cursor: pointer; text-align: left;">
+					<div style="font-weight: 600; font-size: 13px;">Anthropic</div>
+					<div style="font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 2px;">Use your Anthropic API key or subscription</div>
+				</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- External URL opened modal -->
+	<div id="externalUrlModal" class="tools-modal" style="display: none;">
+		<div class="tools-modal-content" style="width: 380px;">
+			<div class="tools-modal-header">
+				<span>Opening Browser</span>
+				<button class="tools-close-btn" onclick="document.getElementById('externalUrlModal').style.display='none'">✕</button>
+			</div>
+			<div style="padding: 24px; text-align: center;">
+				<p style="margin: 0 0 16px; font-size: 13px; color: var(--vscode-foreground);">A page should have opened in your browser.</p>
+				<div style="display: flex; align-items: center; gap: 6px; margin: 0 0 20px; padding: 8px 12px; background: var(--vscode-textBlockQuote-background, rgba(255,255,255,0.05)); border-radius: 6px; border: 1px solid var(--vscode-panel-border);">
+					<span id="externalUrlDisplay" style="flex: 1; font-size: 11px; color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;"></span>
+					<button id="externalUrlCopyBtn" title="Copy URL" style="flex-shrink: 0; background: none; border: none; color: var(--vscode-foreground); cursor: pointer; padding: 2px; opacity: 0.7;">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+					</button>
+				</div>
+				<p style="margin: 0 0 16px; font-size: 12px; color: var(--vscode-descriptionForeground);">If it didn't open, click the button below.</p>
+				<button id="externalUrlFallbackBtn" style="padding: 8px 20px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 6px; cursor: pointer; font-size: 12px;">Open in Browser</button>
 			</div>
 		</div>
 	</div>
@@ -476,6 +758,9 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 			</div>
 		</div>
 	</div>
+
+	${getSkillsHtml()}
+	${getPluginsHtml()}
 
 	<!-- Slash commands modal -->
 	<div id="slashCommandsModal" class="tools-modal" style="display: none;">
@@ -779,18 +1064,19 @@ const getHtml = (isTelemetryEnabled: boolean) => `<!DOCTYPE html>
 		</div>
 	</div>
 
-	${getScript(isTelemetryEnabled)}
+	<script>window.__recommendedModels = ${JSON.stringify(recommendedModels)};window.__topMcpServers = ${JSON.stringify(topMcpServers)};window.__topSkills = ${JSON.stringify(topSkills)};window.__topPlugins = ${JSON.stringify(topPlugins)};</script>
+	${getScript(isTelemetryEnabled, opencreditsApiUrl, opencreditsWebUrl, opencreditsPublishableKey)}
 	
-	<!-- 
+	<!--
 	Analytics FAQ:
-	
+
 	1. Is Umami GDPR compliant?
 	Yes, Umami does not collect any personally identifiable information and anonymizes all data collected. Users cannot be identified and are never tracked across websites.
-	
+
 	2. Do I need to display a cookie notice to users?
 	No, Umami does not use any cookies in the tracking code.
 	-->
-	${isTelemetryEnabled ? '<script defer src="https://cloud.umami.is/script.js" data-website-id="d050ac9b-2b6d-4c67-b4c6-766432f95644"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
+	${isTelemetryEnabled ? '<script defer src="https://umami.claudecodechat.com/script.js" data-website-id="6310c878-cfe4-4044-b4ef-a60cd0e0dfe4"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
 </body>
 </html>`;
 

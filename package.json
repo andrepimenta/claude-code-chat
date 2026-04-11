@@ -2,7 +2,7 @@
   "name": "claude-code-chat",
   "displayName": "Chat for Claude Code",
   "description": "Beautiful Claude Code Chat Interface for VS Code",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "publisher": "AndrePimenta",
   "author": "Andre Pimenta",
   "repository": {
@@ -185,6 +185,26 @@
           "type": "boolean",
           "default": false,
           "description": "Enable Yolo Mode to skip all permission checks. Use with caution as Claude can execute any command without asking."
+        },
+        "claudeCodeChat.executable.path": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the Claude Code executable. Leave empty to use the default 'claude' command."
+        },
+        "claudeCodeChat.environment.variables": {
+          "type": "object",
+          "default": {},
+          "description": "Custom environment variables to pass to Claude Code. Example: {\"ANTHROPIC_API_KEY\": \"sk-...\"}"
+        },
+        "claudeCodeChat.environment.disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, custom environment variables are not passed to Claude Code."
+        },
+        "claudeCodeChat.router.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
         }
       }
     }
