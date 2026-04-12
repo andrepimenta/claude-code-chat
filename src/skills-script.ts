@@ -5,6 +5,7 @@ const getSkillsScript = () => `
 		var topSkills = (window.__topSkills || []);
 
 		function showSkillsModal() {
+			sendStats('Skills modal opened');
 			document.getElementById('skillsModal').style.display = 'flex';
 			loadInstalledSkills();
 			if (topSkills.length > 0) {
@@ -266,6 +267,7 @@ const getSkillsScript = () => `
 		function confirmSkillInstall(btn) {
 			var source = btn.dataset.source;
 			var name = btn.dataset.name;
+			sendStats('Skill installed', { name: name, source: source });
 			var scope = document.getElementById('skillInstallScope').value;
 
 			var repoUrl = 'https://github.com/' + source.replace(/^github\\//, '');

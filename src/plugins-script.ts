@@ -8,6 +8,7 @@ const getPluginsScript = () => `
 		}
 
 		function showPluginsModal() {
+			sendStats('Plugins modal opened');
 			document.getElementById('pluginsModal').style.display = 'flex';
 			loadInstalledPlugins();
 			renderAvailablePlugins(topPlugins);
@@ -138,11 +139,13 @@ const getPluginsScript = () => `
 		}
 
 		function installPlugin(installId) {
+			sendStats('Plugin installed', { plugin: installId });
 			vscode.postMessage({ type: 'installPlugin', installId: installId });
 			hidePluginsModal();
 		}
 
 		function removePlugin(installId) {
+			sendStats('Plugin removed', { plugin: installId });
 			vscode.postMessage({ type: 'removePlugin', installId: installId });
 		}
 `;

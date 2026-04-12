@@ -32,6 +32,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			},
 			onPurchaseCompleted: function(data) {
+				sendStats('Checkout completed');
 				vscode.postMessage({
 					type: 'opencreditsKeyFromCheckout',
 					key: data.user_key
@@ -1336,6 +1337,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		// Tools modal functions
 		function showMCPModal() {
+			sendStats('MCP modal opened');
 			document.getElementById('mcpModal').style.display = 'flex';
 			loadMCPServers();
 			if (!marketplaceCache || marketplaceCache.length === 0) {
@@ -1468,8 +1470,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		function saveMCPServer() {
-			sendStats('MCP server added');
-			
 			const name = document.getElementById('serverName').value.trim();
 			const type = document.getElementById('serverType').value;
 			
@@ -1553,6 +1553,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 
 			var scope = document.getElementById('serverScope') ? document.getElementById('serverScope').value : 'project';
+			sendStats('MCP server added', { name: name });
 			vscode.postMessage({
 				type: 'saveMCPServer',
 				name: name,
@@ -1568,6 +1569,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		function deleteMCPServer(serverName, scope) {
+			sendStats('MCP server removed', { name: serverName });
 			vscode.postMessage({
 				type: 'deleteMCPServer',
 				name: serverName,
@@ -1649,8 +1651,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 			
-			sendStats('MCP server added');
-			
+			sendStats('MCP server added', { name: name });
+
 			// Add the server
 			vscode.postMessage({
 				type: 'saveMCPServer',
@@ -2844,7 +2846,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				successEl.querySelector('.install-success-text').textContent = 'Installed';
 				successEl.querySelector('.install-success-hint').textContent = 'Send a message to get started';
 			} else {
-				sendStats('Install failed');
+				sendStats('Install failed', { error: (error || 'Unknown error').substring(0, 200) });
 				// Show error state
 				successEl.querySelector('.install-success-icon').style.display = 'none';
 				successEl.querySelector('.install-success-text').textContent = 'Installation failed';
@@ -4672,6 +4674,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var message = document.getElementById('supportMessage').value.trim();
 			if (!message) { return; }
 
+			sendStats('Support attempted', { type: type });
 			var btn = document.getElementById('supportSubmitBtn');
 			btn.textContent = 'Sending...';
 			btn.disabled = true;
