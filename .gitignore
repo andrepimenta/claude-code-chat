@@ -5,3 +5,4 @@ node_modules
 *.vsix
 backup
 backup-files
+.claude/settings.local.json
