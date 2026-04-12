@@ -3327,7 +3327,7 @@ class ClaudeChatProvider {
 	}
 
 	private _getHtmlForWebview(): string {
-		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY);
+		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY, vscode.env?.appName);
 	}
 
 	private _sendCurrentSettings(): void {
