@@ -15,13 +15,12 @@ Ditch the command line and experience Claude Code like never before. This extens
 ## ✨ **Why Choose Claude Code Chat?**
 
 🖥️ **No Terminal Required** - Beautiful chat interface replaces command-line interactions  
-⏪ **Restore Checkpoints** - Undo changes and restore code to any previous state   
-🔌 **MCP Server Support** - Complete Model Context Protocol server management   
+⏪ **Restore Checkpoints** - Undo changes and restore code to any previous state  
+🔌 **MCP, Skills & Plugins** - Browse, search, and install from curated marketplaces  
 💾 **Conversation History** - Automatic conversation history and session management  
-🎨 **VS Code Native** - Claude Code integrated directly into VS Code with native theming and sidebar support  
-🧠 **Plan and Thinking modes** - Plan First and configurable Thinking modes for better results  
-⚡ **Smart File/Image Context and Custom Commands** - Reference any file, paste images or screenshots and create custom commands  
-🤖 **Model Selection** - Choose between Opus, Sonnet, or Default based on your needs  
+🎨 **VS Code & Cursor** - Works in VS Code, Cursor, and other compatible editors  
+🧠 **Plan and Ultrathink modes** - Plan First and Ultrathink modes  
+⚡ **Smart Context** - Reference files, paste images, and create custom commands  
 🐧 **Windows/WSL Support** - Full native Windows and WSL support
 
 ![Claude Code Chat 1 0 0](https://github.com/user-attachments/assets/5954a74c-eff7-4205-8482-6a1c9de6e102)
@@ -47,35 +46,36 @@ Ditch the command line and experience Claude Code like never before. This extens
 - Real-time cost and token tracking
 - Session statistics and performance metrics
 
-### 📝 **Inline Diff Viewer** ⭐ **NEW IN V1.1**
+### 📝 **Inline Diff Viewer**
 - **Full Diff Display** - See complete file changes directly in Edit, MultiEdit, and Write messages
 - **Open in VS Code Diff** - One-click button to open VS Code's native side-by-side diff editor
 - **Smart Truncation** - Long diffs are truncated with an expand button for better readability
 - **Syntax Highlighting** - Proper code highlighting in diff views
 - **Visual Change Indicators** - Clear green/red highlighting for additions and deletions
 
-### 🔌 **MCP Server Management** ⭐ **NEW IN V1.0**
-- **Popular Servers Gallery** - One-click installation of common MCP servers
-- **Custom Server Creation** - Build and configure your own MCP servers
-- **Server Management** - Edit, delete, enable/disable servers through UI
-- **Automatic Integration** - Seamless permissions and tool integration
-- **Cross-platform Support** - Full WSL compatibility with path conversion
+### 🔌 **MCP, Skills & Plugins Marketplace** ⭐ **NEW IN V2.0**
+- **MCP Servers** - Browse 30+ featured servers (GitHub, Slack, Stripe, Notion, etc.) with dual registry search
+- **Skills** - Browse and install curated skills from skills.sh with project or global scope
+- **Plugins** - Browse and install plugins to extend Claude Code
+- **Smart Search** - Search across add-mcp curated and official Anthropic registries with relevance ranking
+- **Project or Global Install** - Install MCP servers to `.mcp.json` or `~/.claude.json`, skills to `.claude/skills/`
+- **One-Click Install** - Pre-filled configuration with env vars, headers, and OAuth authentication
 
-### 🔒 **Advanced Permissions System** ⭐ **NEW IN V1.0**
+### 🖼️ **Image Preview & Attachments** ⭐ **NEW IN V2.0**
+- **Paste Images** - Paste images with thumbnail preview before sending
+- **File Picker** - Select images through VS Code's native file picker
+- **Preview Strip** - See attached images above the text box with remove buttons
+- **Inline Detection** - Image paths in messages are automatically detected and sent as base64
+- **Multiple Images** - Attach multiple images to a single message
+
+### 🔒 **Advanced Permissions System**
 - **Interactive Permission Dialogs** - Detailed tool information with command previews
 - **Always Allow Functionality** - Smart command pattern matching for common tools (npm, git, docker)
 - **YOLO Mode** - Skip all permission checks for power users
 - **Workspace Permissions** - Granular control over what tools can execute
 - **Real-time Permission Management** - Add/remove permissions through intuitive UI
 
-### 🖼️ **Image & Clipboard Support** ⭐ **NEW IN V1.0**
-- **Drag & Drop Images** - Simply drag images directly into the chat
-- **Clipboard Paste** - Press Ctrl+V to paste screenshots and copied images
-- **Multiple Image Selection** - Choose multiple images through VS Code's file picker
-- **Organized Storage** - Automatic organization in `.claude/claude-code-chat-images/`
-- **Format Support** - PNG, JPG, JPEG, GIF, SVG, WebP, BMP formats
-
-### 📱 **Sidebar Integration** ⭐ **NEW IN V1.0**
+### 📱 **Sidebar Integration**
 - **Native VS Code Sidebar** - Full chat functionality in the sidebar panel
 - **Smart Panel Management** - Automatic switching between main and sidebar views
 - **Persistent Sessions** - State maintained across panel switches
@@ -83,30 +83,30 @@ Ditch the command line and experience Claude Code like never before. This extens
 
 ### 📁 **Smart File Integration**
 - Type `@` to instantly search and reference workspace files
-- Image attachments via file browser and copy-paste screeshots
+- Image attachments via file browser and copy-paste screenshots
 - Lightning-fast file search across your entire project
 - Seamless context preservation for multi-file discussions
 
 ### 🛠️ **Tool Management**
 - Visual dashboard showing all available Claude Code tools
 - Real-time tool execution with formatted results
-- Process control - start, stop, and monitor operations
+- Inline stop button replaces send during processing
 - Smart permission system for secure tool execution
 
 ### 🎨 **VS Code Integration**
 - Native theming that matches your editor
-- Status bar integration with connection status
+- Status bar with support button
 - Activity bar panel for quick access
 - Responsive design for any screen size
 
 ### 🤖 **Model Selection**
+- **Quick Buttons** - GPT, Gemini, MiniMax, Kimi, GLM, DeepSeek above the text box
 - **Opus** - Most capable model for complex tasks requiring deep reasoning
 - **Sonnet** - Balanced model offering great performance for most use cases
 - **Default** - Uses your configured model setting
-- Model preference persists across sessions and is saved automatically
-- Easy switching via dropdown selector in the chat interface
-- Visual confirmation when switching between models
-- One-click model configuration through integrated terminal
+- **150+ OpenCredits Models** - Browse and switch to any available model
+- Model preference persists across sessions
+- Provider choice (OpenCredits vs Anthropic) for Claude models
 
 ### ⚡ **Slash Commands Integration**
 - **Slash Commands Modal** - Type "/" to access all Claude Code commands instantly
@@ -122,14 +122,20 @@ Ditch the command line and experience Claude Code like never before. This extens
 - **Intelligent Prompting** - Different prompts based on selected thinking intensity
 - **Token Awareness** - Higher thinking levels consume more tokens but provide deeper reasoning
 
+### 💬 **Support & Feedback** ⭐ **NEW IN V2.0**
+- **In-App Support** - Click "Support" in the status bar to send feedback
+- **Bug Reports & Feature Requests** - Submit directly from the extension
+- **Optional Email** - Include your email for follow-up
+
 ---
 
 ## 🚀 **Getting Started**
 
 ### Prerequisites
-- **VS Code 1.80+** - Latest version recommended
+- **VS Code 1.80+** or **Cursor** - Latest version recommended
 - **Claude Code CLI** - [Install from Anthropic](https://claude.ai/code)
 - **Active Claude API or subscription** - API or Pro/Max plan
+- **Node.js 18+** - Required for installation
 
 ### Installation
 
@@ -251,25 +257,26 @@ Example configuration in `settings.json`:
 - Type `@` followed by your search term to quickly reference files
 - Use `@src/` to narrow down to specific directories
 - Reference multiple files in one message for cross-file analysis
-- **NEW**: Copy-paste images directly into chat for visual context
-- **NEW**: Paste screenshots with Ctrl+V for instant visual communication
+- Paste images directly with preview thumbnails before sending
+- Paste screenshots with Ctrl+V for instant visual communication
 
 ### ⚡ **Productivity Boosters**
 - **Creates checkpoints automatically** before changes for safe experimentation
 - **Restore instantly** if changes don't work out as expected
-- **NEW**: Permission system prevents accidental tool execution
-- **NEW**: YOLO mode for power users who want speed over safety
-- Use the stop button to cancel long-running operations
+- Permission system prevents accidental tool execution
+- YOLO mode for power users who want speed over safety
+- Inline stop button to cancel long-running operations
 - Copy message contents to reuse Claude's responses
 - Open history panel to reference previous conversations
-- **NEW**: Sidebar integration for multi-panel workflow
+- Sidebar integration for multi-panel workflow
+- **Plan mode** and **Ultrathink** toggles above the text box
 
 ### 🎨 **Interface Customization**
 - The UI automatically adapts to your VS Code theme
 - Messages are color-coded: Green for you, Blue for Claude
 - Hover over messages to reveal the copy button
-- **NEW**: Enhanced code block rendering with syntax highlighting
-- **NEW**: Copy-to-clipboard functionality for code blocks
+- Enhanced code block rendering with syntax highlighting
+- Copy-to-clipboard functionality for code blocks
 
 ---
 
@@ -341,6 +348,7 @@ See the [LICENSE](LICENSE) file for details.
 
 Need help? We've got you covered:
 
+- 💬 **In-App** - Click "Support" in the status bar to send feedback directly
 - 🐛 **Issues**: [GitHub Issues](https://github.com/andrepimenta/claude-code-chat/issues)
 
 ---
