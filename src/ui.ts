@@ -1076,7 +1076,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	2. Do I need to display a cookie notice to users?
 	No, Umami does not use any cookies in the tracking code.
 	-->
-	${isTelemetryEnabled ? '<script defer src="https://umami.claudecodechat.com/script.js" data-website-id="6310c878-cfe4-4044-b4ef-a60cd0e0dfe4"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
+	${isTelemetryEnabled ? '<script defer src="https://umami.claudecodechat.com/script.js" data-website-id="0159e9b1-4a98-4b49-943a-32db3e743b95"></script>' : '<!-- Umami analytics disabled due to VS Code telemetry settings -->'}
 </body>
 </html>`;
 

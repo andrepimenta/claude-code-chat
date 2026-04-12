@@ -2359,6 +2359,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		// Trigger checkout flow for OpenCredits
 		function triggerOpenCreditsCheckout(modelId) {
+			sendStats('Checkout started', { model: modelId });
 			pendingModelSelection = modelId;
 			hideModelModal();
 			// Tell extension about pending model
