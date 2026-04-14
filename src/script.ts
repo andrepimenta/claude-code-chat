@@ -207,14 +207,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			
 			const iconDiv = document.createElement('div');
 			iconDiv.className = 'tool-icon';
-			iconDiv.textContent = '🔧';
-			
+			iconDiv.textContent = data.toolName === 'ExitPlanMode' ? '📋' : '🔧';
+
 			const toolInfoElement = document.createElement('div');
 			toolInfoElement.className = 'tool-info';
 			let toolName = data.toolInfo.replace('🔧 Executing: ', '');
-			// Replace TodoWrite with more user-friendly name
 			if (toolName === 'TodoWrite') {
 				toolName = 'Update Todos';
+			} else if (toolName === 'ExitPlanMode') {
+				toolName = 'Plan';
 			}
 			toolInfoElement.textContent = toolName;
 			
@@ -287,6 +288,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						} else {
 							contentDiv.innerHTML = formatWriteToolDiff(data.rawInput, data.fileContentBefore, showButton);
 						}
+					} else if (data.toolName === 'ExitPlanMode' && data.rawInput) {
+						contentDiv.innerHTML = formatPlanOutput(data.rawInput);
 					} else {
 						contentDiv.innerHTML = formatToolInputUI(data.rawInput);
 					}
@@ -462,6 +465,34 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+
+		function formatPlanOutput(input) {
+			var html = '';
+
+			// Render plan markdown
+			if (input.plan) {
+				html += '<div class="plan-content">' + parseSimpleMarkdown(input.plan) + '</div>';
+			}
+
+			// Render allowed prompts as action buttons
+			if (input.allowedPrompts && input.allowedPrompts.length > 0) {
+				html += '<div class="plan-actions">';
+				html += '<div class="plan-actions-label">Suggested actions:</div>';
+				input.allowedPrompts.forEach(function(p) {
+					var label = p.prompt || (p.tool + ' command');
+					var escapedPrompt = escapeHtml(label).replace(/'/g, '&#39;');
+					html += '<button class="plan-action-btn" onclick="sendPlanAction(&#39;' + escapedPrompt + '&#39;)" title="' + escapeHtml(p.tool) + '">' + escapeHtml(label) + '</button>';
+				});
+				html += '</div>';
+			}
+
+			return html;
+		}
+
+		function sendPlanAction(prompt) {
+			messageInput.value = prompt;
+			sendMessage();
 		}
 
 		function formatToolInputUI(input) {
@@ -3796,7 +3827,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messageDiv.id = \`permission-\${data.id}\`;
 			messageDiv.dataset.status = data.status || 'pending';
 
-			const toolName = data.tool || 'Unknown Tool';
+			let toolName = data.tool || 'Unknown Tool';
+			if (toolName === 'ExitPlanMode') toolName = 'Approve Plan';
 			const status = data.status || 'pending';
 
 			// Create always allow button text with command styling for Bash
@@ -3832,11 +3864,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						</div>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>\${data.tool === 'ExitPlanMode' ? 'Approve the plan above?' : 'Allow <strong>' + toolName + '</strong> to execute the tool call above?'}</p>
 						<div class="permission-buttons">
 							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
-							<button class="btn always-allow" onclick="respondToPermission('\${data.id}', true, true)" \${alwaysAllowTooltip}>\${alwaysAllowText}</button>
-							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">Allow</button>
+							\${data.tool === 'ExitPlanMode' ? '' : '<button class="btn always-allow" onclick="respondToPermission(\\'' + data.id + '\\', true, true)" ' + alwaysAllowTooltip + '>' + alwaysAllowText + '</button>'}
+							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">\${data.tool === 'ExitPlanMode' ? 'Approve' : 'Allow'}</button>
 						</div>
 					</div>
 				\`;

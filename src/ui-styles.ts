@@ -1324,6 +1324,62 @@ const styles = `
         opacity: 0.95;
     }
 
+    .plan-content {
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .plan-content h1, .plan-content h2, .plan-content h3 {
+        margin: 12px 0 6px;
+        font-weight: 600;
+    }
+
+    .plan-content h1 { font-size: 16px; }
+    .plan-content h2 { font-size: 14px; }
+    .plan-content h3 { font-size: 13px; }
+
+    .plan-content ul, .plan-content ol {
+        padding-left: 20px;
+        margin: 4px 0;
+    }
+
+    .plan-content code {
+        font-family: var(--vscode-editor-font-family);
+        font-size: 12px;
+        background: rgba(127, 127, 127, 0.15);
+        padding: 1px 4px;
+        border-radius: 3px;
+    }
+
+    .plan-actions {
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid var(--vscode-panel-border);
+    }
+
+    .plan-actions-label {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        margin-bottom: 8px;
+    }
+
+    .plan-action-btn {
+        display: inline-block;
+        background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+        color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+        border: 1px solid var(--vscode-panel-border);
+        padding: 5px 12px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        margin: 0 6px 6px 0;
+    }
+
+    .plan-action-btn:hover {
+        background: var(--vscode-list-hoverBackground);
+        border-color: var(--vscode-focusBorder);
+    }
+
     /* Diff display styles for Edit tool */
     .diff-container {
         border: 1px solid var(--vscode-panel-border);
