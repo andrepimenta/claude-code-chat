@@ -2839,6 +2839,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (checkout) checkout.style.display = 'none';
 			if (funds) funds.style.display = 'none';
 
+			// Hide OpenCredits option if feature flag is disabled
+			var ocOption = document.getElementById('installOpenCreditsOption');
+			if (ocOption) ocOption.style.display = opencreditsEnabled ? '' : 'none';
+
 			sendStats('Login options shown');
 		}
 
@@ -2871,6 +2875,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			const successEl = document.getElementById('installSuccess');
 			successEl.style.display = 'flex';
+
+			// Hide OpenCredits option if feature flag is disabled
+			const ocOption = document.getElementById('installOpenCreditsOption');
+			if (ocOption) ocOption.style.display = opencreditsEnabled ? '' : 'none';
 
 			if (success) {
 				sendStats('Install success');

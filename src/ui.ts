@@ -608,7 +608,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 							<span class="install-option-title">I have a plan</span>
 							<span class="install-option-desc">Login with Anthropic · Pro, Max, or API key</span>
 						</button>
-						<button class="install-option install-option-secondary" onclick="showFundsSelection()">
+						<button class="install-option install-option-secondary" id="installOpenCreditsOption" onclick="showFundsSelection()">
 							<span class="install-option-title">Just try it</span>
 							<span class="install-option-desc">No account needed · Pay as you go with OpenCredits</span>
 						</button>
