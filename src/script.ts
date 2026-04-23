@@ -78,6 +78,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let selectedFileIndex = -1;
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
+		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
@@ -2800,7 +2801,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// Install modal functions
-		function showInstallModal() {
+		function showInstallModal(installAttempted) {
 			const modal = document.getElementById('installModal');
 			const main = document.getElementById('installMain');
 			const progress = document.getElementById('installProgress');
@@ -2813,7 +2814,30 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (success) success.style.display = 'none';
 			if (checkout) checkout.style.display = 'none';
 
-			sendStats('Install modal shown');
+			// Show "Didn't work? Try with npm" only if user already attempted install once
+			var retryOptions = document.getElementById('installRetryOptions');
+			if (retryOptions) retryOptions.style.display = installAttempted ? 'block' : 'none';
+
+			// Show sudo checkbox only on macOS/Linux
+			var sudoLabel = document.getElementById('installSudoLabel');
+			if (sudoLabel) sudoLabel.style.display = (installAttempted && !isWindows) ? 'inline-block' : 'none';
+
+			sendStats('Install modal shown', installAttempted ? { retryShown: true } : undefined);
+		}
+
+		function startInstallationWithSudo() {
+			var useSudo = document.getElementById('installUseSudo') && document.getElementById('installUseSudo').checked;
+			if (useSudo) {
+				sendStats('Install started', { method: 'npm-sudo' });
+				vscode.postMessage({
+					type: 'runTerminalCommand',
+					command: 'sudo npm install -g @anthropic-ai/claude-code'
+				});
+				// Close the modal — user will complete install in terminal
+				hideInstallModal();
+			} else {
+				startInstallation('npm');
+			}
 		}
 
 		function showLoginOptionsModal() {
@@ -2857,8 +2881,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		}
 
-		function startInstallation() {
-			sendStats('Install started');
+		function startInstallation(method) {
+			sendStats('Install started', { method: method || 'installer' });
 
 			// Hide main content, show progress
 			document.getElementById('installMain').style.display = 'none';
@@ -2866,11 +2890,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			// Extension handles platform detection and command selection
 			vscode.postMessage({
-				type: 'runInstallCommand'
+				type: 'runInstallCommand',
+				method: method || 'installer'
 			});
 		}
 
-		function handleInstallComplete(success, error) {
+		function handleInstallComplete(success, error, extra) {
 			document.getElementById('installProgress').style.display = 'none';
 
 			const successEl = document.getElementById('installSuccess');
@@ -2881,9 +2906,23 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (ocOption) ocOption.style.display = opencreditsEnabled ? '' : 'none';
 
 			if (success) {
-				sendStats('Install success');
-				successEl.querySelector('.install-success-text').textContent = 'Installed';
-				successEl.querySelector('.install-success-hint').textContent = 'Send a message to get started';
+				if (extra && extra.configuredPath) {
+					sendStats('Install auto configured path', { existingPathRespected: !!extra.existingPathRespected });
+					successEl.querySelector('.install-success-text').textContent = 'Installed';
+					const hint = extra.existingPathRespected
+						? 'Claude was installed but not on your PATH. Your existing executable.path setting was left unchanged.'
+						: 'Configured automatically. Send a message to get started.';
+					successEl.querySelector('.install-success-hint').textContent = hint;
+				} else if (extra && extra.notOnPath) {
+					sendStats('Install location not found');
+					successEl.querySelector('.install-success-text').textContent = 'Installed';
+					successEl.querySelector('.install-success-hint').textContent =
+						'Claude was installed but could not be located. Set claudeCodeChat.executable.path manually to your claude binary.';
+				} else {
+					sendStats('Install success');
+					successEl.querySelector('.install-success-text').textContent = 'Installed';
+					successEl.querySelector('.install-success-hint').textContent = 'Send a message to get started';
+				}
 			} else {
 				sendStats('Install failed', { error: (error || 'Unknown error').substring(0, 200) });
 				// Show error state
@@ -3702,12 +3741,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				case 'showInstallModal':
 					sendStats('Claude not installed');
-					showInstallModal();
+					showInstallModal(message.installAttempted);
 					updateStatus('Claude Code not installed', 'error');
 					break;
 
 				case 'installComplete':
-					handleInstallComplete(message.success, message.error);
+					handleInstallComplete(message.success, message.error, {
+						configuredPath: message.configuredPath,
+						notOnPath: message.notOnPath,
+						installLocation: message.installLocation,
+						existingPathRespected: message.existingPathRespected
+					});
 					if (message.success) {
 						updateStatus('Ready', 'success');
 					}
@@ -4789,7 +4833,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				settings: {
 					'wsl.enabled': wslEnabled,
 					'wsl.distro': wslDistro || 'Ubuntu',
-					'wsl.nodePath': wslNodePath || '/usr/bin/node',
+					'wsl.nodePath': wslNodePath,
 					'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude',
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
@@ -5067,7 +5111,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				
 				document.getElementById('wsl-enabled').checked = message.data['wsl.enabled'] || false;
 				document.getElementById('wsl-distro').value = message.data['wsl.distro'] || 'Ubuntu';
-				document.getElementById('wsl-node-path').value = message.data['wsl.nodePath'] || '/usr/bin/node';
+				document.getElementById('wsl-node-path').value = message.data['wsl.nodePath'] ?? '';
 				document.getElementById('wsl-claude-path').value = message.data['wsl.claudePath'] || '/usr/local/bin/claude';
 				document.getElementById('yolo-mode').checked = message.data['permissions.yoloMode'] || false;
 				
@@ -5228,6 +5272,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 
 			if (message.type === 'platformInfo') {
+				isWindows = !!message.data.isWindows;
 				// Check if user is on Windows and show WSL alert if not dismissed and WSL not already enabled
 				if (message.data.isWindows && !message.data.wslAlertDismissed && !message.data.wslEnabled) {
 					// Small delay to ensure UI is ready

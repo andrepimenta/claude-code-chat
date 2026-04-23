@@ -308,18 +308,18 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 						</div>
 						
 						<div style="margin-bottom: 12px;">
-							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Node.js Path in WSL</label>
-							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
-							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
-								Find your node installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
-							</p>
-						</div>
-						
-						<div style="margin-bottom: 12px;">
 							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Claude Path in WSL</label>
 							<input type="text" id="wsl-claude-path" class="file-search-input" style="width: 100%;" placeholder="/usr/local/bin/claude" onchange="updateSettings()">
 							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
 								Find your claude installation path in WSL by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which claude</code>
+							</p>
+						</div>
+
+						<div style="margin-bottom: 12px;">
+							<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Node.js Path in WSL (Optional)</label>
+							<input type="text" id="wsl-node-path" class="file-search-input" style="width: 100%;" placeholder="/usr/bin/node" onchange="updateSettings()">
+							<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+								Optional. Only needed if you previously installed Claude via npm. Recent Claude installs ship as a native executable and don't need Node. Set it by running: <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">which node</code>
 							</p>
 						</div>
 					</div>
@@ -582,6 +582,15 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<button class="install-btn" id="installMainBtn" onclick="startInstallation()">
 						Install Now
 					</button>
+
+					<div id="installRetryOptions" style="display: none; margin-top: 8px;">
+						<button class="install-link" id="installRetryNpmBtn" onclick="startInstallationWithSudo()" style="background: none; border: none; color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: underline; padding: 4px;">
+							Didn't work? Try with npm
+						</button>
+						<label id="installSudoLabel" style="display: none; margin-left: 10px; font-size: 11px; color: var(--vscode-descriptionForeground); cursor: pointer;">
+							<input type="checkbox" id="installUseSudo" style="vertical-align: middle;"> Use sudo
+						</label>
+					</div>
 
 					<a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" class="install-link">
 						View documentation

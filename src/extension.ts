@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
+import * as fs from 'fs';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
@@ -481,7 +482,7 @@ class ClaudeChatProvider {
 				this._dismissWSLAlert();
 				return;
 			case 'runInstallCommand':
-				this._runInstallCommand();
+				this._runInstallCommand(message.method || 'installer');
 				return;
 			case 'openLoginTerminal':
 				this._openLoginTerminal();
@@ -971,7 +972,7 @@ class ClaudeChatProvider {
 
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
 		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
+		const nodePath = config.get<string>('wsl.nodePath', '');
 		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
 		const routerExplicitlyEnabled = config.get<boolean>('router.enabled', false);
 		const customExecutablePath = config.get<string>('executable.path', '');
@@ -1034,8 +1035,7 @@ class ClaudeChatProvider {
 				.join(' && ');
 			const envPrefix = envExports ? envExports + ' && ' : '';
 
-			const quotedArgs = args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ');
-			const wslCommand = `${envPrefix}"${nodePath}" --no-warnings --enable-source-maps "${claudePath}" ${quotedArgs}`;
+			const wslCommand = envPrefix + this._buildWslClaudeCommand(nodePath, claudePath, args);
 
 			// Track WSL state for proper process termination
 			this._isWslProcess = true;
@@ -1244,11 +1244,19 @@ class ClaudeChatProvider {
 			});
 
 			if (code !== 0 && errorOutput.trim()) {
-				// Error with output
-				this._sendAndSaveMessage({
-					type: 'error',
-					data: errorOutput.trim()
-				});
+				// Check if claude command is not installed (Windows cmd.exe)
+				if (errorOutput.includes('not recognized as an internal or external command')) {
+					this._postMessage({
+						type: 'showInstallModal',
+						installAttempted: !!this._context.globalState.get('installAttempted')
+					});
+				} else {
+					// Error with output
+					this._sendAndSaveMessage({
+						type: 'error',
+						data: errorOutput.trim()
+					});
+				}
 			}
 		});
 
@@ -1278,9 +1286,10 @@ class ClaudeChatProvider {
 			});
 
 			// Check if claude command is not installed
-			if (error.message.includes('ENOENT') || error.message.includes('command not found')) {
+			if (error.message.includes('ENOENT') || error.message.includes('command not found') || error.message.includes('not recognized as an internal or external command')) {
 				this._postMessage({
-					type: 'showInstallModal'
+					type: 'showInstallModal',
+					installAttempted: !!this._context.globalState.get('installAttempted')
 				});
 			} else {
 				this._sendAndSaveMessage({
@@ -3336,7 +3345,7 @@ class ClaudeChatProvider {
 			'thinking.intensity': config.get<string>('thinking.intensity', 'think'),
 			'wsl.enabled': config.get<boolean>('wsl.enabled', false),
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
-			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
+			'wsl.nodePath': config.get<string>('wsl.nodePath', ''),
 			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
 			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
 			'router.enabled': config.get<boolean>('router.enabled', false),
@@ -3561,13 +3570,20 @@ class ClaudeChatProvider {
 		});
 	}
 
-	private _openModelTerminal(): void {
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+	private _quoteBashArg(value: string): string {
+		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+	}
 
+	private _buildWslClaudeCommand(nodePath: string, claudePath: string, args: string[] = []): string {
+		const trimmedNodePath = nodePath.trim();
+		const commandParts = trimmedNodePath
+			? [this._quoteBashArg(trimmedNodePath), '--no-warnings', '--enable-source-maps', this._quoteBashArg(claudePath)]
+			: [this._quoteBashArg(claudePath)];
+		const quotedArgs = args.map(arg => this._quoteBashArg(arg));
+		return [...commandParts, ...quotedArgs].join(' ');
+	}
+
+	private _openModelTerminal(): void {
 		// Build command arguments
 		const args = ['/model'];
 
@@ -3576,16 +3592,12 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
-		// Create terminal with the claude /model command
+		// Launch claude as the terminal process directly — no shell quoting
 		const terminal = vscode.window.createTerminal({
 			name: 'Claude Model Selection',
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(args)
 		});
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
-		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
-		}
 		terminal.show();
 
 		// Show info message
@@ -3601,78 +3613,121 @@ class ClaudeChatProvider {
 		});
 	}
 
-	private _openUsageTerminal(usageType: string): void {
-		// Get WSL configuration
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-
+	private _openUsageTerminal(_usageType: string): void {
 		const terminal = vscode.window.createTerminal({
 			name: 'Claude Usage',
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(['/usage'])
 		});
-
-		let command: string;
-		if (usageType === 'plan') {
-			// Plan users get live usage view
-			command = 'npx -y ccusage blocks --live';
-		} else {
-			// API users get recent usage history
-			command = 'npx -y ccusage blocks --recent --order desc';
-		}
-
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} bash -ic "${command}"`);
-		} else {
-			terminal.sendText(command);
-		}
-
 		terminal.show();
 	}
 
-	private _runInstallCommand(): void {
-		// Check if npm is available with Node >= 18
-		cp.exec('node -e "process.exit(parseInt(process.version.slice(1)) >= 18 ? 0 : 1)"', (checkErr) => {
-			if (checkErr) {
+	private _runInstallCommand(method: string = 'installer'): void {
+		let command: string;
+		if (method === 'npm') {
+			command = 'npm install -g @anthropic-ai/claude-code';
+		} else if (process.platform === 'win32') {
+			command = 'powershell.exe -Command "irm https://claude.ai/install.ps1 | iex"';
+		} else {
+			command = 'curl -fsSL https://claude.ai/install.sh | bash';
+		}
+
+		// Track that user has attempted install at least once
+		this._context.globalState.update('installAttempted', true);
+
+		cp.exec(command, { timeout: 600000 }, async (error) => {
+			if (error) {
 				this._postMessage({
 					type: 'installComplete',
 					success: false,
-					error: 'Node.js 18+ is required. Please install Node.js from https://nodejs.org/en/download and try again.'
+					error: 'Installation failed. Please run in terminal: ' + command,
+					method: method
 				});
 				return;
 			}
 
-			cp.exec('npm install -g @anthropic-ai/claude-code', { timeout: 120000 }, (error) => {
-				if (error) {
-					this._postMessage({
-						type: 'installComplete',
-						success: false,
-						error: 'Installation failed. Please run in terminal: npm install -g @anthropic-ai/claude-code'
-					});
-				} else {
-					this._postMessage({ type: 'installComplete', success: true });
+			const available = await this._checkClaudeAvailable();
+			if (available) {
+				this._postMessage({ type: 'installComplete', success: true, method });
+				return;
+			}
+
+			const installLocation = this._getKnownInstallLocation();
+			if (!fs.existsSync(installLocation)) {
+				this._postMessage({
+					type: 'installComplete',
+					success: true,
+					method,
+					notOnPath: true,
+					installLocation
+				});
+				return;
+			}
+
+			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const existing = config.get<string>('executable.path', '');
+			if (!existing) {
+				try {
+					await config.update('executable.path', installLocation, vscode.ConfigurationTarget.Global);
+				} catch {
+					// fall through; UI will guide user
 				}
+			}
+			this._postMessage({
+				type: 'installComplete',
+				success: true,
+				method,
+				configuredPath: installLocation,
+				existingPathRespected: !!existing
 			});
 		});
 	}
 
-	private _openLoginTerminal(): void {
+	private _checkClaudeAvailable(): Promise<boolean> {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		if (config.get<boolean>('wsl.enabled', false)) {
+			return Promise.resolve(true);
+		}
+		const probe = process.platform === 'win32' ? 'where claude' : 'command -v claude';
+		return new Promise<boolean>((resolve) => {
+			cp.exec(probe, { env: process.env }, (err) => resolve(!err));
+		});
+	}
+
+	private _getKnownInstallLocation(): string {
+		const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+		const binary = process.platform === 'win32' ? 'claude.exe' : 'claude';
+		return path.join(homeDir, '.local', 'bin', binary);
+	}
+
+	private _buildClaudeTerminalOptions(args: string[] = []): { shellPath: string; shellArgs: string[] } {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
-
-		const terminal = vscode.window.createTerminal({
-			name: 'Claude Login',
-			location: { viewColumn: vscode.ViewColumn.One }
-		});
 
 		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath}`);
-		} else {
-			terminal.sendText('claude');
+			const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
+			const nodePath = config.get<string>('wsl.nodePath', '');
+			const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+			const wslCommand = this._buildWslClaudeCommand(nodePath, claudePath, args);
+			return {
+				shellPath: process.platform === 'win32' ? 'wsl.exe' : 'wsl',
+				shellArgs: ['-d', wslDistro, 'bash', '-ic', wslCommand]
+			};
 		}
+
+		const custom = (config.get<string>('executable.path', '') || '').trim();
+		return {
+			shellPath: custom || 'claude',
+			shellArgs: args
+		};
+	}
+
+	private _openLoginTerminal(): void {
+		const terminal = vscode.window.createTerminal({
+			name: 'Claude Login',
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions()
+		});
 		terminal.show();
 	}
 
@@ -3703,12 +3758,6 @@ class ClaudeChatProvider {
 			return;
 		}
 
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
-
 		// Build command arguments
 		const args = [`/${command}`];
 
@@ -3717,16 +3766,12 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
-		// Create terminal with the claude command
+		// Launch claude as the terminal process directly — no shell quoting
 		const terminal = vscode.window.createTerminal({
 			name: `Claude /${command}`,
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(args)
 		});
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
-		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
-		}
 		terminal.show();
 
 		// Show info message
