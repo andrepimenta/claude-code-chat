@@ -4,6 +4,66 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.0.6] - 2026-04-23
+
+### 🚀 Features Added
+- **Smarter post-install setup**: Fresh installs now "just work" without a VS Code restart. After install, the extension checks whether `claude` resolved on your PATH and, if not, auto-configures `claudeCodeChat.executable.path` to the known install location. An existing custom executable path is respected.
+- **WSL: Node.js path is now optional**: Recent Claude Code ships as a native binary and doesn't need Node. Leave the **Node.js Path** field blank unless you installed Claude via npm. The WSL settings panel was also reordered so **Claude Path** comes first.
+
+### 🐛 Bug Fixes
+- **Rock-solid terminals across shells**: Login, Model, /usage, and slash-command terminals now launch Claude directly instead of sending text through the shell. Fixes a class of quoting issues on Windows PowerShell and keeps behavior identical across PowerShell, cmd, bash, and zsh.
+
+### 🔧 Technical Improvements
+- Terminal sites now use `createTerminal`'s `shellPath`/`shellArgs` — no shell quoting, consistent env inheritance, identical behavior across OSes.
+
+## [2.0.4] - 2026-04-21
+
+### 🚀 Features Added
+- **Plan Mode (Improved)**:
+  - Plans now render as beautifully formatted markdown with headings, lists, and code blocks
+  - Suggested actions shown as clickable buttons below the plan (e.g. "run npm build")
+  - Permission prompt says "Approve the plan above?" with an Approve button instead of the generic tool approval
+- **MCP, Skills & Plugins Marketplace**:
+  - Browse 30+ curated MCP servers (GitHub, Slack, Stripe, Notion, Supabase, etc.)
+  - Search across both add-mcp curated and official Anthropic registries with smart ranking
+  - Install MCP servers to project (`.mcp.json`) or global (`~/.claude.json`)
+  - Skills marketplace with one-click install via `npx skills add`
+  - Plugins marketplace to extend Claude Code
+  - OAuth authentication support — open terminal to log in to MCPs
+- **150+ AI Models via OpenCredits**:
+  - Quick model switching: GPT, Gemini, MiniMax, Kimi, GLM, DeepSeek buttons above the text box
+  - Browse and select from 150+ models across providers
+  - Pay-as-you-go with OpenCredits — no subscription needed
+  - US & EU provider filtering option in settings
+  - Model selection persists correctly after checkout
+- **Image Preview**:
+  - Paste or pick images with thumbnail preview before sending
+  - Remove attached images before sending
+  - Multiple image attachments per message
+  - Image paths in text auto-detected and sent as base64
+- **Support & Feedback**:
+  - "Support" button in status bar to send bug reports and feature requests
+  - Submissions sent directly to Discord
+
+### 🎨 UI Improvements
+- Inline stop button replaces send button during processing
+- Self-hosted Umami analytics with editor tracking (VS Code vs Cursor)
+- BETA badge on model section with instant tooltip
+- Cleaner model selector and Browse All Models alignment
+
+### 🐛 Bug Fixes & Reliability
+- Fix model not being selected after OpenCredits checkout
+- Fix provider choice modal appearing unexpectedly after settings changes
+- Fix duplicate login error toast
+- Fix WSL environment variable passthrough for OpenCredits
+- Fix Windows URL opening with `start` command
+- Fix `--mcp-config` error on fresh installs
+- Await `setEnvsDisabled` so settings reflect changes immediately
+- Skip npx install prompt with `-y` flag for skills
+- Better install error messages (Node.js 18+ requirement)
+- Add node and mocha types to tsconfig for clean editor diagnostics
+- Remove debug `console.log`s, add `console.error` to empty catch blocks
+
 ## [1.1.0] - 2025-12-06
 
 ### 🚀 Features Added
