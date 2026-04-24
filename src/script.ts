@@ -2895,6 +2895,33 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			});
 		}
 
+		function handleInstallProgress(p) {
+			const progressEl = document.getElementById('installProgress');
+			if (!progressEl || progressEl.style.display === 'none') return;
+			const textEl = progressEl.querySelector('.install-progress-text');
+			if (!textEl) return;
+
+			const loaded = typeof p.loaded === 'number' && isFinite(p.loaded) ? p.loaded : 0;
+			const total = typeof p.total === 'number' && isFinite(p.total) && p.total > 0 ? p.total : null;
+
+			if (p.phase === 'resolving') {
+				textEl.textContent = 'Looking up Claude Code...';
+			} else if (p.phase === 'downloading') {
+				if (total) {
+					const pct = Math.min(100, Math.max(0, Math.floor((loaded / total) * 100)));
+					textEl.textContent = 'Downloading Claude Code (' + pct + '%)';
+				} else {
+					textEl.textContent = 'Downloading Claude Code (' + (loaded / 1048576).toFixed(1) + ' MB)';
+				}
+			} else if (p.phase === 'verifying') {
+				textEl.textContent = 'Verifying download...';
+			} else if (p.phase === 'installing') {
+				textEl.textContent = 'Installing...';
+			} else if (p.phase === 'fallback') {
+				textEl.textContent = 'Retrying via alternate source...';
+			}
+		}
+
 		function handleInstallComplete(success, error, extra) {
 			document.getElementById('installProgress').style.display = 'none';
 
@@ -2906,30 +2933,40 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (ocOption) ocOption.style.display = opencreditsEnabled ? '' : 'none';
 
 			if (success) {
+				const baseProps = { source: extra && extra.source, version: extra && extra.version };
 				if (extra && extra.configuredPath) {
-					sendStats('Install auto configured path', { existingPathRespected: !!extra.existingPathRespected });
+					sendStats('Install auto configured path', Object.assign({ existingPathRespected: !!extra.existingPathRespected }, baseProps));
 					successEl.querySelector('.install-success-text').textContent = 'Installed';
-					const hint = extra.existingPathRespected
-						? 'Claude was installed but not on your PATH. Your existing executable.path setting was left unchanged.'
-						: 'Configured automatically. Send a message to get started.';
-					successEl.querySelector('.install-success-hint').textContent = hint;
-				} else if (extra && extra.notOnPath) {
-					sendStats('Install location not found');
+					successEl.querySelector('.install-success-hint').textContent = 'Configured automatically. Send a message to get started.';
+				} else if (extra && extra.existingPathRespected) {
+					sendStats('Install success', baseProps);
 					successEl.querySelector('.install-success-text').textContent = 'Installed';
 					successEl.querySelector('.install-success-hint').textContent =
-						'Claude was installed but could not be located. Set claudeCodeChat.executable.path manually to your claude binary.';
+						'Your existing executable.path setting was left unchanged. Send a message to get started.';
 				} else {
-					sendStats('Install success');
+					sendStats('Install success', baseProps);
 					successEl.querySelector('.install-success-text').textContent = 'Installed';
 					successEl.querySelector('.install-success-hint').textContent = 'Send a message to get started';
 				}
 			} else {
-				sendStats('Install failed', { error: (error || 'Unknown error').substring(0, 200) });
-				// Show error state
+				const errorCode = extra && extra.errorCode;
+				sendStats('Install failed', {
+					errorCode: errorCode,
+					npmCode: extra && extra.npmCode,
+					cdnCode: extra && extra.cdnCode,
+					error: (error || 'Unknown error').substring(0, 200)
+				});
 				successEl.querySelector('.install-success-icon').style.display = 'none';
-				successEl.querySelector('.install-success-text').textContent = 'Installation failed';
-				successEl.querySelector('.install-success-hint').textContent = error || 'Try installing manually from claude.ai/download';
 				successEl.querySelector('.install-options').style.display = 'none';
+				if (errorCode === 'UNSUPPORTED_PLATFORM') {
+					successEl.querySelector('.install-success-text').textContent = 'Unsupported platform';
+					successEl.querySelector('.install-success-hint').textContent =
+						error || 'Your platform is not supported. Install Claude manually from https://code.claude.com.';
+				} else {
+					successEl.querySelector('.install-success-text').textContent = 'Installation failed';
+					successEl.querySelector('.install-success-hint').textContent =
+						error || 'Try installing manually from claude.ai/download';
+				}
 			}
 		}
 
@@ -3748,13 +3785,26 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				case 'installComplete':
 					handleInstallComplete(message.success, message.error, {
 						configuredPath: message.configuredPath,
-						notOnPath: message.notOnPath,
-						installLocation: message.installLocation,
-						existingPathRespected: message.existingPathRespected
+						existingPathRespected: message.existingPathRespected,
+						source: message.source,
+						version: message.version,
+						errorCode: message.errorCode,
+						npmCode: message.npmCode,
+						cdnCode: message.cdnCode
 					});
 					if (message.success) {
 						updateStatus('Ready', 'success');
 					}
+					break;
+
+				case 'installProgress':
+					handleInstallProgress({
+						phase: message.phase,
+						source: message.source,
+						loaded: message.loaded,
+						total: message.total,
+						message: message.message
+					});
 					break;
 
 				case 'showRestoreOption':

@@ -4,6 +4,20 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.0.7] - 2026-04-24
+
+### 🚀 Features Added
+- **In-process installer**: Installing Claude Code no longer shells out to PowerShell, `curl | bash`, or `npm install -g`. The extension now fetches the platform-specific native binary directly (npm registry first, with Anthropic's CDN as a fallback), verifies the download with sha512/sha256, and writes it into the extension's own storage. Zero PATH, sudo, execution-policy, Node-version, or shell-quoting dependencies — if the extension installed, installing Claude works.
+- **Progress updates during install**: The install modal now reports "Looking up…", "Downloading… (X%)", "Verifying…", and "Installing…" as it runs, with an automatic retry message if it falls back to the CDN source.
+- **Cleaner install analytics**: `Install success` now includes `source` (npm/cdn) and `version`; `Install failed` now includes a typed `errorCode` (NETWORK / INTEGRITY / WRITE / AGGREGATE / UNSUPPORTED_PLATFORM) so failure buckets are meaningful instead of just "the shell command failed".
+
+### 🐛 Bug Fixes
+- **Paths with spaces on Windows**: Fixed an edge case where the main Claude spawn could fail when the executable path contained spaces (e.g. `C:\Users\Some User\…`). Absolute paths now bypass `cmd.exe` wrapping entirely.
+
+### 🔧 Technical Improvements
+- New `src/claudeDownloader.ts` module: self-contained, no new runtime dependencies. Includes a minimal in-tree tar parser so we can stream-extract the one binary we need from the npm tarball without bundling a tar library.
+- Removed the old PowerShell / curl / npm install paths and the associated `_getKnownInstallLocation` / `_checkClaudeAvailable` helpers — the download flow now owns the install location end-to-end.
+
 ## [2.0.6] - 2026-04-23
 
 ### 🚀 Features Added

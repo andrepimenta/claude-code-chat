@@ -2,11 +2,12 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
-import * as fs from 'fs';
+import * as os from 'os';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
+import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -1052,11 +1053,15 @@ class ClaudeChatProvider {
 			// Not using WSL
 			this._isWslProcess = false;
 
-			// Use native claude command (or custom executable if configured)
+			// Use native claude command (or custom executable if configured).
+			// shell:true is only needed on Windows when we don't have an absolute path —
+			// cmd.exe's resolver finds .cmd/.bat shims on PATH. With an absolute .exe
+			// path we skip shell wrapping to avoid cmd.exe mis-quoting paths with spaces
+			// (e.g. the default globalStorage location "...Application Support...").
 			const executable = customExecutablePath || 'claude';
 			claudeProcess = cp.spawn(executable, args, {
 				signal: this._abortController.signal,
-				shell: process.platform === 'win32',
+				shell: process.platform === 'win32' && !customExecutablePath,
 				detached: process.platform !== 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -3622,82 +3627,80 @@ class ClaudeChatProvider {
 		terminal.show();
 	}
 
-	private _runInstallCommand(method: string = 'installer'): void {
-		let command: string;
-		if (method === 'npm') {
-			command = 'npm install -g @anthropic-ai/claude-code';
-		} else if (process.platform === 'win32') {
-			command = 'powershell.exe -Command "irm https://claude.ai/install.ps1 | iex"';
-		} else {
-			command = 'curl -fsSL https://claude.ai/install.sh | bash';
-		}
-
-		// Track that user has attempted install at least once
+	private async _runInstallCommand(method: string = 'installer'): Promise<void> {
 		this._context.globalState.update('installAttempted', true);
 
-		cp.exec(command, { timeout: 600000 }, async (error) => {
-			if (error) {
-				this._postMessage({
-					type: 'installComplete',
-					success: false,
-					error: 'Installation failed. Please run in terminal: ' + command,
-					method: method
-				});
-				return;
-			}
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const wslEnabled = config.get<boolean>('wsl.enabled', false);
 
-			const available = await this._checkClaudeAvailable();
-			if (available) {
-				this._postMessage({ type: 'installComplete', success: true, method });
-				return;
-			}
+		// WSL install needs to run inside the distro, not on the Windows host.
+		// The old shell-based flow didn't handle this either — not regressing,
+		// not fixing here. User should install claude inside their distro manually
+		// and set claudeCodeChat.wsl.claudePath.
+		if (wslEnabled) {
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: 'WSL mode: please install Claude inside your WSL distro, then set claudeCodeChat.wsl.claudePath.',
+				errorCode: 'UNSUPPORTED_PLATFORM'
+			});
+			return;
+		}
 
-			const installLocation = this._getKnownInstallLocation();
-			if (!fs.existsSync(installLocation)) {
-				this._postMessage({
-					type: 'installComplete',
-					success: true,
-					method,
-					notOnPath: true,
-					installLocation
-				});
-				return;
-			}
+		if (!detectPlatform()) {
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: `Unsupported platform: ${process.platform}/${os.arch()}. Install Claude manually from https://code.claude.com.`,
+				errorCode: 'UNSUPPORTED_PLATFORM'
+			});
+			return;
+		}
 
-			const config = vscode.workspace.getConfiguration('claudeCodeChat');
-			const existing = config.get<string>('executable.path', '');
+		const destDir = path.join(this._context.globalStorageUri.fsPath, 'bin');
+
+		try {
+			const result = await downloadClaude({
+				destDir,
+				onProgress: (p) => this._postMessage({ type: 'installProgress', ...p })
+			});
+
+			const existing = (config.get<string>('executable.path', '') || '').trim();
 			if (!existing) {
 				try {
-					await config.update('executable.path', installLocation, vscode.ConfigurationTarget.Global);
+					await config.update('executable.path', result.binaryPath, vscode.ConfigurationTarget.Global);
 				} catch {
-					// fall through; UI will guide user
+					// fall through — UI will still reflect success and the spawn will find it on next launch
 				}
 			}
+
 			this._postMessage({
 				type: 'installComplete',
 				success: true,
 				method,
-				configuredPath: installLocation,
-				existingPathRespected: !!existing
+				configuredPath: existing ? undefined : result.binaryPath,
+				existingPathRespected: !!existing,
+				source: result.source,
+				version: result.version
 			});
-		});
-	}
-
-	private _checkClaudeAvailable(): Promise<boolean> {
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		if (config.get<boolean>('wsl.enabled', false)) {
-			return Promise.resolve(true);
+		} catch (err) {
+			const d = err instanceof DownloaderError ? err : null;
+			const details = d?.details;
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: d?.message || 'Installation failed. Please try again.',
+				errorCode: d?.code,
+				// AGGREGATE errors carry the per-source failure codes; surface them so
+				// analytics can bucket "both npm+cdn failed with NETWORK" vs
+				// "npm INTEGRITY, cdn NETWORK" etc.
+				npmCode: typeof details?.npmCode === 'string' ? details.npmCode : undefined,
+				cdnCode: typeof details?.cdnCode === 'string' ? details.cdnCode : undefined
+			});
 		}
-		const probe = process.platform === 'win32' ? 'where claude' : 'command -v claude';
-		return new Promise<boolean>((resolve) => {
-			cp.exec(probe, { env: process.env }, (err) => resolve(!err));
-		});
-	}
-
-	private _getKnownInstallLocation(): string {
-		const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-		const binary = process.platform === 'win32' ? 'claude.exe' : 'claude';
-		return path.join(homeDir, '.local', 'bin', binary);
 	}
 
 	private _buildClaudeTerminalOptions(args: string[] = []): { shellPath: string; shellArgs: string[] } {
