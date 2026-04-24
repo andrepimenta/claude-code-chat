@@ -8,7 +8,7 @@ import getSkillsHtml from './skills-ui'
 import getPluginsHtml from './plugins-ui'
 
 
-const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f', editorName: string = 'unknown') => `<!DOCTYPE html>
+const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f', editorName: string = 'unknown', extensionVersion: string = 'unknown') => `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
@@ -1085,7 +1085,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	2. Do I need to display a cookie notice to users?
 	No, Umami does not use any cookies in the tracking code.
 	-->
-	${isTelemetryEnabled ? '<script defer src="https://product.opencredits.ai/script.js" data-website-id="0159e9b1-4a98-4b49-943a-32db3e743b95" data-tag="' + editorName + '"></script>' : '<!-- Analytics disabled due to VS Code telemetry settings -->'}
+	${isTelemetryEnabled ? '<script defer src="https://product.opencredits.ai/script.js" data-website-id="0159e9b1-4a98-4b49-943a-32db3e743b95" data-tag="' + editorName + '@' + extensionVersion + '"></script>' : '<!-- Analytics disabled due to VS Code telemetry settings -->'}
 </body>
 </html>`;
 
