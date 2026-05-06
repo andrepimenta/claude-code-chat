@@ -8,7 +8,7 @@
 
 Ditch the command line and experience Claude Code like never before. This extension brings a stunning chat interface directly into your editor, making AI assistance accessible, visual, and enjoyable.
 
-🤖 **Built by Claude Code for Claude Code** - This extension was entirely developed using Claude Code itself. Claude Code created its own chat interface!
+🤖 **Built using Claude Code for Claude Code** - This extension was entirely developed using Claude Code itself. Claude Code created its own chat interface!
 
 ---
 
