@@ -2,7 +2,17 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
+import * as os from 'os';
 import getHtml from './ui';
+import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
+import { fetchAndResolveModels } from './model-updater';
+import recommendedModels from './recommended-models.json';
+import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
+
+// OpenCredits environment configuration
+let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
+let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
+let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
 const exec = util.promisify(cp.exec);
 
@@ -18,11 +28,15 @@ class DiffContentProvider implements vscode.TextDocumentContentProvider {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Claude Code Chat extension is being activated!');
+
+	if (context.extensionMode === vscode.ExtensionMode.Development) {
+		OPENCREDITS_API_URL = 'http://localhost:8787';
+		OPENCREDITS_WEB_URL = 'http://localhost:3000';
+		OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c78315e9ff3a425ebca398bb69282429';
+	}
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
 
 	const disposable = vscode.commands.registerCommand('claude-code-chat.openChat', (column?: vscode.ViewColumn) => {
-		console.log('Claude Code Chat command executed!');
 		provider.show(column);
 	});
 
@@ -37,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	// Register webview view provider for sidebar chat (using shared provider instance)
-	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, context, provider);
+	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
 	// Register custom content provider for read-only diff views
@@ -47,7 +61,6 @@ export function activate(context: vscode.ExtensionContext) {
 	// Listen for configuration changes
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
-			console.log('WSL configuration changed, starting new session');
 			provider.newSessionOnConfigChange();
 		}
 	});
@@ -59,11 +72,45 @@ export function activate(context: vscode.ExtensionContext) {
 	statusBarItem.command = 'claude-code-chat.openChat';
 	statusBarItem.show();
 
-	context.subscriptions.push(disposable, loadConversationDisposable, addToChatDisposable, configChangeDisposable, statusBarItem);
-	console.log('Claude Code Chat extension activation completed successfully!');
+	// Register URI handler for deep links (e.g., OpenCredits key callback)
+	const uriHandler = vscode.window.registerUriHandler({
+		async handleUri(uri: vscode.Uri) {
+
+			// Handle OpenCredits key callback: vscode://AndrePimenta.claude-code-chat/opencredits-key?key=xxx
+			if (uri.path === '/opencredits-key') {
+				const params = new URLSearchParams(uri.query);
+				const key = params.get('key');
+
+				if (key) {
+					// Save the key and OpenCredits env vars
+					const config = vscode.workspace.getConfiguration('claudeCodeChat');
+					const envVars = config.get<Record<string, string>>('environment.variables', {});
+					envVars['ANTHROPIC_AUTH_TOKEN'] = key;
+					envVars['ANTHROPIC_BASE_URL'] = OPENCREDITS_API_URL;
+
+					await config.update('environment.variables', envVars, vscode.ConfigurationTarget.Global);
+
+					// Handle pending model activation after payment
+					await provider.handleOpenCreditsKeyReceived(key);
+
+					// Show success message
+					vscode.window.showInformationMessage('OpenCredits account connected! You can now use Claude Code Chat.', 'Open Chat').then(selection => {
+						if (selection === 'Open Chat') {
+							provider.show();
+						}
+					});
+				}
+			}
+		}
+	});
+
+	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler);
 }
 
-export function deactivate() { }
+export function deactivate() {
+	// Stop the local router when the extension is deactivated
+	stopRouter().catch(err => console.error('Failed to stop router:', err));
+}
 
 interface ConversationData {
 	sessionId: string;
@@ -82,7 +129,6 @@ interface ConversationData {
 class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
-		private readonly _context: vscode.ExtensionContext,
 		private readonly _chatProvider: ClaudeChatProvider
 	) { }
 
@@ -105,7 +151,6 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 			if (webviewView.visible) {
 				// Close main panel when sidebar becomes visible
 				if (this._chatProvider._panel) {
-					console.log('Closing main panel because sidebar became visible');
 					this._chatProvider._panel.dispose();
 					this._chatProvider._panel = undefined;
 				}
@@ -128,6 +173,7 @@ class ClaudeChatProvider {
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
+	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
@@ -168,7 +214,6 @@ class ClaudeChatProvider {
 		// Initialize backup repository and conversations
 		this._initializeBackupRepo();
 		this._initializeConversations();
-		this._initializeMCPConfig();
 
 		// Load conversation index from workspace state
 		this._conversationIndex = this._context.workspaceState.get('claude.conversationIndex', []);
@@ -243,11 +288,99 @@ class ClaudeChatProvider {
 		}, 100);
 	}
 
+	// Get the OpenCredits API key from environment variables
+	private _getOpenCreditsKey(): string {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		return envVars['ANTHROPIC_AUTH_TOKEN'] || '';
+	}
+
+	// Check if the configured base URL points to OpenCredits
+	private _isOpenCredits(): boolean {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		if (config.get<boolean>('environment.disabled', false)) {
+			return false;
+		}
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		const baseUrl = envVars['ANTHROPIC_BASE_URL'] || '';
+		return baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787');
+	}
+
+	private async _setEnvsDisabled(disabled: boolean): Promise<void> {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		await config.update('environment.disabled', disabled, vscode.ConfigurationTarget.Global);
+		this._sendCurrentSettings();
+
+		if (!disabled && (this._isOpenCredits() || this._getOpenCreditsKey())) {
+			this._sendOpenCreditsBalance();
+		} else if (disabled) {
+			this._postMessage({ type: 'opencreditsBalance', balance: null });
+		}
+	}
+
+	private static readonly OC_KEY_SECRET = 'opencredits.userKey';
+
+	private async _saveOpenCreditsKey(key: string) {
+		await this._context.secrets.store(ClaudeChatProvider.OC_KEY_SECRET, key);
+	}
+
+	private async _getSavedOpenCreditsKey(): Promise<string | null> {
+		return await this._context.secrets.get(ClaudeChatProvider.OC_KEY_SECRET) || null;
+	}
+
+	public async handleOpenCreditsKeyReceived(key: string) {
+		// Persist key in encrypted storage
+		await this._saveOpenCreditsKey(key);
+
+		this._postMessage({
+			type: 'opencreditsKeyReceived',
+			key: key
+		});
+
+		if (this._pendingModelAfterPayment) {
+			const pendingModel = this._pendingModelAfterPayment;
+			this._pendingModelAfterPayment = null;
+
+			try {
+				this._updateLocalRouterModel(pendingModel);
+				this._selectedModel = pendingModel;
+				this._context.workspaceState.update('claude.selectedModel', pendingModel);
+				await this._setModelEnvVars(pendingModel);
+
+				const balance = await this._fetchOpenCreditsBalance();
+
+				this._postMessage({
+					type: 'opencreditsActivated',
+					model: pendingModel,
+					balance: balance
+				});
+
+			} catch (error) {
+				console.error('Failed to activate model after payment:', error);
+			}
+		} else {
+			await this._sendOpenCreditsBalance();
+		}
+
+		this._sendCurrentSettings();
+	}
+
 	private _postMessage(message: any) {
 		if (this._panel && this._panel.webview) {
 			this._panel.webview.postMessage(message);
 		} else if (this._webview) {
 			this._webview.postMessage(message);
+		}
+	}
+
+	private async _getImageDataUri(filePath: string): Promise<string | undefined> {
+		try {
+			const imageData = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+			const base64 = Buffer.from(imageData).toString('base64');
+			const ext = path.extname(filePath).toLowerCase();
+			return `data:${ClaudeChatProvider.IMAGE_MEDIA_TYPES[ext] || 'image/png'};base64,${base64}`;
+		} catch {
+			return undefined;
 		}
 	}
 
@@ -289,6 +422,11 @@ class ClaudeChatProvider {
 		// Send current settings to webview
 		this._sendCurrentSettings();
 
+		// Fetch and send OpenCredits balance if using OpenCredits
+		if (this._isOpenCredits() || this._getOpenCreditsKey()) {
+			this._sendOpenCreditsBalance();
+		}
+
 		// Send saved draft message if any
 		if (this._draftMessage) {
 			this._postMessage({
@@ -298,10 +436,10 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private _handleWebviewMessage(message: any) {
+	private async _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode);
+				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.images);
 				return;
 			case 'newSession':
 				this._newSession();
@@ -327,6 +465,15 @@ class ClaudeChatProvider {
 			case 'getSettings':
 				this._sendCurrentSettings();
 				return;
+			case 'getEnvVars': {
+				const evConfig = vscode.workspace.getConfiguration('claudeCodeChat');
+				const evVars = evConfig.get<Record<string, string>>('environment.variables', {});
+				this._postMessage({ type: 'envVarsData', data: evVars });
+				return;
+			}
+			case 'setEnvsDisabled':
+				await this._setEnvsDisabled(!!message.disabled);
+				return;
 			case 'updateSettings':
 				this._updateSettings(message.settings);
 				return;
@@ -334,7 +481,7 @@ class ClaudeChatProvider {
 				this._getClipboardText();
 				return;
 			case 'selectModel':
-				this._setSelectedModel(message.model);
+				this._setSelectedModel(message.model, message.tierModels);
 				return;
 			case 'openModelTerminal':
 				this._openModelTerminal();
@@ -349,8 +496,115 @@ class ClaudeChatProvider {
 				this._dismissWSLAlert();
 				return;
 			case 'runInstallCommand':
-				this._runInstallCommand();
+				this._runInstallCommand(message.method || 'installer');
 				return;
+			case 'openLoginTerminal':
+				this._openLoginTerminal();
+				return;
+			case 'openFundsPage':
+				if (message.pendingModel) {
+					this._pendingModelAfterPayment = message.pendingModel;
+				}
+				vscode.env.openExternal(vscode.Uri.parse(`${OPENCREDITS_WEB_URL}/embed/checkout`));
+				return;
+			case 'setPendingModel':
+				if (message.pendingModel) {
+					this._pendingModelAfterPayment = message.pendingModel;
+				}
+				return;
+			case 'opencreditsKeyFromCheckout':
+				if (message.key) {
+					// Save the key and OpenCredits env vars (same as URI handler)
+					const checkoutConfig = vscode.workspace.getConfiguration('claudeCodeChat');
+					const checkoutEnvVars = checkoutConfig.get<Record<string, string>>('environment.variables', {});
+					checkoutEnvVars['ANTHROPIC_AUTH_TOKEN'] = message.key;
+					checkoutEnvVars['ANTHROPIC_BASE_URL'] = OPENCREDITS_API_URL;
+					checkoutConfig.update('environment.variables', checkoutEnvVars, vscode.ConfigurationTarget.Global).then(
+						() => {
+							this.handleOpenCreditsKeyReceived(message.key);
+						},
+						(err: Error) => {
+							console.error('Failed to save OpenCredits env vars from checkout:', err);
+							this._postMessage({
+								type: 'checkoutSaveError',
+								message: 'Failed to save your account credentials. Please try again.'
+							});
+						}
+					);
+					// Bring VS Code window to foreground
+					if (this._panel) {
+						this._panel.reveal(vscode.ViewColumn.One);
+					}
+					const focusCmd = process.platform === 'darwin' ? 'open'
+						: process.platform === 'win32' ? 'start'
+						: 'xdg-open';
+					cp.spawn(focusCmd, [`${vscode.env.uriScheme}://AndrePimenta.claude-code-chat/focus`], { detached: true, stdio: 'ignore' }).unref();
+				}
+				return;
+			case 'openOpenCreditsAccount':
+				this._openOpenCreditsAccount();
+				return;
+			case 'restoreOpenCredits': {
+				const savedKey = await this._getSavedOpenCreditsKey();
+				if (savedKey) {
+					const restoreConfig = vscode.workspace.getConfiguration('claudeCodeChat');
+					const restoreEnvVars = restoreConfig.get<Record<string, string>>('environment.variables', {});
+					restoreEnvVars['ANTHROPIC_AUTH_TOKEN'] = savedKey;
+					restoreEnvVars['ANTHROPIC_BASE_URL'] = OPENCREDITS_API_URL;
+					await restoreConfig.update('environment.variables', restoreEnvVars, vscode.ConfigurationTarget.Global);
+					await this.handleOpenCreditsKeyReceived(savedKey);
+				}
+				return;
+			}
+			case 'checkSavedOpenCredits': {
+				const hasSaved = !!(await this._getSavedOpenCreditsKey());
+				this._postMessage({ type: 'savedOpenCreditsStatus', hasSavedKey: hasSaved });
+				return;
+			}
+			case 'saveCustomProvider':
+				if (message.envVars) {
+					const cpConfig = vscode.workspace.getConfiguration('claudeCodeChat');
+					const cpEnvVars = cpConfig.get<Record<string, string>>('environment.variables', {});
+					Object.assign(cpEnvVars, message.envVars);
+					cpConfig.update('environment.variables', cpEnvVars, vscode.ConfigurationTarget.Global).then(
+						() => {
+							this._postMessage({ type: 'customProviderSaved' });
+						},
+						(err: Error) => {
+							console.error('Failed to save custom provider:', err);
+						}
+					);
+				}
+				return;
+			case 'copyToClipboard':
+				if (message.text) {
+					vscode.env.clipboard.writeText(message.text);
+				}
+				return;
+			case 'saveOpenCreditsKeyEarly':
+				// Save key to secrets early (before payment) so it can be recovered if VS Code closes
+				if (message.key) {
+					this._saveOpenCreditsKey(message.key);
+				}
+				return;
+			case 'openExternalUrl': {
+				const extUrl = message.url;
+				try {
+					if (process.platform === 'win32') {
+						cp.exec(`start "" "${extUrl}"`, { windowsHide: true });
+					} else {
+						const openCmd = process.platform === 'darwin' ? 'open' : 'xdg-open';
+						const proc = cp.spawn(openCmd, [extUrl], { detached: true, stdio: 'ignore' });
+						proc.on('error', () => {
+							vscode.env.openExternal(vscode.Uri.parse(extUrl));
+						});
+						proc.unref();
+					}
+				} catch {
+					vscode.env.openExternal(vscode.Uri.parse(extUrl));
+				}
+				return;
+			}
 			case 'openFile':
 				this._openFileInEditor(message.filePath);
 				return;
@@ -366,6 +620,15 @@ class ClaudeChatProvider {
 			case 'permissionResponse':
 				this._handlePermissionResponse(message.id, message.approved, message.alwaysAllow);
 				return;
+			case 'askUserQuestionResponse':
+				this._handleAskUserQuestionResponse(message.id, message.answers);
+				return;
+			case 'showInfoMessage':
+				vscode.window.showInformationMessage(message.message);
+				return;
+			case 'marketplaceFetch':
+				this._fetchMarketplace(message.url, message.append, message.isSearch);
+				return;
 			case 'getPermissions':
 				this._sendPermissions();
 				return;
@@ -375,14 +638,38 @@ class ClaudeChatProvider {
 			case 'addPermission':
 				this._addPermission(message.toolName, message.command);
 				return;
+			case 'loadSkills':
+				this._loadSkills();
+				return;
+			case 'saveSkill':
+				this._saveSkill(message.name, message.scope, message.content);
+				return;
+			case 'deleteSkill':
+				this._deleteSkill(message.name, message.scope);
+				return;
+			case 'searchSkills':
+				this._searchSkills(message.query);
+				return;
+			case 'runTerminalCommand':
+				this._runTerminalCommand(message.command);
+				return;
+			case 'loadPlugins':
+				this._loadPlugins();
+				return;
+			case 'installPlugin':
+				this._installPlugin(message.installId);
+				return;
+			case 'removePlugin':
+				this._removePlugin(message.installId);
+				return;
 			case 'loadMCPServers':
 				this._loadMCPServers();
 				return;
 			case 'saveMCPServer':
-				this._saveMCPServer(message.name, message.config);
+				this._saveMCPServer(message.name, message.config, message.scope || 'project');
 				return;
 			case 'deleteMCPServer':
-				this._deleteMCPServer(message.name);
+				this._deleteMCPServer(message.name, message.scope || 'project');
 				return;
 			case 'getCustomSnippets':
 				this._sendCustomSnippets();
@@ -426,7 +713,6 @@ class ClaudeChatProvider {
 	public showInWebview(webview: vscode.Webview, webviewView?: vscode.WebviewView) {
 		// Close main panel if it's open
 		if (this._panel) {
-			console.log('Closing main panel because sidebar is opening');
 			this._panel.dispose();
 			this._panel = undefined;
 		}
@@ -456,6 +742,124 @@ class ClaudeChatProvider {
 				this._sendReadyMessage();
 			}, 100);
 		}
+
+		// Check feature flags and auto-update models (non-blocking)
+		this._checkFeatureFlags().then(enabled => {
+			if (enabled) {
+				this._autoUpdateRecommendedModels().catch(() => {});
+			}
+		}).catch(() => {});
+	}
+
+	private static readonly FEATURES_CACHE_KEY = 'claude.featureFlags';
+	private static readonly FEATURES_CACHE_TTL = 0; // Always re-fetch for now
+	private static readonly MODEL_CACHE_KEY = 'claude.recommendedModelsCache.v1';
+	private static readonly MODEL_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day
+
+	private async _checkFeatureFlags(): Promise<boolean> {
+
+		// Check cache first
+		const cached = this._context.globalState.get<{ timestamp: number; opencredits_enabled: boolean }>(ClaudeChatProvider.FEATURES_CACHE_KEY);
+		if (cached && Date.now() - cached.timestamp < ClaudeChatProvider.FEATURES_CACHE_TTL) {
+			this._postMessage({ type: 'featureFlags', opencredits_enabled: cached.opencredits_enabled });
+			return cached.opencredits_enabled;
+		}
+
+		try {
+			const res = await fetch(OPENCREDITS_API_URL + '/v1/features');
+			if (res.ok) {
+				const data = await res.json() as { opencredits_enabled: boolean; country: string };
+				this._context.globalState.update(ClaudeChatProvider.FEATURES_CACHE_KEY, {
+					timestamp: Date.now(),
+					opencredits_enabled: data.opencredits_enabled
+				});
+				this._postMessage({ type: 'featureFlags', opencredits_enabled: data.opencredits_enabled });
+				return data.opencredits_enabled;
+			}
+		} catch (e) {
+			console.error('[OpenCredits] Feature flags fetch failed:', e);
+		}
+
+		// Default to disabled if fetch fails
+		this._postMessage({ type: 'featureFlags', opencredits_enabled: false });
+		return false;
+	}
+
+	private static readonly REFERENCE_MODEL = 'anthropic/claude-opus-4.6';
+	private static get PUBLISHABLE_KEY() { return OPENCREDITS_PUBLISHABLE_KEY; }
+	private static readonly IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'];
+	private static readonly IMAGE_MEDIA_TYPES: Record<string, string> = {
+		'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+		'.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.svg': 'image/svg+xml'
+	};
+
+	private async _autoUpdateRecommendedModels() {
+		// Check cache first
+		const cached = this._context.globalState.get<{ timestamp: number; models: any[]; creditsPricing?: any }>(ClaudeChatProvider.MODEL_CACHE_KEY);
+		if (cached && Date.now() - cached.timestamp < ClaudeChatProvider.MODEL_CACHE_TTL) {
+			this._postMessage({
+				type: 'updateRecommendedModels',
+				models: cached.models,
+				creditsPricing: cached.creditsPricing
+			});
+			return;
+		}
+
+		const updated = await fetchAndResolveModels(recommendedModels as any[], OPENCREDITS_API_URL);
+		if (updated && updated.length > 0) {
+			// Fetch credit pricing for recommended models + reference model
+			const modelIds = updated.map((m: any) => m.id);
+			// Also include tier model IDs
+			for (const m of updated) {
+				if ((m as any).tierModels) {
+					const tiers = (m as any).tierModels;
+					for (const key of Object.keys(tiers)) {
+						if (tiers[key] && !modelIds.includes(tiers[key])) {
+							modelIds.push(tiers[key]);
+						}
+					}
+				}
+			}
+			if (!modelIds.includes(ClaudeChatProvider.REFERENCE_MODEL)) {
+				modelIds.push(ClaudeChatProvider.REFERENCE_MODEL);
+			}
+			if (!modelIds.includes('anthropic/claude-sonnet-4.6')) {
+				modelIds.push('anthropic/claude-sonnet-4.6');
+			}
+
+			let creditsPricing: any = null;
+			try {
+				const pricingRes = await fetch(OPENCREDITS_API_URL + '/v1/credits/pricing', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						publishable_key: ClaudeChatProvider.PUBLISHABLE_KEY,
+						models: modelIds
+					})
+				});
+				if (pricingRes.ok) {
+					const pricingData = await pricingRes.json() as any;
+					creditsPricing = {
+						referenceModel: ClaudeChatProvider.REFERENCE_MODEL,
+						models: pricingData.models || [],
+						tokenAssumption: pricingData.token_assumption
+					};
+				}
+			} catch (e) {
+				console.error('[OpenCredits] Credit pricing fetch failed:', e);
+			}
+
+			this._context.globalState.update(ClaudeChatProvider.MODEL_CACHE_KEY, {
+				timestamp: Date.now(),
+				models: updated,
+				creditsPricing
+			});
+			this._postMessage({
+				type: 'updateRecommendedModels',
+				models: updated,
+				creditsPricing
+			});
+		}
 	}
 
 	public reinitializeWebview() {
@@ -468,7 +872,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean) {
+	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -522,7 +926,7 @@ class ClaudeChatProvider {
 			await this._createBackupCommit(message);
 		}
 		catch (e) {
-			console.log("error", e);
+			console.error("error", e);
 		}
 
 		// Show loading indicator
@@ -552,10 +956,15 @@ class ClaudeChatProvider {
 			args.push('--permission-prompt-tool', 'stdio');
 		}
 
-		// Add MCP config if user has custom servers configured
-		const mcpConfigPath = this.getMCPConfigPath();
+		// Pass extension's MCP config to Claude CLI (only if file exists)
+		const mcpConfigPath = this._getExtensionMCPConfigPath();
 		if (mcpConfigPath) {
-			args.push('--mcp-config', this.convertToWSLPath(mcpConfigPath));
+			try {
+				await vscode.workspace.fs.stat(vscode.Uri.file(mcpConfigPath));
+				args.push('--mcp-config', this.convertToWSLPath(mcpConfigPath));
+			} catch {
+				// File doesn't exist, skip --mcp-config
+			}
 		}
 
 		// Add plan mode if enabled
@@ -563,34 +972,84 @@ class ClaudeChatProvider {
 			args.push('--permission-mode', 'plan');
 		}
 
-		// Add model selection if not using default
-		if (this._selectedModel && this._selectedModel !== 'default') {
+		// Add model selection for Claude models only (opus, sonnet)
+		// OpenCredits models are handled via env vars or router mapping
+		const claudeModels = ['opus', 'sonnet'];
+		if (this._selectedModel && claudeModels.includes(this._selectedModel)) {
 			args.push('--model', this._selectedModel);
 		}
 
 		// Add session resume if we have a current session
 		if (this._currentSessionId) {
 			args.push('--resume', this._currentSessionId);
-			console.log('Resuming session:', this._currentSessionId);
-		} else {
-			console.log('Starting new session');
 		}
 
-		console.log('Claude command args:', args);
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
 		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
+		const nodePath = config.get<string>('wsl.nodePath', '');
 		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+		const routerExplicitlyEnabled = config.get<boolean>('router.enabled', false);
+		const customExecutablePath = config.get<string>('executable.path', '');
+		const envsDisabled = config.get<boolean>('environment.disabled', false);
+		const customEnvVars = envsDisabled ? {} : config.get<Record<string, string>>('environment.variables', {});
+
+		// Check if using OpenCredits (base URL contains opencredits.ai)
+		const isOpenCredits = this._isOpenCredits();
+
+		// Router is only used when explicitly enabled (fallback for older OpenCredits support)
+		// OpenCredits now supports Anthropic API format directly, so env vars pass through
+		const useRouter = routerExplicitlyEnabled && !wslEnabled;
+
 
 		let claudeProcess: cp.ChildProcess;
 
 		// Create new AbortController for this request
 		this._abortController = new AbortController();
 
+		// Build environment variables - apply custom env vars from settings
+		let spawnEnv: NodeJS.ProcessEnv = {
+			...process.env,
+			FORCE_COLOR: '0',
+			NO_COLOR: '1',
+			...customEnvVars  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
+		};
+
+		// OpenCredits: clear Anthropic-specific vars so Claude CLI uses env vars directly
+		if (isOpenCredits) {
+			spawnEnv.ANTHROPIC_API_KEY = '';
+			spawnEnv.DISABLE_TELEMETRY = 'true';
+			spawnEnv.DISABLE_COST_WARNINGS = 'true';
+			delete spawnEnv.CLAUDE_CODE_USE_BEDROCK;
+		}
+
+		// If router explicitly enabled, start local router and override ANTHROPIC_BASE_URL
+		if (useRouter) {
+			// Pass the real ANTHROPIC_BASE_URL to the router before starting
+			const realBaseUrl = customEnvVars['ANTHROPIC_BASE_URL'] || '';
+			if (realBaseUrl) {
+				setBaseUrl(realBaseUrl);
+			}
+
+			const routerPort = await this._ensureLocalRouter();
+			spawnEnv.ANTHROPIC_BASE_URL = `http://127.0.0.1:${routerPort}`;
+			spawnEnv.NO_PROXY = '127.0.0.1';
+		}
+
 		if (wslEnabled) {
-			// Use WSL with bash -ic for proper environment loading
-			console.log('Using WSL configuration:', { wslDistro, nodePath, claudePath });
-			const wslCommand = `"${nodePath}" --no-warnings --enable-source-maps "${claudePath}" ${args.join(' ')}`;
+			// Build env var exports to prepend to the WSL command
+			// WSL doesn't reliably inherit Windows env vars via spawn
+			const wslEnvOverrides: Record<string, string> = { ...customEnvVars };
+			if (isOpenCredits) {
+				wslEnvOverrides['ANTHROPIC_API_KEY'] = '';
+				wslEnvOverrides['DISABLE_TELEMETRY'] = 'true';
+				wslEnvOverrides['DISABLE_COST_WARNINGS'] = 'true';
+			}
+			const envExports = Object.entries(wslEnvOverrides)
+				.map(([k, v]) => `export ${k}="${v.replace(/"/g, '\\"')}"`)
+				.join(' && ');
+			const envPrefix = envExports ? envExports + ' && ' : '';
+
+			const wslCommand = envPrefix + this._buildWslClaudeCommand(nodePath, claudePath, args);
 
 			// Track WSL state for proper process termination
 			this._isWslProcess = true;
@@ -601,29 +1060,25 @@ class ClaudeChatProvider {
 				detached: process.platform !== 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-					FORCE_COLOR: '0',
-					NO_COLOR: '1'
-				}
+				env: spawnEnv
 			});
 		} else {
 			// Not using WSL
 			this._isWslProcess = false;
 
-			// Use native claude command
-			console.log('Using native Claude command');
-			claudeProcess = cp.spawn('claude', args, {
+			// Use native claude command (or custom executable if configured).
+			// shell:true is only needed on Windows when we don't have an absolute path —
+			// cmd.exe's resolver finds .cmd/.bat shims on PATH. With an absolute .exe
+			// path we skip shell wrapping to avoid cmd.exe mis-quoting paths with spaces
+			// (e.g. the default globalStorage location "...Application Support...").
+			const executable = customExecutablePath || 'claude';
+			claudeProcess = cp.spawn(executable, args, {
 				signal: this._abortController.signal,
-				shell: process.platform === 'win32',
+				shell: process.platform === 'win32' && !customExecutablePath,
 				detached: process.platform !== 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
-				env: {
-					...process.env,
-					FORCE_COLOR: '0',
-					NO_COLOR: '1'
-				}
+				env: spawnEnv
 			});
 		}
 
@@ -646,16 +1101,86 @@ class ClaudeChatProvider {
 				claudeProcess.stdin.write(JSON.stringify(initRequest) + '\n');
 			}
 
+			// Build message content — detect image file paths and inline them as base64
+			const content: Array<{type: string; text?: string; source?: {type: string; media_type: string; data: string}}> = [];
+			const imageExtensions = ClaudeChatProvider.IMAGE_EXTENSIONS;
+			const imageMediaTypes = ClaudeChatProvider.IMAGE_MEDIA_TYPES;
+
+			// Scan message for image file paths and inline them as base64
+			const imagePathRegex = /(\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|bmp))\b/gi;
+			let lastIndex = 0;
+			let match;
+			while ((match = imagePathRegex.exec(actualMessage)) !== null) {
+				const imagePath = match[1];
+				const ext = path.extname(imagePath).toLowerCase();
+				if (imageExtensions.includes(ext)) {
+					try {
+						const imageData = await vscode.workspace.fs.readFile(vscode.Uri.file(imagePath));
+						const base64 = Buffer.from(imageData).toString('base64');
+						// Flush text before this match
+						const textBefore = actualMessage.substring(lastIndex, match.index);
+						if (textBefore.trim()) {
+							content.push({ type: 'text', text: textBefore.trim() });
+						}
+						content.push({
+							type: 'image',
+							source: {
+								type: 'base64',
+								media_type: imageMediaTypes[ext] || 'image/png',
+								data: base64
+							}
+						});
+						lastIndex = match.index + match[0].length;
+					} catch (e) {
+						console.error('Could not read image file:', imagePath, e);
+					}
+				}
+			}
+			// Add remaining text
+			const remaining = actualMessage.substring(lastIndex);
+			if (remaining.trim()) {
+				content.push({ type: 'text', text: remaining.trim() });
+			}
+
+			// Add explicitly attached images
+			if (images && images.length > 0) {
+				for (const imagePath of images) {
+					const ext = imageExtensions.find(e => imagePath.toLowerCase().endsWith(e));
+					if (ext) {
+						try {
+							const imageData = await vscode.workspace.fs.readFile(vscode.Uri.file(imagePath));
+							const base64 = Buffer.from(imageData).toString('base64');
+							content.push({
+								type: 'image',
+								source: {
+									type: 'base64',
+									media_type: imageMediaTypes[ext] || 'image/png',
+									data: base64
+								}
+							});
+						} catch (e) {
+							console.error('Could not read attached image:', imagePath, e);
+						}
+					}
+				}
+			}
+
+			// Ensure at least one text block
+			if (content.length === 0) {
+				content.push({ type: 'text', text: actualMessage });
+			}
+
 			const userMessage = {
 				type: 'user',
 				session_id: this._currentSessionId || '',
 				message: {
 					role: 'user',
-					content: [{ type: 'text', text: actualMessage }]
+					content: content
 				},
 				parent_tool_use_id: null
 			};
-			claudeProcess.stdin.write(JSON.stringify(userMessage) + '\n');
+			const userMessageJson = JSON.stringify(userMessage);
+				claudeProcess.stdin.write(userMessageJson + '\n');
 		}
 
 		let rawOutput = '';
@@ -697,7 +1222,7 @@ class ClaudeChatProvider {
 
 							this._processJsonStreamData(jsonData);
 						} catch (error) {
-							console.log('Failed to parse JSON line:', line, error);
+							console.error('Failed to parse JSON line:', line, error);
 						}
 					}
 				}
@@ -711,8 +1236,6 @@ class ClaudeChatProvider {
 		}
 
 		claudeProcess.on('close', (code) => {
-			console.log('Claude process closed with code:', code);
-			console.log('Claude stderr output:', errorOutput);
 
 			if (!this._currentClaudeProcess) {
 				return;
@@ -739,16 +1262,24 @@ class ClaudeChatProvider {
 			});
 
 			if (code !== 0 && errorOutput.trim()) {
-				// Error with output
-				this._sendAndSaveMessage({
-					type: 'error',
-					data: errorOutput.trim()
-				});
+				// Check if claude command is not installed (Windows cmd.exe)
+				if (errorOutput.includes('not recognized as an internal or external command')) {
+					this._postMessage({
+						type: 'showInstallModal',
+						installAttempted: !!this._context.globalState.get('installAttempted')
+					});
+				} else {
+					// Error with output
+					this._sendAndSaveMessage({
+						type: 'error',
+						data: errorOutput.trim()
+					});
+				}
 			}
 		});
 
 		claudeProcess.on('error', (error) => {
-			console.log('Claude process error:', error.message);
+			console.error('Claude process error:', error.message);
 
 			if (!this._currentClaudeProcess) {
 				return;
@@ -773,9 +1304,10 @@ class ClaudeChatProvider {
 			});
 
 			// Check if claude command is not installed
-			if (error.message.includes('ENOENT') || error.message.includes('command not found')) {
+			if (error.message.includes('ENOENT') || error.message.includes('command not found') || error.message.includes('not recognized as an internal or external command')) {
 				this._postMessage({
-					type: 'showInstallModal'
+					type: 'showInstallModal',
+					installAttempted: !!this._context.globalState.get('installAttempted')
 				});
 			} else {
 				this._sendAndSaveMessage({
@@ -791,7 +1323,6 @@ class ClaudeChatProvider {
 			case 'system':
 				if (jsonData.subtype === 'init') {
 					// System initialization message - session ID will be captured from final result
-					console.log('System initialized');
 					this._currentSessionId = jsonData.session_id;
 					//this._sendAndSaveMessage({ type: 'init', data: { sessionId: jsonData.session_id; } })
 
@@ -807,13 +1338,11 @@ class ClaudeChatProvider {
 				} else if (jsonData.subtype === 'status') {
 					// Handle status changes (e.g., compacting)
 					if (jsonData.status === 'compacting') {
-						console.log('Conversation compacting started');
 						this._sendAndSaveMessage({
 							type: 'compacting',
 							data: { isCompacting: true }
 						});
 					} else if (jsonData.status === null) {
-						console.log('Status cleared');
 						this._sendAndSaveMessage({
 							type: 'compacting',
 							data: { isCompacting: false }
@@ -821,7 +1350,6 @@ class ClaudeChatProvider {
 					}
 				} else if (jsonData.subtype === 'compact_boundary') {
 					// Compact boundary - conversation was compacted, reset token counts
-					console.log('Compact boundary received', jsonData.compact_metadata);
 
 					// Reset tokens since the conversation is now summarized
 					this._totalTokensInput = 0;
@@ -1021,7 +1549,12 @@ class ClaudeChatProvider {
 			case 'result':
 				if (jsonData.subtype === 'success') {
 					// Check for login errors
-					if (jsonData.is_error && jsonData.result && jsonData.result.includes('Invalid API key')) {
+					if (jsonData.is_error && jsonData.result && (
+						jsonData.result.includes('Invalid API key') ||
+						jsonData.result.includes('Not logged in') ||
+						jsonData.result.includes('/login') ||
+						jsonData.result.includes('not authenticated')
+					)) {
 						this._handleLoginRequired();
 						return;
 					}
@@ -1033,15 +1566,6 @@ class ClaudeChatProvider {
 
 					// Capture session ID from final result
 					if (jsonData.session_id) {
-						const isNewSession = !this._currentSessionId;
-						const sessionChanged = this._currentSessionId && this._currentSessionId !== jsonData.session_id;
-
-						console.log('Session ID found in result:', {
-							sessionId: jsonData.session_id,
-							isNewSession,
-							sessionChanged,
-							currentSessionId: this._currentSessionId
-						});
 
 						this._currentSessionId = jsonData.session_id;
 
@@ -1068,11 +1592,6 @@ class ClaudeChatProvider {
 						this._totalCost += jsonData.total_cost_usd;
 					}
 
-					console.log('Result received:', {
-						cost: jsonData.total_cost_usd,
-						duration: jsonData.duration_ms,
-						turns: jsonData.num_turns
-					});
 
 					// Send updated totals to webview
 					this._postMessage({
@@ -1087,6 +1606,11 @@ class ClaudeChatProvider {
 							currentTurns: jsonData.num_turns
 						}
 					});
+
+					// Refresh OpenCredits balance after each request if using OpenCredits
+					if (this._isOpenCredits() || this._getOpenCreditsKey()) {
+						this._sendOpenCreditsBalance();
+					}
 				}
 				break;
 		}
@@ -1126,9 +1650,6 @@ class ClaudeChatProvider {
 	}
 
 	public newSessionOnConfigChange() {
-		// Reinitialize MCP config with new WSL paths
-		this._initializeMCPConfig();
-
 		// Start a new session due to configuration change
 		this._newSession();
 
@@ -1145,7 +1666,7 @@ class ClaudeChatProvider {
 		});
 	}
 
-	private _handleLoginRequired() {
+	private async _handleLoginRequired() {
 
 		this._isProcessing = false;
 
@@ -1155,41 +1676,19 @@ class ClaudeChatProvider {
 			data: { isProcessing: false }
 		});
 
-		// Show login required message
-		this._postMessage({
-			type: 'loginRequired'
-		});
-
-		// Get configuration to check if WSL is enabled
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
-
-		// Open terminal and run claude login
-		const terminal = vscode.window.createTerminal({
-			name: 'Claude Login',
-			location: { viewColumn: vscode.ViewColumn.One }
-		});
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath}`);
+		// Check if OpenCredits is enabled - if so, show options modal
+		const opencreditsEnabled = await this._checkFeatureFlags();
+		if (opencreditsEnabled) {
+			this._postMessage({
+				type: 'showLoginOptions'
+			});
 		} else {
-			terminal.sendText('claude');
+			// Just open login terminal directly
+			this._openLoginTerminal();
+			this._postMessage({
+				type: 'loginRequired'
+			});
 		}
-		terminal.show();
-
-		// Show info message
-		vscode.window.showInformationMessage(
-			'Please login with your Claude plan or API key in the terminal, then come back to this chat.',
-			'OK'
-		);
-
-		// Send message to UI about terminal
-		this._postMessage({
-			type: 'terminalOpened',
-			data: `Please login with your Claude plan or API key in the terminal, then come back to this chat.`,
-		});
 	}
 
 	private async _initializeBackupRepo(): Promise<void> {
@@ -1202,7 +1701,6 @@ class ClaudeChatProvider {
 				console.error('No workspace storage available');
 				return;
 			}
-			console.log('Workspace storage path:', storagePath);
 			this._backupRepoPath = path.join(storagePath, 'backups', '.git');
 
 			// Create backup git directory if it doesn't exist
@@ -1218,7 +1716,6 @@ class ClaudeChatProvider {
 				await exec(`git --git-dir="${this._backupRepoPath}" config user.name "Claude Code Chat"`);
 				await exec(`git --git-dir="${this._backupRepoPath}" config user.email "claude@anthropic.com"`);
 
-				console.log(`Initialized backup repository at: ${this._backupRepoPath}`);
 			}
 		} catch (error: any) {
 			console.error('Failed to initialize backup repository:', error.message);
@@ -1280,7 +1777,6 @@ class ClaudeChatProvider {
 				data: commitInfo
 			});
 
-			console.log(`Created backup commit: ${commitInfo.sha.substring(0, 8)} - ${actualMessage}`);
 		} catch (error: any) {
 			console.error('Failed to create backup commit:', error.message);
 		}
@@ -1349,62 +1845,12 @@ class ClaudeChatProvider {
 				await vscode.workspace.fs.stat(vscode.Uri.file(this._conversationsPath));
 			} catch {
 				await vscode.workspace.fs.createDirectory(vscode.Uri.file(this._conversationsPath));
-				console.log(`Created conversations directory at: ${this._conversationsPath}`);
 			}
 		} catch (error: any) {
 			console.error('Failed to initialize conversations directory:', error.message);
 		}
 	}
 
-	private async _initializeMCPConfig(): Promise<void> {
-		try {
-			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) { return; }
-
-			// Create MCP config directory
-			const mcpConfigDir = path.join(storagePath, 'mcp');
-			try {
-				await vscode.workspace.fs.stat(vscode.Uri.file(mcpConfigDir));
-			} catch {
-				await vscode.workspace.fs.createDirectory(vscode.Uri.file(mcpConfigDir));
-				console.log(`Created MCP config directory at: ${mcpConfigDir}`);
-			}
-
-			// Create or update mcp-servers.json, preserving user's custom servers
-			// Note: Permissions are now handled via stdio, not MCP
-			const mcpConfigPath = path.join(mcpConfigDir, 'mcp-servers.json');
-
-			// Load existing config or create new one
-			let mcpConfig: any = { mcpServers: {} };
-			const mcpConfigUri = vscode.Uri.file(mcpConfigPath);
-
-			try {
-				const existingContent = await vscode.workspace.fs.readFile(mcpConfigUri);
-				mcpConfig = JSON.parse(new TextDecoder().decode(existingContent));
-				console.log('Loaded existing MCP config, preserving user servers');
-			} catch {
-				console.log('No existing MCP config found, creating new one');
-			}
-
-			// Ensure mcpServers exists
-			if (!mcpConfig.mcpServers) {
-				mcpConfig.mcpServers = {};
-			}
-
-			// Remove old permissions server if it exists (migrating from file-based to stdio)
-			if (mcpConfig.mcpServers['claude-code-chat-permissions']) {
-				delete mcpConfig.mcpServers['claude-code-chat-permissions'];
-				console.log('Removed legacy permissions MCP server (now using stdio)');
-			}
-
-			const configContent = new TextEncoder().encode(JSON.stringify(mcpConfig, null, 2));
-			await vscode.workspace.fs.writeFile(mcpConfigUri, configContent);
-
-			console.log(`Updated MCP config at: ${mcpConfigPath}`);
-		} catch (error: any) {
-			console.error('Failed to initialize MCP config:', error.message);
-		}
-	}
 
 	/**
 	 * Check if a tool is pre-approved in local permissions
@@ -1478,10 +1924,6 @@ class ClaudeChatProvider {
 			const account = innerResponse.account;
 			this._subscriptionType = account.subscriptionType;
 
-			console.log('Account info received:', {
-				subscriptionType: account.subscriptionType,
-				email: account.email
-			});
 
 			// Save to globalState for persistence
 			this._context.globalState.update('claude.subscriptionType', this._subscriptionType);
@@ -1500,13 +1942,12 @@ class ClaudeChatProvider {
 	 * Handle control_request messages from Claude CLI via stdio
 	 * This is the new permission flow that replaces the MCP file-based approach
 	 */
-	private async _handleControlRequest(controlRequest: any, claudeProcess: cp.ChildProcess): Promise<void> {
+	private async _handleControlRequest(controlRequest: any, _claudeProcess: cp.ChildProcess): Promise<void> {
 		const request = controlRequest.request;
 		const requestId = controlRequest.request_id;
 
 		// Only handle can_use_tool requests (permission requests)
 		if (request?.subtype !== 'can_use_tool') {
-			console.log('Ignoring non-permission control request:', request?.subtype);
 			return;
 		}
 
@@ -1515,13 +1956,17 @@ class ClaudeChatProvider {
 		const suggestions = request.permission_suggestions;
 		const toolUseId = request.tool_use_id;
 
-		console.log(`Permission request for tool: ${toolName}, requestId: ${requestId}`);
+
+		// Handle AskUserQuestion tool separately
+		if (toolName === 'AskUserQuestion') {
+			this._handleAskUserQuestion(requestId, input, toolUseId);
+			return;
+		}
 
 		// Check if this tool is pre-approved
 		const isPreApproved = await this._isToolPreApproved(toolName, input);
 
 		if (isPreApproved) {
-			console.log(`Tool ${toolName} is pre-approved, auto-allowing`);
 			// Auto-approve without showing UI
 			this._sendPermissionResponse(requestId, true, {
 				requestId,
@@ -1617,8 +2062,6 @@ class ClaudeChatProvider {
 		}
 
 		const responseJson = JSON.stringify(response) + '\n';
-		console.log('Sending permission response:', responseJson);
-		console.log('Always allow:', alwaysAllow, 'Suggestions included:', !!pendingRequest.suggestions);
 		this._currentClaudeProcess.stdin.write(responseJson);
 	}
 
@@ -1660,17 +2103,110 @@ class ClaudeChatProvider {
 	}
 
 	/**
+	 * Handle AskUserQuestion tool - show questions UI and collect answers
+	 */
+	private _handleAskUserQuestion(requestId: string, input: Record<string, unknown>, toolUseId: string): void {
+		const questions = (input.questions as any[]) || [];
+
+		// Store the pending request
+		this._pendingPermissionRequests.set(requestId, {
+			requestId,
+			toolName: 'AskUserQuestion',
+			input,
+			suggestions: undefined,
+			toolUseId
+		});
+
+		// Send to UI for rendering
+		this._sendAndSaveMessage({
+			type: 'askUserQuestion',
+			data: {
+				id: requestId,
+				questions: questions,
+				status: 'pending'
+			}
+		});
+	}
+
+	/**
+	 * Handle user's answers to AskUserQuestion
+	 */
+	private _handleAskUserQuestionResponse(requestId: string, answers: Record<string, string>): void {
+		const pendingRequest = this._pendingPermissionRequests.get(requestId);
+		if (!pendingRequest) {
+			console.error('No pending AskUserQuestion request found for id:', requestId);
+			return;
+		}
+
+		this._pendingPermissionRequests.delete(requestId);
+
+		if (!this._currentClaudeProcess?.stdin || this._currentClaudeProcess.stdin.destroyed) {
+			console.error('Cannot send AskUserQuestion response: stdin not available');
+			return;
+		}
+
+		const response = {
+			type: 'control_response',
+			response: {
+				subtype: 'success',
+				request_id: requestId,
+				response: {
+					behavior: 'allow',
+					updatedInput: {
+						questions: (pendingRequest.input as any).questions,
+						answers: answers
+					},
+					toolUseID: pendingRequest.toolUseId
+				}
+			}
+		};
+
+		const responseJson = JSON.stringify(response) + '\n';
+		this._currentClaudeProcess.stdin.write(responseJson);
+
+		// Update the saved conversation message to reflect answered status
+		const savedMsg = this._currentConversation.find(
+			m => m.messageType === 'askUserQuestion' && m.data?.id === requestId
+		);
+		if (savedMsg) {
+			savedMsg.data = { ...savedMsg.data, status: 'answered', answers: answers };
+			void this._saveCurrentConversation();
+		}
+
+		// Update UI status
+		this._postMessage({
+			type: 'updateAskUserQuestionStatus',
+			data: {
+				id: requestId,
+				status: 'answered',
+				answers: answers
+			}
+		});
+	}
+
+	/**
 	 * Cancel all pending permission requests (called when process ends)
 	 */
 	private _cancelPendingPermissionRequests(): void {
-		for (const [id, _request] of this._pendingPermissionRequests) {
-			this._postMessage({
-				type: 'updatePermissionStatus',
-				data: {
-					id: id,
-					status: 'cancelled'
-				}
-			});
+		for (const [id, request] of this._pendingPermissionRequests) {
+			if (request.toolName === 'AskUserQuestion') {
+				this._postMessage({
+					type: 'updateAskUserQuestionStatus',
+					data: {
+						id: id,
+						status: 'cancelled',
+						answers: null
+					}
+				});
+			} else {
+				this._postMessage({
+					type: 'updatePermissionStatus',
+					data: {
+						id: id,
+						status: 'cancelled'
+					}
+				});
+			}
 		}
 		this._pendingPermissionRequests.clear();
 	}
@@ -1722,7 +2258,6 @@ class ClaudeChatProvider {
 			const permissionsContent = new TextEncoder().encode(JSON.stringify(permissions, null, 2));
 			await vscode.workspace.fs.writeFile(permissionsUri, permissionsContent);
 
-			console.log(`Saved local permission for ${toolName}`);
 		} catch (error) {
 			console.error('Error saving local permission:', error);
 		}
@@ -1896,7 +2431,6 @@ class ClaudeChatProvider {
 			// Send updated permissions to UI
 			this._sendPermissions();
 
-			console.log(`Removed permission for ${toolName}${command ? ` command: ${command}` : ''}`);
 		} catch (error) {
 			console.error('Error removing permission:', error);
 		}
@@ -1961,120 +2495,349 @@ class ClaudeChatProvider {
 			// Send updated permissions to UI
 			this._sendPermissions();
 
-			console.log(`Added permission for ${toolName}${command ? ` command: ${command}` : ' (all commands)'}`);
 		} catch (error) {
 			console.error('Error adding permission:', error);
 		}
 	}
 
+	// ─── Skills ───
+
+	private async _loadSkills(): Promise<void> {
+		const skills: { name: string; scope: string; description: string; content: string }[] = [];
+		const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+
+		// Scan personal skills
+		const personalDir = path.join(homeDir, '.claude', 'skills');
+		try {
+			const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(personalDir));
+			for (const [name, type] of entries) {
+				if (type === vscode.FileType.Directory) {
+					const skillPath = path.join(personalDir, name, 'SKILL.md');
+					try {
+						const content = await vscode.workspace.fs.readFile(vscode.Uri.file(skillPath));
+						const text = new TextDecoder().decode(content);
+						const descMatch = text.match(/description:\s*(.+)/);
+						const bodyMatch = text.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+						skills.push({ name, scope: 'personal', description: descMatch ? descMatch[1].trim() : '', content: bodyMatch ? bodyMatch[1].trim() : text });
+					} catch { /* no SKILL.md */ }
+				}
+			}
+		} catch { /* dir doesn't exist */ }
+
+		// Scan project skills
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (workspaceFolder) {
+			const projectDir = path.join(workspaceFolder, '.claude', 'skills');
+			try {
+				const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(projectDir));
+				for (const [name, type] of entries) {
+					if (type === vscode.FileType.Directory) {
+						const skillPath = path.join(projectDir, name, 'SKILL.md');
+						try {
+							const content = await vscode.workspace.fs.readFile(vscode.Uri.file(skillPath));
+							const text = new TextDecoder().decode(content);
+							const descMatch = text.match(/description:\s*(.+)/);
+							const bodyMatch = text.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+							skills.push({ name, scope: 'project', description: descMatch ? descMatch[1].trim() : '', content: bodyMatch ? bodyMatch[1].trim() : text });
+						} catch { /* no SKILL.md */ }
+					}
+				}
+			} catch { /* dir doesn't exist */ }
+		}
+
+		this._postMessage({ type: 'skillsList', data: skills });
+	}
+
+	private async _saveSkill(name: string, scope: string, content: string): Promise<void> {
+		try {
+			let baseDir: string;
+			if (scope === 'project') {
+				const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspaceFolder) { throw new Error('No workspace folder'); }
+				baseDir = path.join(workspaceFolder, '.claude', 'skills');
+			} else {
+				const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+				baseDir = path.join(homeDir, '.claude', 'skills');
+			}
+
+			const skillDir = path.join(baseDir, name);
+			await vscode.workspace.fs.createDirectory(vscode.Uri.file(skillDir));
+			const skillPath = path.join(skillDir, 'SKILL.md');
+			await vscode.workspace.fs.writeFile(vscode.Uri.file(skillPath), new TextEncoder().encode(content));
+
+			this._postMessage({ type: 'skillSaved', data: { name } });
+			vscode.window.showInformationMessage(`Skill "${name}" created successfully.`);
+		} catch (err: any) {
+			vscode.window.showErrorMessage(`Failed to create skill: ${err.message}`);
+		}
+	}
+
+	private async _deleteSkill(name: string, scope: string): Promise<void> {
+		try {
+			let baseDir: string;
+			if (scope === 'project') {
+				const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (!workspaceFolder) { throw new Error('No workspace folder'); }
+				baseDir = path.join(workspaceFolder, '.claude', 'skills');
+			} else {
+				const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+				baseDir = path.join(homeDir, '.claude', 'skills');
+			}
+
+			const skillDir = path.join(baseDir, name);
+			await vscode.workspace.fs.delete(vscode.Uri.file(skillDir), { recursive: true });
+
+			this._postMessage({ type: 'skillDeleted', data: { name } });
+			vscode.window.showInformationMessage(`Skill "${name}" deleted.`);
+		} catch (err: any) {
+			vscode.window.showErrorMessage(`Failed to delete skill: ${err.message}`);
+		}
+	}
+
+	private async _searchSkills(query: string): Promise<void> {
+		try {
+			const res = await fetch(`https://skills.sh/api/search?q=${encodeURIComponent(query)}&limit=20`);
+			if (!res.ok) { throw new Error('HTTP ' + res.status); }
+			const data = await res.json() as any;
+			this._postMessage({ type: 'skillsSearchResponse', data });
+		} catch (err: any) {
+			this._postMessage({ type: 'skillsSearchResponse', data: { skills: [] } });
+		}
+	}
+
+	// ─── Plugins ───
+
+	private async _getClaudeSettingsPath(): Promise<string | undefined> {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+		if (!workspaceFolder) { return undefined; }
+		return path.join(workspaceFolder, '.claude', 'settings.json');
+	}
+
+	private async _readClaudeSettings(): Promise<any> {
+		const settingsPath = await this._getClaudeSettingsPath();
+		if (!settingsPath) { return {}; }
+		try {
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(settingsPath));
+			return JSON.parse(new TextDecoder().decode(content));
+		} catch {
+			return {};
+		}
+	}
+
+	private async _writeClaudeSettings(settings: any): Promise<void> {
+		const settingsPath = await this._getClaudeSettingsPath();
+		if (!settingsPath) { return; }
+		const dirPath = path.dirname(settingsPath);
+		await vscode.workspace.fs.createDirectory(vscode.Uri.file(dirPath));
+		await vscode.workspace.fs.writeFile(
+			vscode.Uri.file(settingsPath),
+			new TextEncoder().encode(JSON.stringify(settings, null, 2) + '\n')
+		);
+	}
+
+	private async _loadPlugins(): Promise<void> {
+		const settings = await this._readClaudeSettings();
+		const enabled = settings.enabledPlugins || {};
+		this._postMessage({ type: 'pluginsList', data: { enabled } });
+	}
+
+	private async _installPlugin(installId: string): Promise<void> {
+		try {
+			const settings = await this._readClaudeSettings();
+			if (!settings.enabledPlugins) { settings.enabledPlugins = {}; }
+			settings.enabledPlugins[installId] = true;
+			await this._writeClaudeSettings(settings);
+			this._postMessage({ type: 'pluginInstalled', data: { installId } });
+			vscode.window.showInformationMessage(`Plugin "${installId.replace(/@.*$/, '')}" enabled.`);
+		} catch (err: any) {
+			vscode.window.showErrorMessage(`Failed to enable plugin: ${err.message}`);
+		}
+	}
+
+	private async _removePlugin(installId: string): Promise<void> {
+		try {
+			const settings = await this._readClaudeSettings();
+			if (settings.enabledPlugins) {
+				delete settings.enabledPlugins[installId];
+				if (Object.keys(settings.enabledPlugins).length === 0) {
+					delete settings.enabledPlugins;
+				}
+			}
+			await this._writeClaudeSettings(settings);
+			this._postMessage({ type: 'pluginRemoved', data: { installId } });
+			vscode.window.showInformationMessage(`Plugin "${installId.replace(/@.*$/, '')}" removed.`);
+		} catch (err: any) {
+			vscode.window.showErrorMessage(`Failed to remove plugin: ${err.message}`);
+		}
+	}
+
+	private _runTerminalCommand(command: string): void {
+		const terminal = vscode.window.createTerminal({
+			name: 'Claude Code',
+			location: vscode.TerminalLocation.Editor
+		});
+		terminal.show();
+		terminal.sendText(command);
+	}
+
+	private async _fetchMarketplace(url: string, append?: boolean, isSearch?: boolean): Promise<void> {
+		try {
+			const res = await fetch(url, {
+				headers: { 'accept': 'application/json' }
+			});
+			if (!res.ok) { throw new Error('HTTP ' + res.status); }
+			const data = await res.json() as any;
+			data._append = !!append;
+			data._isSearch = !!isSearch;
+			this._postMessage({ type: 'marketplaceResponse', data });
+		} catch (err: any) {
+			console.error('Marketplace fetch error:', err);
+			this._postMessage({ type: 'marketplaceError', data: { error: err.message } });
+		}
+	}
+
+	private _getExtensionMCPConfigPath(): string | undefined {
+		const storagePath = this._context.storageUri?.fsPath;
+		if (!storagePath) { return undefined; }
+		return path.join(storagePath, 'mcp', 'mcp-servers.json');
+	}
+
+	private _getMCPConfigPathForScope(scope: string): string | undefined {
+		if (scope === 'global') {
+			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+			return homeDir ? path.join(homeDir, '.claude.json') : undefined;
+		}
+		if (scope === 'project') {
+			const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			return workspaceFolder ? path.join(workspaceFolder, '.mcp.json') : undefined;
+		}
+		// 'extension' scope — the private config
+		return this._getExtensionMCPConfigPath();
+	}
+
+	private async _readMCPConfigFile(filePath: string): Promise<Record<string, any>> {
+		try {
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+			const config = JSON.parse(new TextDecoder().decode(content));
+			return config.mcpServers || {};
+		} catch {
+			return {};
+		}
+	}
+
 	private async _loadMCPServers(): Promise<void> {
 		try {
-			const mcpConfigPath = this.getMCPConfigPath();
-			if (!mcpConfigPath) {
-				this._postMessage({ type: 'mcpServers', data: {} });
-				return;
+			const servers: Record<string, any> = {};
+
+			// Read extension's private config
+			const extPath = this._getExtensionMCPConfigPath();
+			if (extPath) {
+				const extServers = await this._readMCPConfigFile(extPath);
+				for (const [name, config] of Object.entries(extServers)) {
+					if (name === 'claude-code-chat-permissions') continue;
+					servers[name] = { ...config as any, _scope: 'extension' };
+				}
 			}
 
-			const mcpConfigUri = vscode.Uri.file(mcpConfigPath);
-			let mcpConfig: any = { mcpServers: {} };
-
-			try {
-				const content = await vscode.workspace.fs.readFile(mcpConfigUri);
-				mcpConfig = JSON.parse(new TextDecoder().decode(content));
-			} catch (error) {
-				console.log('MCP config file not found or error reading:', error);
-				// File doesn't exist, return empty servers
+			// Read project .mcp.json
+			const projectPath = this._getMCPConfigPathForScope('project');
+			if (projectPath) {
+				const projectServers = await this._readMCPConfigFile(projectPath);
+				for (const [name, config] of Object.entries(projectServers)) {
+					if (!servers[name]) {
+						servers[name] = { ...config as any, _scope: 'project' };
+					}
+				}
 			}
 
-			// Filter out internal servers before sending to UI
-			const filteredServers = Object.fromEntries(
-				Object.entries(mcpConfig.mcpServers || {}).filter(([name]) => name !== 'claude-code-chat-permissions')
-			);
-			this._postMessage({ type: 'mcpServers', data: filteredServers });
+			// Read global ~/.claude.json
+			const globalPath = this._getMCPConfigPathForScope('global');
+			if (globalPath) {
+				const globalServers = await this._readMCPConfigFile(globalPath);
+				for (const [name, config] of Object.entries(globalServers)) {
+					if (!servers[name]) {
+						servers[name] = { ...config as any, _scope: 'global' };
+					}
+				}
+			}
+
+			this._postMessage({ type: 'mcpServers', data: servers });
 		} catch (error) {
 			console.error('Error loading MCP servers:', error);
 			this._postMessage({ type: 'mcpServerError', data: { error: 'Failed to load MCP servers' } });
 		}
 	}
 
-	private async _saveMCPServer(name: string, config: any): Promise<void> {
+	private async _saveMCPServer(name: string, config: any, scope: string): Promise<void> {
 		try {
-			const mcpConfigPath = this.getMCPConfigPath();
-			if (!mcpConfigPath) {
-				this._postMessage({ type: 'mcpServerError', data: { error: 'Storage path not available' } });
+			// Remove internal _scope field before saving
+			const cleanConfig = { ...config };
+			delete cleanConfig._scope;
+
+			const configPath = this._getMCPConfigPathForScope(scope);
+			if (!configPath) {
+				this._postMessage({ type: 'mcpServerError', data: { error: scope === 'project' ? 'No workspace folder open' : 'Config path not available' } });
 				return;
 			}
 
-			const mcpConfigUri = vscode.Uri.file(mcpConfigPath);
-			let mcpConfig: any = { mcpServers: {} };
+			// Ensure directory exists for extension scope
+			if (scope === 'extension') {
+				const dir = vscode.Uri.file(path.dirname(configPath));
+				try { await vscode.workspace.fs.stat(dir); } catch {
+					await vscode.workspace.fs.createDirectory(dir);
+				}
+			}
 
-			// Load existing config
+			const configUri = vscode.Uri.file(configPath);
+			let fileConfig: any = {};
+
 			try {
-				const content = await vscode.workspace.fs.readFile(mcpConfigUri);
-				mcpConfig = JSON.parse(new TextDecoder().decode(content));
+				const content = await vscode.workspace.fs.readFile(configUri);
+				fileConfig = JSON.parse(new TextDecoder().decode(content));
 			} catch {
-				// File doesn't exist, use default structure
+				// File doesn't exist
 			}
 
-			// Ensure mcpServers exists
-			if (!mcpConfig.mcpServers) {
-				mcpConfig.mcpServers = {};
+			if (!fileConfig.mcpServers) {
+				fileConfig.mcpServers = {};
 			}
 
-			// Add/update the server
-			mcpConfig.mcpServers[name] = config;
+			fileConfig.mcpServers[name] = cleanConfig;
 
-			// Ensure directory exists
-			const mcpDir = vscode.Uri.file(path.dirname(mcpConfigPath));
-			try {
-				await vscode.workspace.fs.stat(mcpDir);
-			} catch {
-				await vscode.workspace.fs.createDirectory(mcpDir);
-			}
-
-			// Save the config
-			const configContent = new TextEncoder().encode(JSON.stringify(mcpConfig, null, 2));
-			await vscode.workspace.fs.writeFile(mcpConfigUri, configContent);
+			const configContent = new TextEncoder().encode(JSON.stringify(fileConfig, null, 2));
+			await vscode.workspace.fs.writeFile(configUri, configContent);
 
 			this._postMessage({ type: 'mcpServerSaved', data: { name } });
-			console.log(`Saved MCP server: ${name}`);
 		} catch (error) {
 			console.error('Error saving MCP server:', error);
 			this._postMessage({ type: 'mcpServerError', data: { error: 'Failed to save MCP server' } });
 		}
 	}
 
-	private async _deleteMCPServer(name: string): Promise<void> {
+	private async _deleteMCPServer(name: string, scope: string): Promise<void> {
 		try {
-			const mcpConfigPath = this.getMCPConfigPath();
-			if (!mcpConfigPath) {
-				this._postMessage({ type: 'mcpServerError', data: { error: 'Storage path not available' } });
+			const configPath = this._getMCPConfigPathForScope(scope);
+			if (!configPath) {
+				this._postMessage({ type: 'mcpServerError', data: { error: 'Config path not available' } });
 				return;
 			}
 
-			const mcpConfigUri = vscode.Uri.file(mcpConfigPath);
-			let mcpConfig: any = { mcpServers: {} };
+			const configUri = vscode.Uri.file(configPath);
+			let fileConfig: any = {};
 
-			// Load existing config
 			try {
-				const content = await vscode.workspace.fs.readFile(mcpConfigUri);
-				mcpConfig = JSON.parse(new TextDecoder().decode(content));
+				const content = await vscode.workspace.fs.readFile(configUri);
+				fileConfig = JSON.parse(new TextDecoder().decode(content));
 			} catch {
-				// File doesn't exist, nothing to delete
-				this._postMessage({ type: 'mcpServerError', data: { error: 'MCP config file not found' } });
+				this._postMessage({ type: 'mcpServerError', data: { error: 'Config file not found' } });
 				return;
 			}
 
-			// Delete the server
-			if (mcpConfig.mcpServers && mcpConfig.mcpServers[name]) {
-				delete mcpConfig.mcpServers[name];
-
-				// Save the updated config
-				const configContent = new TextEncoder().encode(JSON.stringify(mcpConfig, null, 2));
-				await vscode.workspace.fs.writeFile(mcpConfigUri, configContent);
-
+			if (fileConfig.mcpServers && fileConfig.mcpServers[name]) {
+				delete fileConfig.mcpServers[name];
+				const configContent = new TextEncoder().encode(JSON.stringify(fileConfig, null, 2));
+				await vscode.workspace.fs.writeFile(configUri, configContent);
 				this._postMessage({ type: 'mcpServerDeleted', data: { name } });
-				console.log(`Deleted MCP server: ${name}`);
 			} else {
 				this._postMessage({ type: 'mcpServerError', data: { error: `Server '${name}' not found` } });
 			}
@@ -2112,7 +2875,6 @@ class ClaudeChatProvider {
 				data: { snippet }
 			});
 
-			console.log('Saved custom snippet:', snippet.name);
 		} catch (error) {
 			console.error('Error saving custom snippet:', error);
 			this._postMessage({
@@ -2135,7 +2897,6 @@ class ClaudeChatProvider {
 					data: { snippetId }
 				});
 
-				console.log('Deleted custom snippet:', snippetId);
 			} else {
 				this._postMessage({
 					type: 'error',
@@ -2163,13 +2924,6 @@ class ClaudeChatProvider {
 		return windowsPath;
 	}
 
-	public getMCPConfigPath(): string | undefined {
-		const storagePath = this._context.storageUri?.fsPath;
-		if (!storagePath) { return undefined; }
-
-		const configPath = path.join(storagePath, 'mcp', 'mcp-servers.json');
-		return path.join(configPath);
-	}
 
 	private _sendAndSaveMessage(message: { type: string, data: any }): void {
 
@@ -2250,7 +3004,6 @@ class ClaudeChatProvider {
 			// Update conversation index
 			this._updateConversationIndex(filename, conversationData);
 
-			console.log(`Saved conversation: ${filename}`, this._conversationsPath);
 		} catch (error: any) {
 			console.error('Failed to save conversation:', error.message);
 		}
@@ -2333,13 +3086,16 @@ class ClaudeChatProvider {
 			});
 
 			if (result && result.length > 0) {
-				// Send the selected file paths back to webview
-				result.forEach(uri => {
-					this._postMessage({
-						type: 'imagePath',
-						path: uri.fsPath
-					});
-				});
+				for (const uri of result) {
+					const dataUri = await this._getImageDataUri(uri.fsPath);
+					if (dataUri) {
+						this._postMessage({
+							type: 'imageAttached',
+							filePath: uri.fsPath,
+							previewUri: dataUri
+						});
+					}
+				}
 			}
 
 		} catch (error) {
@@ -2396,7 +3152,6 @@ class ClaudeChatProvider {
 			return;
 		}
 
-		console.log(`Terminating Claude process group (PID: ${pid})...`);
 
 		// 3. Kill process group (handles children)
 		await this._killProcessGroup(pid, 'SIGTERM');
@@ -2418,15 +3173,12 @@ class ClaudeChatProvider {
 
 		// 5. Force kill if still running
 		if (processToKill && !processToKill.killed) {
-			console.log(`Force killing Claude process group (PID: ${pid})...`);
 			await this._killProcessGroup(pid, 'SIGKILL');
 		}
 
-		console.log('Claude process group terminated');
 	}
 
 	private async _stopClaudeProcess(): Promise<void> {
-		console.log('Stop request received');
 
 		this._isProcessing = false;
 
@@ -2447,6 +3199,9 @@ class ClaudeChatProvider {
 			type: 'error',
 			data: '⏹️ Claude code was stopped.'
 		});
+
+		// Refresh OpenCredits balance (request may have consumed credits)
+		this._sendOpenCreditsBalance();
 	}
 
 	private _updateConversationIndex(filename: string, conversationData: ConversationData): void {
@@ -2487,12 +3242,10 @@ class ClaudeChatProvider {
 	}
 
 	private async _loadConversationHistory(filename: string): Promise<void> {
-		console.log("_loadConversationHistory");
 		if (!this._conversationsPath) { return; }
 
 		try {
 			const filePath = path.join(this._conversationsPath, filename);
-			console.log("filePath", filePath);
 
 			let conversationData: ConversationData;
 			try {
@@ -2546,6 +3299,13 @@ class ClaudeChatProvider {
 							messageData = { ...message.data, status: 'expired' };
 						}
 
+						// For askUserQuestion loaded from history, expire pending ones if no active process
+						if (message.messageType === 'askUserQuestion' &&
+							message.data?.status === 'pending' &&
+							!this._currentClaudeProcess) {
+							messageData = { ...message.data, status: 'expired' };
+						}
+
 						this._postMessage({
 							type: message.messageType,
 							data: messageData
@@ -2554,7 +3314,7 @@ class ClaudeChatProvider {
 							try {
 								requestStartTime = new Date(message.timestamp).getTime()
 							} catch (e) {
-								console.log(e)
+								console.error('Failed to parse message timestamp:', e);
 							}
 						}
 					}
@@ -2591,14 +3351,13 @@ class ClaudeChatProvider {
 				}, 50);
 			}, 100); // Small delay to ensure webview is ready
 
-			console.log(`Loaded conversation history: ${filename}`);
 		} catch (error: any) {
 			console.error('Failed to load conversation history:', error.message);
 		}
 	}
 
 	private _getHtmlForWebview(): string {
-		return getHtml(vscode.env?.isTelemetryEnabled);
+		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY, vscode.env?.appName, this._context?.extension?.packageJSON?.version);
 	}
 
 	private _sendCurrentSettings(): void {
@@ -2607,9 +3366,14 @@ class ClaudeChatProvider {
 			'thinking.intensity': config.get<string>('thinking.intensity', 'think'),
 			'wsl.enabled': config.get<boolean>('wsl.enabled', false),
 			'wsl.distro': config.get<string>('wsl.distro', 'Ubuntu'),
-			'wsl.nodePath': config.get<string>('wsl.nodePath', '/usr/bin/node'),
+			'wsl.nodePath': config.get<string>('wsl.nodePath', ''),
 			'wsl.claudePath': config.get<string>('wsl.claudePath', '/usr/local/bin/claude'),
 			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
+			'router.enabled': config.get<boolean>('router.enabled', false),
+			'executable.path': config.get<string>('executable.path', ''),
+			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
+			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'isOpenCredits': this._isOpenCredits(),
 			'notifications.windowsSound': config.get<boolean>('notifications.windowsSound', false),
 			'notifications.customSoundPath': config.get<string>('notifications.customSoundPath', '')
 		};
@@ -2628,7 +3392,6 @@ class ClaudeChatProvider {
 			// Clear any global setting and set workspace setting
 			await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace);
 
-			console.log('YOLO Mode enabled - all future permissions will be skipped');
 
 			// Send updated settings to UI
 			this._sendCurrentSettings();
@@ -2741,20 +3504,40 @@ class ClaudeChatProvider {
 			for (const [key, value] of Object.entries(settings)) {
 				if (key === 'permissions.yoloMode') {
 					// YOLO mode is workspace-specific
-					await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+					try {
+						await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+					} catch {
+						await config.update(key, value, vscode.ConfigurationTarget.Global);
+					}
 				} else if (key === 'notifications.windowsSound' || key === 'notifications.customSoundPath') {
 					// Windows sound notification settings are workspace-specific
-					await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+					try {
+						await config.update(key, value, vscode.ConfigurationTarget.Workspace);
+					} catch {
+						await config.update(key, value, vscode.ConfigurationTarget.Global);
+					}
 				} else {
 					// Other settings are global (user-wide)
 					await config.update(key, value, vscode.ConfigurationTarget.Global);
 				}
 			}
 
-			console.log('Settings updated:', settings);
-		} catch (error) {
-			console.error('Failed to update settings:', error);
-			vscode.window.showErrorMessage('Failed to update settings');
+			// Re-send settings so webview gets updated isOpenCredits flag, etc.
+			this._sendCurrentSettings();
+
+			// Update balance display based on new env vars
+			if (this._isOpenCredits() || this._getOpenCreditsKey()) {
+				this._sendOpenCreditsBalance();
+			} else {
+				// Clear balance if no longer OpenCredits
+				this._postMessage({
+					type: 'opencreditsBalance',
+					balance: null
+				});
+			}
+		} catch (error: any) {
+			console.error('Failed to update settings:', error?.message || error);
+			vscode.window.showErrorMessage(`Failed to update settings: ${error?.message || 'Unknown error'}`);
 		}
 	}
 
@@ -2770,31 +3553,159 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private _setSelectedModel(model: string): void {
-		// Validate model name to prevent issues mentioned in the GitHub issue
-		const validModels = ['opus', 'sonnet', 'default'];
-		if (validModels.includes(model)) {
+	private async _setSelectedModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
+		// Valid Claude models
+		const validClaudeModels = ['opus', 'sonnet', 'default'];
+
+		if (validClaudeModels.includes(model)) {
 			this._selectedModel = model;
-			console.log('Model selected:', model);
 
 			// Store the model preference in workspace state
 			this._context.workspaceState.update('claude.selectedModel', model);
 
+			// Remove model env vars so Claude CLI uses defaults
+			await this._removeModelEnvVars();
+
+			// Refresh settings UI to reflect removed env vars
+			this._sendCurrentSettings();
+
 			// Show confirmation
-			vscode.window.showInformationMessage(`Claude model switched to: ${model.charAt(0).toUpperCase() + model.slice(1)}`);
+			vscode.window.showInformationMessage(`Model switched to: ${model.charAt(0).toUpperCase() + model.slice(1)}`);
 		} else {
-			console.error('Invalid model selected:', model);
-			vscode.window.showErrorMessage(`Invalid model: ${model}. Please select Opus, Sonnet, or Default.`);
+			// Any other model is treated as a OpenCredits model
+			this._selectedModel = model;
+
+			// Store the model preference in workspace state
+			this._context.workspaceState.update('claude.selectedModel', model);
+
+			// Set model env vars so Claude CLI routes to this model
+			await this._setModelEnvVars(model, tierModels);
+
+			// Notify webview that model is switching
+			this._postMessage({
+				type: 'modelSwitching',
+				model: model
+			});
+
+			// Update the local router config to use this model
+			this._updateLocalRouterModel(model, tierModels);
+
+			// Fetch and send balance
+			await this._sendOpenCreditsBalance();
+
+			// Notify webview that model switch is complete
+			this._postMessage({
+				type: 'modelSwitched',
+				model: model
+			});
+
+			// Show confirmation
+			vscode.window.showInformationMessage(`Model switched to: ${model}`);
 		}
 	}
 
-	private _openModelTerminal(): void {
+	// Set model env vars for non-Claude models
+	private async _setModelEnvVars(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'] = tierModels?.sonnet || model;
+		envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'] = tierModels?.opus || model;
+		envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = tierModels?.haiku || model;
+		await config.update('environment.variables', envVars, vscode.ConfigurationTarget.Global);
+	}
 
+	// Remove model env vars so Claude CLI uses defaults
+	private async _removeModelEnvVars(): Promise<void> {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		const filtered: Record<string, string> = {};
+		for (const [key, value] of Object.entries(envVars)) {
+			if (key !== 'ANTHROPIC_DEFAULT_SONNET_MODEL' &&
+				key !== 'ANTHROPIC_DEFAULT_OPUS_MODEL' &&
+				key !== 'ANTHROPIC_DEFAULT_HAIKU_MODEL') {
+				filtered[key] = value;
+			}
+		}
+		await config.update('environment.variables', filtered, vscode.ConfigurationTarget.Global);
+	}
+
+	// Fetch OpenCredits account balance
+	private async _fetchOpenCreditsBalance(): Promise<number | null> {
+		const userKey = this._getOpenCreditsKey();
+
+		if (!userKey) {
+			return null;
+		}
+
+		try {
+			const response = await fetch(OPENCREDITS_API_URL + '/v1/credits/balance', {
+				method: 'GET',
+				headers: {
+					'X-User-Key': userKey,
+					'Content-Type': 'application/json'
+				}
+			});
+
+			if (!response.ok) {
+				console.error('Failed to fetch OpenCredits balance:', response.status);
+				return null;
+			}
+
+			const data = await response.json() as { balance?: number };
+			return data.balance != null ? data.balance : null;
+		} catch (error) {
+			console.error('Error fetching OpenCredits balance:', error);
+			return null;
+		}
+	}
+
+	private async _sendOpenCreditsBalance(): Promise<void> {
+		const balance = await this._fetchOpenCreditsBalance();
+		this._postMessage({
+			type: 'opencreditsBalance',
+			balance: balance
+		});
+	}
+
+	private async _openOpenCreditsAccount(): Promise<void> {
+		const url = OPENCREDITS_WEB_URL + '/dashboard';
+
+		// Open via native OS command
+		const openCmd = process.platform === 'darwin' ? 'open'
+			: process.platform === 'win32' ? 'start'
+			: 'xdg-open';
+		cp.spawn(openCmd, [url], { detached: true, stdio: 'ignore' }).unref();
+
+		// Show fallback modal in webview in case native open didn't work
+		this._postMessage({
+			type: 'openedExternalUrl',
+			url: url
+		});
+	}
+
+	// Update the model configuration for the local router
+	private _updateLocalRouterModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): void {
+		setModelConfig({
+			haikuModel: tierModels?.haiku || model,
+			sonnetModel: tierModels?.sonnet || model,
+			opusModel: tierModels?.opus || model
+		});
+	}
+
+	private _quoteBashArg(value: string): string {
+		return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+	}
+
+	private _buildWslClaudeCommand(nodePath: string, claudePath: string, args: string[] = []): string {
+		const trimmedNodePath = nodePath.trim();
+		const commandParts = trimmedNodePath
+			? [this._quoteBashArg(trimmedNodePath), '--no-warnings', '--enable-source-maps', this._quoteBashArg(claudePath)]
+			: [this._quoteBashArg(claudePath)];
+		const quotedArgs = args.map(arg => this._quoteBashArg(arg));
+		return [...commandParts, ...quotedArgs].join(' ');
+	}
+
+	private _openModelTerminal(): void {
 		// Build command arguments
 		const args = ['/model'];
 
@@ -2803,16 +3714,12 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
-		// Create terminal with the claude /model command
+		// Launch claude as the terminal process directly — no shell quoting
 		const terminal = vscode.window.createTerminal({
 			name: 'Claude Model Selection',
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(args)
 		});
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
-		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
-		}
 		terminal.show();
 
 		// Show info message
@@ -2828,75 +3735,140 @@ class ClaudeChatProvider {
 		});
 	}
 
-	private _openUsageTerminal(usageType: string): void {
-		// Get WSL configuration
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-
+	private _openUsageTerminal(_usageType: string): void {
 		const terminal = vscode.window.createTerminal({
 			name: 'Claude Usage',
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(['/usage'])
 		});
-
-		let command: string;
-		if (usageType === 'plan') {
-			// Plan users get live usage view
-			command = 'npx -y ccusage blocks --live';
-		} else {
-			// API users get recent usage history
-			command = 'npx -y ccusage blocks --recent --order desc';
-		}
-
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} bash -ic "${command}"`);
-		} else {
-			terminal.sendText(command);
-		}
-
 		terminal.show();
 	}
 
-	private _runInstallCommand(): void {
-		const { exec } = require('child_process');
+	private async _runInstallCommand(method: string = 'installer'): Promise<void> {
+		this._context.globalState.update('installAttempted', true);
 
-		// Check if npm exists and node >= 18
-		exec('node --version', { shell: true }, (nodeErr: Error | null, nodeStdout: string) => {
-			let useNpm = false;
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const wslEnabled = config.get<boolean>('wsl.enabled', false);
 
-			if (!nodeErr && nodeStdout) {
-				// Parse version (e.g., "v18.17.0" -> 18)
-				const match = nodeStdout.trim().match(/^v(\d+)/);
-				if (match && parseInt(match[1], 10) >= 18) {
-					useNpm = true;
-				}
-			}
-
-			let command: string;
-			if (useNpm) {
-				command = 'npm install -g @anthropic-ai/claude-code';
-			} else if (process.platform === 'win32') {
-				command = 'irm https://claude.ai/install.ps1 | iex';
-			} else {
-				command = 'curl -fsSL https://claude.ai/install.sh | sh';
-			}
-
-			// Run installation silently in the background
-			exec(command, { shell: true }, (error: Error | null, stdout: string, stderr: string) => {
-				if (error) {
-					this._postMessage({
-						type: 'installComplete',
-						success: false,
-						error: stderr || error.message
-					});
-				} else {
-					this._postMessage({
-						type: 'installComplete',
-						success: true
-					});
-				}
+		// WSL install needs to run inside the distro, not on the Windows host.
+		// The old shell-based flow didn't handle this either — not regressing,
+		// not fixing here. User should install claude inside their distro manually
+		// and set claudeCodeChat.wsl.claudePath.
+		if (wslEnabled) {
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: 'WSL mode: please install Claude inside your WSL distro, then set claudeCodeChat.wsl.claudePath.',
+				errorCode: 'UNSUPPORTED_PLATFORM'
 			});
+			return;
+		}
+
+		if (!detectPlatform()) {
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: `Unsupported platform: ${process.platform}/${os.arch()}. Install Claude manually from https://code.claude.com.`,
+				errorCode: 'UNSUPPORTED_PLATFORM'
+			});
+			return;
+		}
+
+		const destDir = path.join(this._context.globalStorageUri.fsPath, 'bin');
+
+		try {
+			const result = await downloadClaude({
+				destDir,
+				onProgress: (p) => this._postMessage({ type: 'installProgress', ...p })
+			});
+
+			const existing = (config.get<string>('executable.path', '') || '').trim();
+			if (!existing) {
+				try {
+					await config.update('executable.path', result.binaryPath, vscode.ConfigurationTarget.Global);
+				} catch {
+					// fall through — UI will still reflect success and the spawn will find it on next launch
+				}
+			}
+
+			this._postMessage({
+				type: 'installComplete',
+				success: true,
+				method,
+				configuredPath: existing ? undefined : result.binaryPath,
+				existingPathRespected: !!existing,
+				source: result.source,
+				version: result.version
+			});
+		} catch (err) {
+			const d = err instanceof DownloaderError ? err : null;
+			const details = d?.details;
+			this._postMessage({
+				type: 'installComplete',
+				success: false,
+				method,
+				error: d?.message || 'Installation failed. Please try again.',
+				errorCode: d?.code,
+				// AGGREGATE errors carry the per-source failure codes; surface them so
+				// analytics can bucket "both npm+cdn failed with NETWORK" vs
+				// "npm INTEGRITY, cdn NETWORK" etc.
+				npmCode: typeof details?.npmCode === 'string' ? details.npmCode : undefined,
+				cdnCode: typeof details?.cdnCode === 'string' ? details.cdnCode : undefined
+			});
+		}
+	}
+
+	private _buildClaudeTerminalOptions(args: string[] = []): { shellPath: string; shellArgs: string[] } {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const wslEnabled = config.get<boolean>('wsl.enabled', false);
+
+		if (wslEnabled) {
+			const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
+			const nodePath = config.get<string>('wsl.nodePath', '');
+			const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
+			const wslCommand = this._buildWslClaudeCommand(nodePath, claudePath, args);
+			return {
+				shellPath: process.platform === 'win32' ? 'wsl.exe' : 'wsl',
+				shellArgs: ['-d', wslDistro, 'bash', '-ic', wslCommand]
+			};
+		}
+
+		const custom = (config.get<string>('executable.path', '') || '').trim();
+		return {
+			shellPath: custom || 'claude',
+			shellArgs: args
+		};
+	}
+
+	private _openLoginTerminal(): void {
+		const terminal = vscode.window.createTerminal({
+			name: 'Claude Login',
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions()
 		});
+		terminal.show();
+	}
+
+	// Start the local router and return its port
+	private async _ensureLocalRouter(): Promise<number> {
+		// Update model config with the selected model, restoring tier models from persisted env vars
+		if (this._selectedModel && this._selectedModel !== 'default') {
+			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const envVars = config.get<Record<string, string>>('environment.variables', {});
+			const sonnet = envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'];
+			const opus = envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'];
+			const haiku = envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'];
+			const tierModels = (sonnet || opus || haiku)
+				? { sonnet: sonnet || this._selectedModel, opus: opus || this._selectedModel, haiku: haiku || this._selectedModel }
+				: undefined;
+			this._updateLocalRouterModel(this._selectedModel, tierModels);
+		}
+
+		// Start the router if not already running
+		const port = await startRouter();
+		return port;
 	}
 
 	private _executeSlashCommand(command: string): void {
@@ -2906,12 +3878,6 @@ class ClaudeChatProvider {
 			return;
 		}
 
-		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const wslEnabled = config.get<boolean>('wsl.enabled', false);
-		const wslDistro = config.get<string>('wsl.distro', 'Ubuntu');
-		const nodePath = config.get<string>('wsl.nodePath', '/usr/bin/node');
-		const claudePath = config.get<string>('wsl.claudePath', '/usr/local/bin/claude');
-
 		// Build command arguments
 		const args = [`/${command}`];
 
@@ -2920,16 +3886,12 @@ class ClaudeChatProvider {
 			args.push('--resume', this._currentSessionId);
 		}
 
-		// Create terminal with the claude command
+		// Launch claude as the terminal process directly — no shell quoting
 		const terminal = vscode.window.createTerminal({
 			name: `Claude /${command}`,
-			location: { viewColumn: vscode.ViewColumn.One }
+			location: { viewColumn: vscode.ViewColumn.One },
+			...this._buildClaudeTerminalOptions(args)
 		});
-		if (wslEnabled) {
-			terminal.sendText(`wsl -d ${wslDistro} ${nodePath} --no-warnings --enable-source-maps ${claudePath} ${args.join(' ')}`);
-		} else {
-			terminal.sendText(`claude ${args.join(' ')}`);
-		}
 		terminal.show();
 
 		// Show info message
@@ -3116,12 +4078,11 @@ class ClaudeChatProvider {
 			const imagePath = vscode.Uri.joinPath(imagesDir, imageFileName);
 			await vscode.workspace.fs.writeFile(imagePath, buffer);
 
-			// Send the file path back to webview
+			// Send the file path back to webview — use the original data URL for preview
 			this._postMessage({
-				type: 'imagePath',
-				data: {
-					filePath: imagePath.fsPath
-				}
+				type: 'imageAttached',
+				filePath: imagePath.fsPath,
+				previewUri: imageData
 			});
 
 		} catch (error) {

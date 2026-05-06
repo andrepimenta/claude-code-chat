@@ -6,8 +6,10 @@
 		"lib": [
 			"ES2022"
 		],
+		"types": ["node", "mocha"],
 		"sourceMap": true,
 		"rootDir": "src",
+		"resolveJsonModule": true,
 		"strict": true,   /* enable all strict type-checking options */
 		/* Additional Checks */
 		// "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
@@ -16,6 +18,7 @@
 	},
 	"exclude": [
 		"mcp-permissions.js",
-		"claude-code-chat-permissions-mcp"
+		"claude-code-chat-permissions-mcp",
+		"backup-files"
 	]
 }

@@ -1,0 +1,479 @@
+[
+  {
+    "id": "sequential-thinking",
+    "name": "Sequential Thinking",
+    "description": "Step-by-step reasoning capabilities",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-sequential-thinking"
+      ]
+    },
+    "featured": true
+  },
+  {
+    "id": "memory",
+    "name": "Memory",
+    "description": "Knowledge graph storage",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-memory"
+      ]
+    },
+    "featured": true
+  },
+  {
+    "id": "puppeteer",
+    "name": "Puppeteer",
+    "description": "Browser automation",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-puppeteer"
+      ]
+    },
+    "featured": true
+  },
+  {
+    "id": "fetch",
+    "name": "Fetch",
+    "description": "HTTP requests & web scraping",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-fetch"
+      ]
+    },
+    "featured": true
+  },
+  {
+    "id": "filesystem",
+    "name": "Filesystem",
+    "description": "File operations & management",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem"
+      ]
+    },
+    "featured": true
+  },
+  {
+    "id": "io.github.upstash/context7",
+    "name": "Context7",
+    "description": "Up-to-date code docs for any prompt",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/upstash/context7",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp"
+      ],
+      "env": {
+        "CONTEXT7_API_KEY": ""
+      }
+    },
+    "featured": true
+  },
+  {
+    "id": "com.airtable/mcp",
+    "name": "Airtable",
+    "description": "Official Airtable MCP server for managing bases, tables, and records.",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.airtable.com/mcp",
+      "headers": {
+        "Authorization": ""
+      }
+    }
+  },
+  {
+    "id": "com.apify/mcp",
+    "name": "Apify",
+    "description": "Extract data from social media, search engines, maps, e-commerce sites, and any website using thousands of ready-made tools from Apify Store.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/apify/apify-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.apify.com"
+    }
+  },
+  {
+    "id": "io.github.browserbase/mcp-server-browserbase",
+    "name": "Browserbase",
+    "description": "MCP server for AI web browser automation using Browserbase and Stagehand",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/browserbase/mcp-server-browserbase",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@browserbasehq/mcp-server-browserbase"
+      ],
+      "env": {
+        "BROWSERBASE_API_KEY": "",
+        "BROWSERBASE_PROJECT_ID": "",
+        "GEMINI_API_KEY": ""
+      }
+    }
+  },
+  {
+    "id": "io.github.clerk/mcp-server",
+    "name": "Clerk",
+    "description": "Access Clerk authentication docs, SDK snippets, and quickstart guides",
+    "icon": "",
+    "stars": 0,
+    "url": "https://clerk.com/docs/guides/ai/mcp/clerk-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.clerk.com/mcp"
+    }
+  },
+  {
+    "id": "com.cloudflare.mcp/mcp",
+    "name": "Cloudflare",
+    "description": "Cloudflare MCP servers",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/cloudflare/mcp-server-cloudflare",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    }
+  },
+  {
+    "id": "ai.exa/mcp",
+    "name": "Exa",
+    "description": "Web search and code search MCP server powered by Exa",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/exa-labs/exa-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.exa.ai/mcp"
+    }
+  },
+  {
+    "id": "com.figma/mcp",
+    "name": "Figma",
+    "description": "Official Figma MCP server for accessing design files, components, and design context",
+    "icon": "",
+    "stars": 0,
+    "url": "https://help.figma.com/hc/en-us/articles/35281350665623-Figma-MCP-collection-How-to-set-up-the-Figma-remote-MCP-server-preferred",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.figma.com/mcp"
+    }
+  },
+  {
+    "id": "dev.firecrawl/mcp",
+    "name": "Firecrawl",
+    "description": "Web scraping, crawling, search, and structured data extraction powered by Firecrawl.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/firecrawl/firecrawl-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.firecrawl.dev/v2/mcp",
+      "headers": {
+        "Authorization": ""
+      }
+    }
+  },
+  {
+    "id": "io.github.github/github-mcp-server",
+    "name": "GitHub",
+    "description": "Official GitHub MCP server for repos, issues, PRs, and workflows",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/github/github-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  },
+  {
+    "id": "app.linear/linear",
+    "name": "Linear",
+    "description": "MCP server for Linear project management and issue tracking",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "sse",
+    "installConfig": {
+      "type": "sse",
+      "url": "https://mcp.linear.app/sse"
+    }
+  },
+  {
+    "id": "com.mux/mcp",
+    "name": "Mux",
+    "description": "The official MCP Server for the Mux API",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/muxinc/mux-node-sdk",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.mux.com",
+      "headers": {
+        "Authorization": ""
+      }
+    }
+  },
+  {
+    "id": "com.neon/mcp",
+    "name": "Neon",
+    "description": "Official Neon MCP server for managing Neon projects and Postgres databases.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/neondatabase/mcp-server-neon",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.neon.tech/mcp",
+      "headers": {
+        "Authorization": "",
+        "x-read-only": ""
+      }
+    }
+  },
+  {
+    "id": "com.netlify/mcp",
+    "name": "Netlify",
+    "description": "Netlify's official MCP server for builds, deploys, and project management.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/netlify/netlify-mcp",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@netlify/mcp"
+      ],
+      "env": {
+        "NETLIFY_PERSONAL_ACCESS_TOKEN": ""
+      }
+    }
+  },
+  {
+    "id": "io.github.vercel/next-devtools-mcp",
+    "name": "Next.js Devtools",
+    "description": "Next.js development tools MCP server with stdio transport",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/vercel/next-devtools-mcp",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "next-devtools-mcp"
+      ]
+    }
+  },
+  {
+    "id": "com.notion/mcp",
+    "name": "Notion",
+    "description": "Official Notion MCP server",
+    "icon": "",
+    "stars": 0,
+    "url": "",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.notion.com/mcp"
+    }
+  },
+  {
+    "id": "io.github.railwayapp/mcp-server",
+    "name": "Railway",
+    "description": "Official Railway MCP server",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/railwayapp/railway-mcp-server",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@railway/mcp-server"
+      ]
+    }
+  },
+  {
+    "id": "com.render/mcp",
+    "name": "Render",
+    "description": "Official Render MCP server for managing Render resources.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/render-oss/render-mcp-server",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.render.com/mcp",
+      "headers": {
+        "Authorization": ""
+      }
+    }
+  },
+  {
+    "id": "com.resend/mcp",
+    "name": "Resend",
+    "description": "Official Resend MCP server for email operations and audience management.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/resend/mcp-send-email",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "resend-mcp"
+      ],
+      "env": {
+        "RESEND_API_KEY": ""
+      }
+    }
+  },
+  {
+    "id": "io.sanity.www/mcp",
+    "name": "Sanity",
+    "description": "Direct access to your Sanity projects (content, datasets, releases, schemas) and agent rules",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/sanity-io/agent-toolkit",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.sanity.io"
+    }
+  },
+  {
+    "id": "io.github.getsentry/sentry-mcp",
+    "name": "Sentry",
+    "description": "MCP server for Sentry issue tracking and debugging",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/getsentry/sentry-mcp",
+    "installType": "npm",
+    "installConfig": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@sentry/mcp-server"
+      ],
+      "env": {
+        "SENTRY_ACCESS_TOKEN": ""
+      }
+    }
+  },
+  {
+    "id": "com.slack/mcp",
+    "name": "Slack",
+    "description": "Official Slack MCP server for search, messaging, canvases, and users.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/slackapi/slack-mcp-plugin",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.slack.com/mcp"
+    }
+  },
+  {
+    "id": "com.stripe/mcp",
+    "name": "Stripe",
+    "description": "Official Stripe MCP server for Stripe API tools.",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/stripe/agent-toolkit",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.stripe.com"
+    }
+  },
+  {
+    "id": "com.supabase/mcp",
+    "name": "Supabase",
+    "description": "MCP server for interacting with the Supabase platform",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/supabase-community/supabase-mcp",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    }
+  },
+  {
+    "id": "com.vercel/vercel-mcp",
+    "name": "Vercel",
+    "description": "An MCP server for Vercel",
+    "icon": "",
+    "stars": 0,
+    "url": "https://github.com/vercel/vercel-mcp-overview",
+    "installType": "http",
+    "installConfig": {
+      "type": "http",
+      "url": "https://mcp.vercel.com"
+    }
+  }
+]

@@ -1,0 +1,240 @@
+[
+  {
+    "name": "agent-sdk-dev",
+    "description": "Claude Agent SDK Development Plugin",
+    "verified": true,
+    "type": "official",
+    "installId": "agent-sdk-dev@claude-plugins-official"
+  },
+  {
+    "name": "claude-code-setup",
+    "description": "Analyze codebases and recommend tailored Claude Code automations such as hooks, skills, MCP servers, and subagents.",
+    "verified": true,
+    "type": "official",
+    "installId": "claude-code-setup@claude-plugins-official"
+  },
+  {
+    "name": "claude-md-management",
+    "description": "Tools to maintain and improve CLAUDE.md files - audit quality, capture session learnings, and keep project memory current.",
+    "verified": true,
+    "type": "official",
+    "installId": "claude-md-management@claude-plugins-official"
+  },
+  {
+    "name": "code-review",
+    "description": "Automated code review for pull requests using multiple specialized agents with confidence-based scoring",
+    "verified": true,
+    "type": "official",
+    "installId": "code-review@claude-plugins-official"
+  },
+  {
+    "name": "code-simplifier",
+    "description": "Agent that simplifies and refines code for clarity, consistency, and maintainability while preserving functionality",
+    "verified": true,
+    "type": "official",
+    "installId": "code-simplifier@claude-plugins-official"
+  },
+  {
+    "name": "commit-commands",
+    "description": "Streamline your git workflow with simple commands for committing, pushing, and creating pull requests",
+    "verified": true,
+    "type": "official",
+    "installId": "commit-commands@claude-plugins-official"
+  },
+  {
+    "name": "explanatory-output-style",
+    "description": "Adds educational insights about implementation choices and codebase patterns (mimics the deprecated Explanatory output style)",
+    "verified": true,
+    "type": "official",
+    "installId": "explanatory-output-style@claude-plugins-official"
+  },
+  {
+    "name": "feature-dev",
+    "description": "Comprehensive feature development workflow with specialized agents for codebase exploration, architecture design, and quality review",
+    "verified": true,
+    "type": "official",
+    "installId": "feature-dev@claude-plugins-official"
+  },
+  {
+    "name": "frontend-design",
+    "description": "Frontend design skill for UI/UX implementation",
+    "verified": true,
+    "type": "official",
+    "installId": "frontend-design@claude-plugins-official"
+  },
+  {
+    "name": "hookify",
+    "description": "Easily create hooks to prevent unwanted behaviors by analyzing conversation patterns",
+    "verified": true,
+    "type": "official",
+    "installId": "hookify@claude-plugins-official"
+  },
+  {
+    "name": "learning-output-style",
+    "description": "Interactive learning mode that requests meaningful code contributions at decision points (mimics the unshipped Learning output style)",
+    "verified": true,
+    "type": "official",
+    "installId": "learning-output-style@claude-plugins-official"
+  },
+  {
+    "name": "math-olympiad",
+    "description": "Solve competition math (IMO, Putnam, USAMO) with adversarial verification that catches what self-verification misses. Fresh-context verifiers attack proofs with specific failure patterns. Calibrated abstention over bluffing.",
+    "verified": true,
+    "type": "official",
+    "installId": "math-olympiad@claude-plugins-official"
+  },
+  {
+    "name": "mcp-server-dev",
+    "description": "Skills for designing and building MCP servers that work seamlessly with Claude \u2014 guides you through deployment models (remote HTTP, MCPB, local), tool design patterns, auth, and interactive MCP apps.",
+    "verified": true,
+    "type": "official",
+    "installId": "mcp-server-dev@claude-plugins-official"
+  },
+  {
+    "name": "playground",
+    "description": "Creates interactive HTML playgrounds \u2014 self-contained single-file explorers with visual controls, live preview, and prompt output with copy button",
+    "verified": true,
+    "type": "official",
+    "installId": "playground@claude-plugins-official"
+  },
+  {
+    "name": "plugin-dev",
+    "description": "Plugin development toolkit with skills for creating agents, commands, hooks, MCP integrations, and comprehensive plugin structure guidance",
+    "verified": true,
+    "type": "official",
+    "installId": "plugin-dev@claude-plugins-official"
+  },
+  {
+    "name": "pr-review-toolkit",
+    "description": "Comprehensive PR review agents specializing in comments, tests, error handling, type design, code quality, and code simplification",
+    "verified": true,
+    "type": "official",
+    "installId": "pr-review-toolkit@claude-plugins-official"
+  },
+  {
+    "name": "ralph-loop",
+    "description": "Continuous self-referential AI loops for interactive iterative development, implementing the Ralph Wiggum technique. Run Claude in a while-true loop with the same prompt until task completion.",
+    "verified": true,
+    "type": "official",
+    "installId": "ralph-loop@claude-plugins-official"
+  },
+  {
+    "name": "security-guidance",
+    "description": "Security reminder hook that warns about potential security issues when editing files, including command injection, XSS, and unsafe code patterns",
+    "verified": true,
+    "type": "official",
+    "installId": "security-guidance@claude-plugins-official"
+  },
+  {
+    "name": "skill-creator",
+    "description": "Create new skills, improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, update or optimize an existing skill, run evals to test a skill, or benchmark skill performance with variance analysis.",
+    "verified": true,
+    "type": "official",
+    "installId": "skill-creator@claude-plugins-official"
+  },
+  {
+    "name": "asana",
+    "description": "Asana project management integration. Create and manage tasks, search projects, update assignments, track progress, and integrate your development workflow with Asana's work management platform.",
+    "verified": false,
+    "type": "external",
+    "installId": "asana@claude-plugins-official"
+  },
+  {
+    "name": "context7",
+    "description": "Upstash Context7 MCP server for up-to-date documentation lookup. Pull version-specific documentation and code examples directly from source repositories into your LLM context.",
+    "verified": false,
+    "type": "external",
+    "installId": "context7@claude-plugins-official"
+  },
+  {
+    "name": "discord",
+    "description": "Discord channel for Claude Code \u2014 messaging bridge with built-in access control. Manage pairing, allowlists, and policy via /discord:access.",
+    "verified": false,
+    "type": "external",
+    "installId": "discord@claude-plugins-official"
+  },
+  {
+    "name": "fakechat",
+    "description": "Localhost iMessage-style web chat for Claude Code \u2014 test surface with file upload and edits. No tokens, no access control.",
+    "verified": false,
+    "type": "external",
+    "installId": "fakechat@claude-plugins-official"
+  },
+  {
+    "name": "firebase",
+    "description": "Google Firebase MCP integration. Manage Firestore databases, authentication, cloud functions, hosting, and storage. Build and manage your Firebase backend directly from your development workflow.",
+    "verified": false,
+    "type": "external",
+    "installId": "firebase@claude-plugins-official"
+  },
+  {
+    "name": "github",
+    "description": "Official GitHub MCP server for repository management. Create issues, manage pull requests, review code, search repositories, and interact with GitHub's full API directly from Claude Code.",
+    "verified": false,
+    "type": "external",
+    "installId": "github@claude-plugins-official"
+  },
+  {
+    "name": "gitlab",
+    "description": "GitLab DevOps platform integration. Manage repositories, merge requests, CI/CD pipelines, issues, and wikis. Full access to GitLab's comprehensive DevOps lifecycle tools.",
+    "verified": false,
+    "type": "external",
+    "installId": "gitlab@claude-plugins-official"
+  },
+  {
+    "name": "greptile",
+    "description": "AI code review agent for GitHub and GitLab. View and resolve Greptile's PR review comments directly from Claude Code.",
+    "verified": false,
+    "type": "external",
+    "installId": "greptile@claude-plugins-official"
+  },
+  {
+    "name": "laravel-boost",
+    "description": "Laravel development toolkit MCP server. Provides intelligent assistance for Laravel applications including Artisan commands, Eloquent queries, routing, migrations, and framework-specific code generation.",
+    "verified": false,
+    "type": "external",
+    "installId": "laravel-boost@claude-plugins-official"
+  },
+  {
+    "name": "linear",
+    "description": "Linear issue tracking integration. Create issues, manage projects, update statuses, search across workspaces, and streamline your software development workflow with Linear's modern issue tracker.",
+    "verified": false,
+    "type": "external",
+    "installId": "linear@claude-plugins-official"
+  },
+  {
+    "name": "playwright",
+    "description": "Browser automation and end-to-end testing MCP server by Microsoft. Enables Claude to interact with web pages, take screenshots, fill forms, click elements, and perform automated browser testing workflows.",
+    "verified": false,
+    "type": "external",
+    "installId": "playwright@claude-plugins-official"
+  },
+  {
+    "name": "serena",
+    "description": "Semantic code analysis MCP server providing intelligent code understanding, refactoring suggestions, and codebase navigation through language server protocol integration.",
+    "verified": false,
+    "type": "external",
+    "installId": "serena@claude-plugins-official"
+  },
+  {
+    "name": "slack",
+    "description": "Slack workspace integration. Search messages, access channels, read threads, and stay connected with your team's communications while coding. Find relevant discussions and context quickly.",
+    "verified": false,
+    "type": "external",
+    "installId": "slack@claude-plugins-official"
+  },
+  {
+    "name": "supabase",
+    "description": "Supabase MCP integration for database operations, authentication, storage, and real-time subscriptions. Manage your Supabase projects, run SQL queries, and interact with your backend directly.",
+    "verified": false,
+    "type": "external",
+    "installId": "supabase@claude-plugins-official"
+  },
+  {
+    "name": "telegram",
+    "description": "Telegram channel for Claude Code \u2014 messaging bridge with built-in access control. Manage pairing, allowlists, and policy via /telegram:access.",
+    "verified": false,
+    "type": "external",
+    "installId": "telegram@claude-plugins-official"
+  }
+]

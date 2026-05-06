@@ -2,7 +2,7 @@
   "name": "claude-code-chat",
   "displayName": "Chat for Claude Code",
   "description": "Beautiful Claude Code Chat Interface for VS Code",
-  "version": "1.2.0",
+  "version": "2.0.8",
   "publisher": "AndrePimenta",
   "author": "Andre Pimenta",
   "repository": {
@@ -172,8 +172,8 @@
         },
         "claudeCodeChat.wsl.nodePath": {
           "type": "string",
-          "default": "/usr/bin/node",
-          "description": "Path to Node.js in the WSL distribution"
+          "default": "",
+          "description": "Optional path to Node.js in the WSL distribution. Only needed if Claude was installed via npm. Recent Claude installs ship as a native executable and don't require Node."
         },
         "claudeCodeChat.wsl.claudePath": {
           "type": "string",
@@ -196,15 +196,25 @@
           "default": false,
           "description": "Enable Yolo Mode to skip all permission checks. Use with caution as Claude can execute any command without asking."
         },
-        "claudeCodeChat.notifications.windowsSound": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable Windows system notification sound when Claude completes a response"
-        },
-        "claudeCodeChat.notifications.customSoundPath": {
+        "claudeCodeChat.executable.path": {
           "type": "string",
           "default": "",
-          "description": "Path to custom sound file to play when Claude completes a response (e.g., C:/Windows/Media/custom.wav)"
+          "description": "Custom path to the Claude Code executable. Leave empty to use the default 'claude' command."
+        },
+        "claudeCodeChat.environment.variables": {
+          "type": "object",
+          "default": {},
+          "description": "Custom environment variables to pass to Claude Code. Example: {\"ANTHROPIC_API_KEY\": \"sk-...\"}"
+        },
+        "claudeCodeChat.environment.disabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "When enabled, custom environment variables are not passed to Claude Code."
+        },
+        "claudeCodeChat.router.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
         }
       }
     }
@@ -215,7 +225,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
+    "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
