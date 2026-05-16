@@ -998,7 +998,8 @@ class ClaudeChatProvider {
 			...process.env,
 			FORCE_COLOR: '0',
 			NO_COLOR: '1',
-			...customEnvVars  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
+			...customEnvVars,  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
+			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode'
 		};
 
 		// OpenCredits: clear Anthropic-specific vars so Claude CLI uses env vars directly
@@ -1031,6 +1032,7 @@ class ClaudeChatProvider {
 				wslEnvOverrides['DISABLE_TELEMETRY'] = 'true';
 				wslEnvOverrides['DISABLE_COST_WARNINGS'] = 'true';
 			}
+			wslEnvOverrides['CLAUDE_CODE_ENTRYPOINT'] = 'claude-vscode';
 			const envExports = Object.entries(wslEnvOverrides)
 				.map(([k, v]) => `export ${k}="${v.replace(/"/g, '\\"')}"`)
 				.join(' && ');
@@ -1574,6 +1576,19 @@ class ClaudeChatProvider {
 					this._requestCount++;
 					if (jsonData.total_cost_usd) {
 						this._totalCost += jsonData.total_cost_usd;
+					}
+
+					// Lifetime success counter — survives reloads, scoped to the
+					// extension globalState. Used for milestone analytics (1, 50, 100, 200, …).
+					try {
+						const prev = this._context.globalState.get<number>('lifetimeMessageSuccessCount', 0) || 0;
+						const next = prev + 1;
+						this._context.globalState.update('lifetimeMessageSuccessCount', next);
+						if (next === 1 || next === 50 || (next > 50 && next % 100 === 0)) {
+							this._postMessage({ type: 'messageMilestone', count: next });
+						}
+					} catch {
+						// best-effort — analytics shouldn't break the response path
 					}
 
 
@@ -3632,6 +3647,8 @@ class ClaudeChatProvider {
 
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
+		const platform = process.platform;
+		const arch = os.arch();
 
 		// WSL install needs to run inside the distro, not on the Windows host.
 		// The old shell-based flow didn't handle this either — not regressing,
@@ -3643,7 +3660,9 @@ class ClaudeChatProvider {
 				success: false,
 				method,
 				error: 'WSL mode: please install Claude inside your WSL distro, then set claudeCodeChat.wsl.claudePath.',
-				errorCode: 'UNSUPPORTED_PLATFORM'
+				errorCode: 'WSL_NOT_SUPPORTED',
+				platform,
+				arch
 			});
 			return;
 		}
@@ -3653,8 +3672,10 @@ class ClaudeChatProvider {
 				type: 'installComplete',
 				success: false,
 				method,
-				error: `Unsupported platform: ${process.platform}/${os.arch()}. Install Claude manually from https://code.claude.com.`,
-				errorCode: 'UNSUPPORTED_PLATFORM'
+				error: `Unsupported platform: ${platform}/${arch}. Install Claude manually from https://code.claude.com.`,
+				errorCode: 'UNSUPPORTED_PLATFORM',
+				platform,
+				arch
 			});
 			return;
 		}
@@ -3683,7 +3704,9 @@ class ClaudeChatProvider {
 				configuredPath: existing ? undefined : result.binaryPath,
 				existingPathRespected: !!existing,
 				source: result.source,
-				version: result.version
+				version: result.version,
+				platform,
+				arch
 			});
 		} catch (err) {
 			const d = err instanceof DownloaderError ? err : null;
@@ -3698,7 +3721,9 @@ class ClaudeChatProvider {
 				// analytics can bucket "both npm+cdn failed with NETWORK" vs
 				// "npm INTEGRITY, cdn NETWORK" etc.
 				npmCode: typeof details?.npmCode === 'string' ? details.npmCode : undefined,
-				cdnCode: typeof details?.cdnCode === 'string' ? details.cdnCode : undefined
+				cdnCode: typeof details?.cdnCode === 'string' ? details.cdnCode : undefined,
+				platform,
+				arch
 			});
 		}
 	}

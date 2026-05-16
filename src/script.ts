@@ -2933,19 +2933,23 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (ocOption) ocOption.style.display = opencreditsEnabled ? '' : 'none';
 
 			if (success) {
-				const baseProps = { source: extra && extra.source, version: extra && extra.version };
+				const existingPathRespected = !!(extra && extra.existingPathRespected);
+				const autoConfigured = !!(extra && extra.configuredPath);
+				sendStats('Install success', {
+					source: extra && extra.source,
+					version: extra && extra.version,
+					platform: extra && extra.platform,
+					arch: extra && extra.arch,
+					existingPathRespected: existingPathRespected,
+					autoConfigured: autoConfigured
+				});
+				successEl.querySelector('.install-success-text').textContent = 'Installed';
 				if (extra && extra.configuredPath) {
-					sendStats('Install auto configured path', Object.assign({ existingPathRespected: !!extra.existingPathRespected }, baseProps));
-					successEl.querySelector('.install-success-text').textContent = 'Installed';
 					successEl.querySelector('.install-success-hint').textContent = 'Configured automatically. Send a message to get started.';
-				} else if (extra && extra.existingPathRespected) {
-					sendStats('Install success', baseProps);
-					successEl.querySelector('.install-success-text').textContent = 'Installed';
+				} else if (existingPathRespected) {
 					successEl.querySelector('.install-success-hint').textContent =
 						'Your existing executable.path setting was left unchanged. Send a message to get started.';
 				} else {
-					sendStats('Install success', baseProps);
-					successEl.querySelector('.install-success-text').textContent = 'Installed';
 					successEl.querySelector('.install-success-hint').textContent = 'Send a message to get started';
 				}
 			} else {
@@ -2954,6 +2958,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					errorCode: errorCode,
 					npmCode: extra && extra.npmCode,
 					cdnCode: extra && extra.cdnCode,
+					platform: extra && extra.platform,
+					arch: extra && extra.arch,
 					error: (error || 'Unknown error').substring(0, 200)
 				});
 				successEl.querySelector('.install-success-icon').style.display = 'none';
@@ -2962,6 +2968,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					successEl.querySelector('.install-success-text').textContent = 'Unsupported platform';
 					successEl.querySelector('.install-success-hint').textContent =
 						error || 'Your platform is not supported. Install Claude manually from https://code.claude.com.';
+				} else if (errorCode === 'WSL_NOT_SUPPORTED') {
+					successEl.querySelector('.install-success-text').textContent = 'WSL mode';
+					successEl.querySelector('.install-success-hint').textContent =
+						error || 'Install Claude inside your WSL distro and set claudeCodeChat.wsl.claudePath.';
 				} else {
 					successEl.querySelector('.install-success-text').textContent = 'Installation failed';
 					successEl.querySelector('.install-success-hint').textContent =
@@ -3805,6 +3815,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						total: message.total,
 						message: message.message
 					});
+					break;
+
+				case 'messageMilestone':
+					sendStats('Message milestone', { count: message.count });
 					break;
 
 				case 'showRestoreOption':
