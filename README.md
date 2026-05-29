@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/andrepimenta-claude-code-chat-badge.png)](https://mseep.ai/app/andrepimenta-claude-code-chat)
+
 # 🚀 Claude Code Chat - Beautiful Claude Code Chat Interface for VS Code
 
 [![VS Code Extension](https://img.shields.io/badge/VS%20Code-Extension-blue?style=for-the-badge&logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=andrepimenta.claude-code-chat)
