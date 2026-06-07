@@ -4,6 +4,18 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.1.0] - 2026-06-07
+
+### 🚀 Features Added
+- **Sponsor button**: Added a Sponsor button on both the GitHub repository (`.github/FUNDING.yml`) and the VS Code Marketplace listing (`sponsor` field in `package.json`), linking to GitHub Sponsors.
+- **GPT 5.5 as the default GPT model**: The "GPT" quick-select now targets OpenAI's mainline GPT 5.5, replacing the previous GPT 5.3 Codex entry, with a faster `gpt-5.4-mini` tier.
+
+### 🐛 Bug Fixes
+- **Valid fast-tier GPT fallback**: The bundled model fallback no longer points the GPT fast (haiku) tier at a non-existent `openai/gpt-5.5-mini`. It now uses `openai/gpt-5.4-mini`, matching what the live resolver selects, so the offline/fallback path can no longer hand out an invalid model id.
+
+### 🔧 Technical Improvements
+- **OpenAI model resolver retargeted**: `model-updater.ts` now resolves the OpenAI quick-model against mainline `openai/gpt-<version>` and `openai/gpt-<version>-mini` slugs instead of the `-codex` / `-codex-mini` variants, so auto-update tracks the latest general GPT release.
+
 ## [2.0.7] - 2026-04-24
 
 ### 🚀 Features Added

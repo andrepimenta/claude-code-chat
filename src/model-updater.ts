@@ -63,8 +63,8 @@ const providerResolvers: Record<string, ProviderResolver> = {
 		haiku: /^zai\/GLM-([\d.]+)-(?:Air|Flash)$/i
 	},
 	'openai/gpt-': {
-		main: /^openai\/gpt-([\d.]+)-codex$/,
-		haiku: /^openai\/gpt-([\d.]+)-codex-mini$/
+		main: /^openai\/gpt-([\d.]+)$/,
+		haiku: /^openai\/gpt-([\d.]+)-mini$/
 	},
 	'gemini-': {
 		main: /^(?:google\/)?gemini-([\d.]+)-pro-preview$/,
