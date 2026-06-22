@@ -1378,11 +1378,22 @@ class ClaudeChatProvider {
 					// Process each content item in the assistant message
 					for (const content of jsonData.message.content) {
 						if (content.type === 'text' && content.text.trim()) {
+							const text = content.text.trim();
+
 							// Show text content and save to conversation
 							this._sendAndSaveMessage({
 								type: 'output',
-								data: content.text.trim()
+								data: text
 							});
+
+							// Authentication failures surface as assistant text
+							// (e.g. "Failed to authenticate. API Error: 401 Invalid
+							// authentication credentials"). Prompt the user to log
+							// in when we see one.
+							if (this._isLoginError(text)) {
+								this._handleLoginRequired();
+								return;
+							}
 						} else if (content.type === 'thinking' && content.thinking.trim()) {
 							// Show thinking content and save to conversation
 							this._sendAndSaveMessage({
@@ -1538,12 +1549,7 @@ class ClaudeChatProvider {
 			case 'result':
 				if (jsonData.subtype === 'success') {
 					// Check for login errors
-					if (jsonData.is_error && jsonData.result && (
-						jsonData.result.includes('Invalid API key') ||
-						jsonData.result.includes('Not logged in') ||
-						jsonData.result.includes('/login') ||
-						jsonData.result.includes('not authenticated')
-					)) {
+					if (jsonData.is_error && this._isLoginErrorResult(jsonData.result)) {
 						this._handleLoginRequired();
 						return;
 					}
@@ -1663,6 +1669,33 @@ class ClaudeChatProvider {
 			type: 'configChanged',
 			data: '⚙️ WSL configuration changed. Started a new session.'
 		});
+	}
+
+	// Unambiguous authentication-failure strings — safe to match anywhere,
+	// including free-form assistant text, without false positives.
+	private _isLoginError(text: unknown): boolean {
+		if (typeof text !== 'string' || !text) { return false; }
+		const patterns = [
+			'Failed to authenticate',
+			'Invalid authentication credentials',
+			'API Error: 401',
+			'authentication_error',
+			'Invalid API key'
+		];
+		return patterns.some(pattern => text.includes(pattern));
+	}
+
+	// Broader login-required signals — only trusted when they arrive on an
+	// error result, since these phrases can appear in benign explanations.
+	private _isLoginErrorResult(text: unknown): boolean {
+		if (typeof text !== 'string' || !text) { return false; }
+		if (this._isLoginError(text)) { return true; }
+		const patterns = [
+			'Not logged in',
+			'/login',
+			'not authenticated'
+		];
+		return patterns.some(pattern => text.includes(pattern));
 	}
 
 	private async _handleLoginRequired() {
@@ -3754,7 +3787,7 @@ class ClaudeChatProvider {
 		const terminal = vscode.window.createTerminal({
 			name: 'Claude Login',
 			location: { viewColumn: vscode.ViewColumn.One },
-			...this._buildClaudeTerminalOptions()
+			...this._buildClaudeTerminalOptions(['/login'])
 		});
 		terminal.show();
 	}

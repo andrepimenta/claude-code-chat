@@ -72,7 +72,8 @@ const providerResolvers: Record<string, ProviderResolver> = {
 		haiku: /^(?:google\/)?gemini-([\d.]+)-flash(?:-preview)?$/
 	},
 	'deepseek/deepseek-': {
-		main: /^deepseek\/deepseek-v([\d.]+)[-:]thinking$/
+		main: /^deepseek\/deepseek-v([\d.]+)-pro$/,
+		haiku: /^deepseek\/deepseek-v([\d.]+)-flash$/
 	},
 	'minimax/minimax-': {
 		main: /^minimax\/minimax-m([\d.]+)$/

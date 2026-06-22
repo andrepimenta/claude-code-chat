@@ -54,13 +54,14 @@
         "tierModels": { "sonnet": "zai/glm-5", "opus": "zai/glm-5", "haiku": "zai/glm-4.7-flash" }
     },
     {
-        "id": "deepseek/deepseek-v3.2-thinking",
-        "name": "DeepSeek V3.2 Thinking",
-        "description": "DeepSeek V3.2 thinking/reasoner mode. Reasoning-first model built for agents. First DeepSeek model with thinking-in-tool-use capability.",
+        "id": "deepseek/deepseek-v4-pro",
+        "name": "DeepSeek V4 Pro",
+        "description": "DeepSeek V4 Pro with hybrid sparse attention for efficient long-context reasoning and agentic tool use.",
         "context_length": 128000,
         "max_output_tokens": 64000,
         "credits_per_request": 0.21875,
         "provider": "DeepSeek",
-        "quickLabel": "DeepSeek"
+        "quickLabel": "DeepSeek",
+        "tierModels": { "sonnet": "deepseek/deepseek-v4-pro", "opus": "deepseek/deepseek-v4-pro", "haiku": "deepseek/deepseek-v4-flash" }
     }
 ]
