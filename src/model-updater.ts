@@ -66,7 +66,7 @@ const providerResolvers: Record<string, ProviderResolver> = {
 		main: /^openai\/gpt-([\d.]+)$/,
 		haiku: /^openai\/gpt-([\d.]+)-mini$/
 	},
-	'gemini-': {
+	'google/gemini-': {
 		main: /^(?:google\/)?gemini-([\d.]+)-pro-preview$/,
 		opus: /^(?:google\/)?gemini-([\d.]+)-pro-preview-thinking$/,
 		haiku: /^(?:google\/)?gemini-([\d.]+)-flash(?:-preview)?$/
@@ -79,8 +79,8 @@ const providerResolvers: Record<string, ProviderResolver> = {
 		main: /^minimax\/minimax-m([\d.]+)$/
 	},
 	'moonshotai/kimi-': {
-		main: /^moonshotai\/kimi-k([\d.]+)$/,
-		haiku: /^moonshotai\/kimi-k([\d.]+)-turbo$/
+		main: /^moonshotai\/kimi-k([\d.]+)-code$/,
+		haiku: /^moonshotai\/kimi-k([\d.]+)-code$/
 	}
 };
 

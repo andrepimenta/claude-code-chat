@@ -4,6 +4,19 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.2.0] - 2026-06-22
+
+### 🚀 Features Added
+- **Automatic login prompt on authentication failure**: When Claude returns a 401 / authentication error (e.g. "Failed to authenticate. API Error: 401 Invalid authentication credentials"), the chat now detects it and surfaces the login flow automatically instead of leaving the user on a dead error message.
+
+### 🐛 Bug Fixes
+- **Login terminal runs `claude /login`**: The "Claude Login" terminal now launches `claude /login` directly instead of a bare `claude` session, so it always lands on the login flow even when a session is already authenticated.
+
+### 🔧 Technical Improvements
+- **Shared auth-error detection**: Login-required detection is consolidated into reusable helpers covering both assistant output and result messages, with strict matching on assistant text to avoid false positives.
+- **DeepSeek model refresh**: The recommended/bundled DeepSeek model now targets V4 Pro with a V4 Flash fast tier, and the resolver tracks the `-pro` / `-flash` slugs.
+- **Packaging**: `social-preview.png` is excluded from the published `.vsix` via `.vscodeignore`.
+
 ## [2.1.0] - 2026-06-07
 
 ### 🚀 Features Added

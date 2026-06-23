@@ -2,7 +2,7 @@
   "name": "claude-code-chat",
   "displayName": "Chat for Claude Code",
   "description": "Beautiful Claude Code Chat Interface for VS Code",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "publisher": "AndrePimenta",
   "author": "Andre Pimenta",
   "repository": {
@@ -220,7 +220,8 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
-    "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec"
+    "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

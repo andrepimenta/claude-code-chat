@@ -1671,18 +1671,12 @@ class ClaudeChatProvider {
 		});
 	}
 
-	// Unambiguous authentication-failure strings — safe to match anywhere,
-	// including free-form assistant text, without false positives.
+	// The CLI prints this exact line when the active credentials are rejected.
+	// Matching the full string keeps it from firing on any other text, so it's
+	// safe to check even on free-form assistant output.
 	private _isLoginError(text: unknown): boolean {
 		if (typeof text !== 'string' || !text) { return false; }
-		const patterns = [
-			'Failed to authenticate',
-			'Invalid authentication credentials',
-			'API Error: 401',
-			'authentication_error',
-			'Invalid API key'
-		];
-		return patterns.some(pattern => text.includes(pattern));
+		return text.includes('Failed to authenticate. API Error: 401 Invalid authentication credentials');
 	}
 
 	// Broader login-required signals — only trusted when they arrive on an
@@ -1691,6 +1685,7 @@ class ClaudeChatProvider {
 		if (typeof text !== 'string' || !text) { return false; }
 		if (this._isLoginError(text)) { return true; }
 		const patterns = [
+			'Invalid API key',
 			'Not logged in',
 			'/login',
 			'not authenticated'
