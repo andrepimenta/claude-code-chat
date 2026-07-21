@@ -4086,8 +4086,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			var pending = document.querySelectorAll('.permission-request[data-status="pending"], .ask-user-question[data-status="pending"]');
 			countSpan.textContent = String(pending.length);
-			badge.style.display = pending.length > 0 ? 'block' : 'none';
+			badge.style.display = pending.length > 0 ? 'flex' : 'none';
 		}
+
+		var pendingQuestionHighlightTimeout = null;
+		var pendingQuestionHighlightEl = null;
 
 		function scrollToOldestPendingQuestion() {
 			var pending = document.querySelectorAll('.permission-request[data-status="pending"], .ask-user-question[data-status="pending"]');
@@ -4096,9 +4099,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var oldest = pending[0];
 			oldest.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+			if (pendingQuestionHighlightTimeout) {
+				clearTimeout(pendingQuestionHighlightTimeout);
+				if (pendingQuestionHighlightEl) pendingQuestionHighlightEl.classList.remove('question-highlight');
+			}
+
+			pendingQuestionHighlightEl = oldest;
 			oldest.classList.add('question-highlight');
-			setTimeout(function() {
+			pendingQuestionHighlightTimeout = setTimeout(function() {
 				oldest.classList.remove('question-highlight');
+				pendingQuestionHighlightTimeout = null;
+				pendingQuestionHighlightEl = null;
 			}, 2000);
 		}
 
@@ -4133,8 +4144,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				decisionDiv.className = \`permission-decision \${decisionClass}\`;
 				decisionDiv.innerHTML = \`\${emoji} \${decision}\`;
 				permissionContent.appendChild(decisionDiv);
-				
+
 				permissionMsg.classList.add('permission-decided', decisionClass);
+				permissionMsg.dataset.status = decisionClass === 'allowed' ? 'approved' : 'denied';
+				updatePendingQuestionsBadge();
 			}
 		}
 

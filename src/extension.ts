@@ -3319,17 +3319,20 @@ class ClaudeChatProvider {
 							: message.data;
 
 						// For permission requests loaded from history, mark pending ones as expired
-						// ONLY if there's no active Claude process (i.e., VS Code was restarted)
+						// unless the request ID is still actually open (i.e. this history belongs
+						// to the currently running Claude process, not an unrelated old conversation
+						// loaded while a different process happens to be running).
 						if (message.messageType === 'permissionRequest' &&
 							message.data?.status === 'pending' &&
-							!this._currentClaudeProcess) {
+							!this._pendingPermissionRequests.has(message.data?.id)) {
 							messageData = { ...message.data, status: 'expired' };
 						}
 
-						// For askUserQuestion loaded from history, expire pending ones if no active process
+						// For askUserQuestion loaded from history, expire pending ones whose request
+						// ID is no longer tracked as open (same reasoning as permission requests above).
 						if (message.messageType === 'askUserQuestion' &&
 							message.data?.status === 'pending' &&
-							!this._currentClaudeProcess) {
+							!this._pendingPermissionRequests.has(message.data?.id)) {
 							messageData = { ...message.data, status: 'expired' };
 						}
 

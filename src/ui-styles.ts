@@ -3750,8 +3750,12 @@ const styles = `
     }
 
     .question-highlight {
-        animation: pulse 0.6s ease-in-out 2;
-        box-shadow: 0 0 0 2px rgba(252, 188, 0, 0.6);
+        animation: questionHighlightPulse 0.6s ease-in-out 2;
+    }
+
+    @keyframes questionHighlightPulse {
+        0%, 100% { box-shadow: 0 0 0 2px rgba(252, 188, 0, 0.6); }
+        50% { box-shadow: 0 0 0 4px rgba(252, 188, 0, 0.3); }
     }
 
     /* Markdown content styles */
