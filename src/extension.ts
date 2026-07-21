@@ -3896,7 +3896,7 @@ class ClaudeChatProvider {
 			return;
 		}
 
-		const mdFiles = entries.filter(([name, type]) => type === vscode.FileType.File && name.toLowerCase().endsWith('.md'));
+		const mdFiles = entries.filter(([name, type]) => (type & vscode.FileType.File) !== 0 && name.toLowerCase().endsWith('.md'));
 		if (mdFiles.length === 0) {
 			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
 			return;
@@ -3911,6 +3911,11 @@ class ClaudeChatProvider {
 			} catch { /* stat failed, skip */ }
 		}
 		plans.sort((a, b) => b.mtime - a.mtime);
+
+		if (plans.length === 0) {
+			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
+			return;
+		}
 
 		if (plans.length === 1) {
 			this._openFileInEditor(plans[0].filePath);
