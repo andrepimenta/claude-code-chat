@@ -1685,7 +1685,8 @@ class ClaudeChatProvider {
 	// case only the strict, exact-match check should be trusted.
 	private _hasCustomAnthropicEndpoint(): boolean {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
-		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		const envsDisabled = config.get<boolean>('environment.disabled', false);
+		const envVars = envsDisabled ? {} : config.get<Record<string, string>>('environment.variables', {});
 		const baseUrl = (envVars['ANTHROPIC_BASE_URL'] || process.env.ANTHROPIC_BASE_URL || '').trim();
 		if (!baseUrl) { return false; }
 		if (baseUrl.includes('api.anthropic.com')) { return false; }
