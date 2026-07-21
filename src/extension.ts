@@ -3056,6 +3056,10 @@ class ClaudeChatProvider {
 	}
 
 	private async _deleteConversation(filename: string): Promise<void> {
+		if (path.basename(filename) !== filename || !this._conversationIndex.some(entry => entry.filename === filename)) {
+			return;
+		}
+
 		const choice = await vscode.window.showWarningMessage(
 			'Delete this conversation?',
 			{ modal: true },

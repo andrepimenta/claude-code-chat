@@ -4772,7 +4772,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				item.innerHTML = \`
 					<div class="conversation-item-top">
 						<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
-						<button class="conversation-delete-btn" title="Delete conversation" onclick="event.stopPropagation(); deleteConversation('\${conv.filename}')">✕</button>
+						<button class="conversation-delete-btn" title="Delete conversation" data-filename="\${escapeHtml(conv.filename)}" onclick="event.stopPropagation(); deleteConversation(this.dataset.filename)">✕</button>
 					</div>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
 					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
