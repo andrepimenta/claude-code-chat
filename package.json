@@ -60,6 +60,11 @@
         "title": "Open Claude Code Chat",
         "category": "Claude Code Chat",
         "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.showPlan",
+        "title": "Show Plan Files",
+        "category": "Claude Code Chat"
       }
     ],
     "keybindings": [
@@ -73,6 +78,9 @@
       "commandPalette": [
         {
           "command": "claude-code-chat.openChat"
+        },
+        {
+          "command": "claude-code-chat.showPlan"
         }
       ],
       "editor/context": [

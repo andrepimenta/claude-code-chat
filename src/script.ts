@@ -4319,6 +4319,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			});
 		}
 
+		function showPlanFiles() {
+			vscode.postMessage({
+				type: 'showPlanFiles'
+			});
+		}
+
 		function restoreToCommit(commitSha) {
 			vscode.postMessage({
 				type: 'restoreCommit',

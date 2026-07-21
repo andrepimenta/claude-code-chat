@@ -44,6 +44,15 @@ export function activate(context: vscode.ExtensionContext) {
 		provider.loadConversation(filename);
 	});
 
+	const showPlanDisposable = vscode.commands.registerCommand('claude-code-chat.showPlan', () => {
+		provider.showPlanFiles();
+	});
+
+	// Offer to notify Claude when a plan file (~/.claude/plans/*.md) is saved from the editor
+	const planFileSaveDisposable = vscode.workspace.onDidSaveTextDocument(document => {
+		provider.handlePlanFileSaved(document);
+	});
+
 	// Register webview view provider for sidebar chat (using shared provider instance)
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
@@ -98,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler);
+	context.subscriptions.push(disposable, loadConversationDisposable, showPlanDisposable, planFileSaveDisposable, configChangeDisposable, statusBarItem, uriHandler);
 }
 
 export function deactivate() {
@@ -594,6 +603,9 @@ class ClaudeChatProvider {
 			}
 			case 'openFile':
 				this._openFileInEditor(message.filePath);
+				return;
+			case 'showPlanFiles':
+				this.showPlanFiles();
 				return;
 			case 'openDiff':
 				this._openDiffEditor(message.oldContent, message.newContent, message.filePath);
@@ -3864,6 +3876,94 @@ class ClaudeChatProvider {
 
 	private _dismissWSLAlert() {
 		this._context.globalState.update('wslAlertDismissed', true);
+	}
+
+	// ─── Plan Files ───
+
+	private _getPlansDir(): string {
+		const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+		return path.join(homeDir, '.claude', 'plans');
+	}
+
+	public async showPlanFiles(): Promise<void> {
+		const plansDir = this._getPlansDir();
+
+		let entries: [string, vscode.FileType][];
+		try {
+			entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(plansDir));
+		} catch {
+			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
+			return;
+		}
+
+		const mdFiles = entries.filter(([name, type]) => type === vscode.FileType.File && name.toLowerCase().endsWith('.md'));
+		if (mdFiles.length === 0) {
+			vscode.window.showInformationMessage('No plan files found in ~/.claude/plans/');
+			return;
+		}
+
+		const plans: { name: string; filePath: string; mtime: number }[] = [];
+		for (const [name] of mdFiles) {
+			const filePath = path.join(plansDir, name);
+			try {
+				const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+				plans.push({ name, filePath, mtime: stat.mtime });
+			} catch { /* stat failed, skip */ }
+		}
+		plans.sort((a, b) => b.mtime - a.mtime);
+
+		if (plans.length === 1) {
+			this._openFileInEditor(plans[0].filePath);
+			return;
+		}
+
+		const picked = await vscode.window.showQuickPick(
+			plans.map(plan => ({
+				label: plan.name.replace(/\.md$/i, ''),
+				description: new Date(plan.mtime).toLocaleString(),
+				filePath: plan.filePath
+			})),
+			{ placeHolder: 'Select a plan file to open' }
+		);
+
+		if (picked) {
+			this._openFileInEditor(picked.filePath);
+		}
+	}
+
+	public async handlePlanFileSaved(document: vscode.TextDocument): Promise<void> {
+		const savedPath = document.uri.fsPath;
+		if (!savedPath.toLowerCase().endsWith('.md')) {
+			return;
+		}
+
+		const plansDir = path.resolve(this._getPlansDir());
+		const resolvedSavedPath = path.resolve(savedPath);
+		const isWithinPlansDir = process.platform === 'win32'
+			? resolvedSavedPath.toLowerCase().startsWith(plansDir.toLowerCase() + path.sep)
+			: resolvedSavedPath.startsWith(plansDir + path.sep);
+
+		if (!isWithinPlansDir) {
+			return;
+		}
+
+		const fileName = path.basename(savedPath, '.md');
+		const hasActiveWebview = !!(this._panel || this._webview);
+
+		if (!hasActiveWebview) {
+			vscode.window.showInformationMessage(`Plan file "${fileName}" saved.`);
+			return;
+		}
+
+		const selection = await vscode.window.showInformationMessage(
+			`Plan file "${fileName}" saved. Tell Claude about your changes?`,
+			'Send to Claude',
+			'Dismiss'
+		);
+
+		if (selection === 'Send to Claude') {
+			this._sendMessageToClaude(`I updated the plan file "${fileName}" in ~/.claude/plans/. Please re-read it and adjust your approach accordingly.`);
+		}
 	}
 
 	private async _openFileInEditor(filePath: string) {
