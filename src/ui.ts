@@ -788,6 +788,15 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 				</div>
 			</div>
 			
+			<!-- Project & User Commands Section (dynamic, from .claude/commands/*.md) -->
+			<div class="slash-commands-section" id="customCommandsSection" style="display: none;">
+				<h3>Project &amp; User Commands</h3>
+				<div class="slash-commands-info">
+					<p>Custom commands from .claude/commands/ (project and user). Click to insert into chat.</p>
+				</div>
+				<div class="slash-commands-list" id="customCommandsList"></div>
+			</div>
+
 			<!-- Custom Commands Section -->
 			<div class="slash-commands-section">
 				<h3>Custom Commands</h3>
