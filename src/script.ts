@@ -3751,6 +3751,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				case 'sessionCleared':
 					// Clear all messages from UI
 					messagesDiv.innerHTML = '';
+					updatePendingQuestionsBadge();
 					hideSessionInfo();
 					addMessage('🆕 Started new session', 'system');
 					// Reset totals
@@ -4029,6 +4030,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messageDiv.innerHTML = contentHtml;
 			messagesDiv.appendChild(messageDiv);
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+			updatePendingQuestionsBadge();
 		}
 
 		function updatePermissionStatus(id, status) {
@@ -4064,6 +4066,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				permissionMsg.classList.add('permission-decided', 'expired');
 			}
 			permissionContent.appendChild(decisionDiv);
+			updatePendingQuestionsBadge();
 		}
 
 		function expireAllPendingPermissions() {
@@ -4073,8 +4076,32 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					updatePermissionStatus(id, 'expired');
 				}
 			});
+			updatePendingQuestionsBadge();
 		}
-		
+
+		function updatePendingQuestionsBadge() {
+			var badge = document.getElementById('pendingQuestionsBadge');
+			var countSpan = document.getElementById('pendingQuestionsCount');
+			if (!badge || !countSpan) return;
+
+			var pending = document.querySelectorAll('.permission-request[data-status="pending"], .ask-user-question[data-status="pending"]');
+			countSpan.textContent = String(pending.length);
+			badge.style.display = pending.length > 0 ? 'block' : 'none';
+		}
+
+		function scrollToOldestPendingQuestion() {
+			var pending = document.querySelectorAll('.permission-request[data-status="pending"], .ask-user-question[data-status="pending"]');
+			if (pending.length === 0) return;
+
+			var oldest = pending[0];
+			oldest.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+			oldest.classList.add('question-highlight');
+			setTimeout(function() {
+				oldest.classList.remove('question-highlight');
+			}, 2000);
+		}
+
 		function respondToPermission(id, approved, alwaysAllow = false) {
 			// Send response back to extension
 			vscode.postMessage({
@@ -4238,6 +4265,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				var firstInput = messageDiv.querySelector('.question-option input, .question-freetext-input');
 				if (firstInput) firstInput.focus();
 			}
+			updatePendingQuestionsBadge();
 		}
 
 		function submitAskUserQuestionAnswers(requestId) {
@@ -4304,6 +4332,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 
 			container.classList.add('ask-question-decided');
+			updatePendingQuestionsBadge();
 		}
 
 		window.submitAskUserQuestionAnswers = submitAskUserQuestionAnswers;
