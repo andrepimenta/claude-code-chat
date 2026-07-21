@@ -1174,10 +1174,17 @@ class ClaudeChatProvider {
 
 		let rawOutput = '';
 		let errorOutput = '';
+		// Some launchers (e.g. wsl.exe when the configured distro doesn't exist)
+		// write their error text to stdout instead of stderr. Keep a full copy
+		// so we can still show the user something instead of failing silently
+		// (rawOutput itself only ever holds the last incomplete JSON line).
+		let stdoutForErrorFallback = '';
 
 		if (claudeProcess.stdout) {
 			claudeProcess.stdout.on('data', (data) => {
-				rawOutput += data.toString();
+				const chunk = data.toString();
+				rawOutput += chunk;
+				stdoutForErrorFallback += chunk;
 
 				// Process JSON stream line by line
 				const lines = rawOutput.split('\n');
@@ -1250,18 +1257,30 @@ class ClaudeChatProvider {
 				data: { isProcessing: false }
 			});
 
-			if (code !== 0 && errorOutput.trim()) {
+			if (code !== 0) {
+				// Fall back to stdout text if the process never wrote to stderr
+				// (e.g. wsl.exe reports "distro not found" on stdout, not stderr).
+				// Strip stray NUL bytes some launchers emit when writing UTF-16 text
+				// to a stream Node decodes as UTF-8.
+				const combinedError = (errorOutput.trim() || stdoutForErrorFallback.replace(/\u0000/g, '').trim());
 				// Check if claude command is not installed (Windows cmd.exe)
-				if (errorOutput.includes('not recognized as an internal or external command')) {
+				if (combinedError.includes('not recognized as an internal or external command')) {
 					this._postMessage({
 						type: 'showInstallModal',
 						installAttempted: !!this._context.globalState.get('installAttempted')
 					});
-				} else {
+				} else if (combinedError) {
 					// Error with output
 					this._sendAndSaveMessage({
 						type: 'error',
-						data: errorOutput.trim()
+						data: combinedError
+					});
+				} else {
+					// No output at all captured on either stream - still tell the user
+					// something failed instead of leaving the chat silently stuck.
+					this._sendAndSaveMessage({
+						type: 'error',
+						data: `Claude process exited with code ${code} and produced no output.`
 					});
 				}
 			}
