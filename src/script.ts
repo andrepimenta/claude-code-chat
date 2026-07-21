@@ -1338,6 +1338,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// Drag & drop support for images (from OS) and files (from VS Code explorer/editor tabs)
 		let dragCounter = 0;
 
+		function resetDragState() {
+			dragCounter = 0;
+			inputContainer.classList.remove('drag-over');
+		}
+
+		function isRelevantDrag(dataTransfer) {
+			if (!dataTransfer || !dataTransfer.types) {
+				return false;
+			}
+			return dataTransfer.types.indexOf('Files') !== -1 || dataTransfer.types.indexOf('text/uri-list') !== -1;
+		}
+
 		function insertFileReference(filePath) {
 			const cursorPos = messageInput.selectionStart;
 			const textBefore = messageInput.value.substring(0, cursorPos);
@@ -1370,6 +1382,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		document.body.addEventListener('dragenter', (e) => {
+			if (!isRelevantDrag(e.dataTransfer)) {
+				return;
+			}
 			e.preventDefault();
 			e.stopPropagation();
 			dragCounter++;
@@ -1377,11 +1392,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		});
 
 		document.body.addEventListener('dragover', (e) => {
+			if (!isRelevantDrag(e.dataTransfer)) {
+				return;
+			}
 			e.preventDefault();
 			e.stopPropagation();
 		});
 
 		document.body.addEventListener('dragleave', (e) => {
+			if (!isRelevantDrag(e.dataTransfer)) {
+				return;
+			}
 			e.preventDefault();
 			e.stopPropagation();
 			dragCounter = Math.max(0, dragCounter - 1);
@@ -1390,11 +1411,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
+		// Safety net: iframe boundaries in VS Code webviews often don't fire dragleave
+		// (e.g. dropping outside the webview, or aborting the drag with Esc)
+		window.addEventListener('dragend', resetDragState);
+		window.addEventListener('blur', resetDragState);
+
 		document.body.addEventListener('drop', (e) => {
+			if (!isRelevantDrag(e.dataTransfer)) {
+				return;
+			}
 			e.preventDefault();
 			e.stopPropagation();
-			dragCounter = 0;
-			inputContainer.classList.remove('drag-over');
+			resetDragState();
 
 			const dataTransfer = e.dataTransfer;
 			if (!dataTransfer) {
@@ -1433,12 +1461,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					.map(function(line) { return line.trim(); })
 					.filter(function(line) { return line && line.indexOf('#') !== 0; });
 
+				let insertedCount = 0;
 				uris.forEach(function(uri) {
 					const filePath = fileUriToPath(uri);
 					if (filePath) {
+						insertedCount++;
 						insertFileReference(filePath);
 					}
 				});
+
+				// uris were present but none were local file:// paths (e.g. untitled:, vscode-remote://)
+				if (uris.length > 0 && insertedCount === 0) {
+					showToast('Only local files can be dropped here');
+				}
 			}
 		});
 
