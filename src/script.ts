@@ -72,6 +72,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		const fileSearchInput = document.getElementById('fileSearchInput');
 		const fileList = document.getElementById('fileList');
 		const imageBtn = document.getElementById('imageBtn');
+		const inputContainer = document.getElementById('inputContainer');
 
 		let isProcessRunning = false;
 		let filteredFiles = [];
@@ -1332,6 +1333,113 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		messageInput.addEventListener('contextmenu', (e) => {
 			// Don't prevent default - allow context menu to show
 			// but ensure paste will work when selected
+		});
+
+		// Drag & drop support for images (from OS) and files (from VS Code explorer/editor tabs)
+		let dragCounter = 0;
+
+		function insertFileReference(filePath) {
+			const cursorPos = messageInput.selectionStart;
+			const textBefore = messageInput.value.substring(0, cursorPos);
+			const textAfter = messageInput.value.substring(cursorPos);
+			const newText = textBefore + '@' + filePath + ' ' + textAfter;
+
+			messageInput.value = newText;
+			messageInput.focus();
+
+			const newCursorPos = textBefore.length + filePath.length + 2;
+			messageInput.setSelectionRange(newCursorPos, newCursorPos);
+			adjustTextareaHeight();
+		}
+
+		function fileUriToPath(uri) {
+			if (!uri || uri.indexOf('file://') !== 0) {
+				return null;
+			}
+			try {
+				let filePath = decodeURIComponent(uri.substring('file://'.length));
+				// Strip leading slash from Windows drive paths like /c:/Users/...
+				if (/^\\/[a-zA-Z]:\\//.test(filePath)) {
+					filePath = filePath.substring(1);
+				}
+				return filePath;
+			} catch (error) {
+				console.error('Failed to decode dropped file URI:', uri, error);
+				return null;
+			}
+		}
+
+		document.body.addEventListener('dragenter', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			dragCounter++;
+			inputContainer.classList.add('drag-over');
+		});
+
+		document.body.addEventListener('dragover', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+		});
+
+		document.body.addEventListener('dragleave', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			dragCounter = Math.max(0, dragCounter - 1);
+			if (dragCounter === 0) {
+				inputContainer.classList.remove('drag-over');
+			}
+		});
+
+		document.body.addEventListener('drop', (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+			dragCounter = 0;
+			inputContainer.classList.remove('drag-over');
+
+			const dataTransfer = e.dataTransfer;
+			if (!dataTransfer) {
+				return;
+			}
+
+			// Case 1: files dropped from the OS (e.g. Explorer/Finder) - attach images
+			if (dataTransfer.files && dataTransfer.files.length > 0) {
+				let hasSkippedFile = false;
+				for (let i = 0; i < dataTransfer.files.length; i++) {
+					const file = dataTransfer.files[i];
+					if (file.type && file.type.startsWith('image/')) {
+						const reader = new FileReader();
+						reader.onload = function(event) {
+							vscode.postMessage({
+								type: 'createImageFile',
+								imageData: event.target.result,
+								imageType: file.type
+							});
+						};
+						reader.readAsDataURL(file);
+					} else {
+						hasSkippedFile = true;
+					}
+				}
+				if (hasSkippedFile) {
+					showToast('Only image files can be dropped directly - use @ to reference other files');
+				}
+				return;
+			}
+
+			// Case 2: items dropped from VS Code (explorer/editor tabs) - insert as @ file references
+			const uriList = dataTransfer.getData('text/uri-list');
+			if (uriList) {
+				const uris = uriList.split('\\n')
+					.map(function(line) { return line.trim(); })
+					.filter(function(line) { return line && line.indexOf('#') !== 0; });
+
+				uris.forEach(function(uri) {
+					const filePath = fileUriToPath(uri);
+					if (filePath) {
+						insertFileReference(filePath);
+					}
+				});
+			}
 		});
 
 		// Initialize textarea height
