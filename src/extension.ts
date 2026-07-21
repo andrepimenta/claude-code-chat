@@ -3923,7 +3923,7 @@ class ClaudeChatProvider {
 			let description = '';
 			try {
 				const content = await vscode.workspace.fs.readFile(vscode.Uri.file(path.join(dirPath, name)));
-				const text = new TextDecoder().decode(content.slice(0, 2000));
+				const text = new TextDecoder().decode(content).substring(0, 2000);
 				description = this._parseCommandDescription(text);
 			} catch { /* unreadable file, fall back to empty description */ }
 			commands.push({ name: name.replace(/\.md$/i, ''), description });

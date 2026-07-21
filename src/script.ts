@@ -3336,7 +3336,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				const description = cmd.description && cmd.description.length > 0 ? cmd.description : fallbackDescription;
 
 				list.insertAdjacentHTML('beforeend', \`
-					<div class="slash-command-item" data-command="\${escapeHtml(cmd.name)}" onclick="useCustomCommand(this.dataset.command)">
+					<div class="slash-command-item" onclick="useCustomCommand(this.dataset.command)">
 						<div class="slash-command-icon">📄</div>
 						<div class="slash-command-content">
 							<div class="slash-command-title">/\${escapeHtml(cmd.name)}</div>
@@ -3344,6 +3344,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						</div>
 					</div>
 				\`);
+				// Set via dataset (not the HTML template) so the command name can never
+				// break out of an attribute, regardless of the characters it contains.
+				list.lastElementChild.dataset.command = cmd.name;
 			});
 
 			if (section) section.style.display = 'block';
