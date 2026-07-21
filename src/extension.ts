@@ -1873,6 +1873,9 @@ class ClaudeChatProvider {
 			} catch {
 				await vscode.workspace.fs.createDirectory(vscode.Uri.file(this._conversationsPath));
 			}
+
+			// Recover conversation files whose index entry was lost (e.g. crash/reload)
+			await this._recoverOrphanedConversations();
 		} catch (error: any) {
 			console.error('Failed to initialize conversations directory:', error.message);
 		}
@@ -3266,6 +3269,39 @@ class ClaudeChatProvider {
 
 	private _getLatestConversation(): any | undefined {
 		return this._conversationIndex.length > 0 ? this._conversationIndex[0] : undefined;
+	}
+
+	// Scan the conversations directory for .json files missing from the index
+	// (e.g. after a crash/reload) and re-add them so they don't get lost.
+	private async _recoverOrphanedConversations(): Promise<void> {
+		if (!this._conversationsPath) { return; }
+
+		try {
+			const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(this._conversationsPath));
+			const indexedFilenames = new Set(this._conversationIndex.map(entry => entry.filename));
+			let recovered = 0;
+
+			for (const [name, type] of entries) {
+				if ((type & vscode.FileType.File) === 0 || !name.endsWith('.json')) { continue; }
+				if (indexedFilenames.has(name)) { continue; }
+
+				try {
+					const filePath = path.join(this._conversationsPath, name);
+					const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+					const conversationData = JSON.parse(new TextDecoder().decode(content));
+					this._updateConversationIndex(name, conversationData);
+					recovered++;
+				} catch {
+					// Skip files that can't be parsed
+				}
+			}
+
+			if (recovered > 0) {
+				console.log(`Recovered ${recovered} orphaned conversation(s)`);
+			}
+		} catch {
+			// Conversations directory may not exist
+		}
 	}
 
 	private async _loadConversationHistory(filename: string): Promise<void> {
