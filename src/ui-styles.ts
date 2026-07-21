@@ -3888,9 +3888,45 @@ const styles = `
         background-color: var(--vscode-list-hoverBackground);
     }
 
+    .conversation-item-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+    }
+
     .conversation-title {
         font-weight: 500;
         margin-bottom: 4px;
+    }
+
+    .conversation-delete-btn {
+        flex-shrink: 0;
+        border: none;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1;
+    }
+
+    .conversation-delete-btn:hover {
+        color: var(--vscode-errorForeground);
+        background-color: var(--vscode-inputValidation-errorBackground);
+    }
+
+    .conversation-clear-all-btn {
+        padding: 4px 10px;
+        font-size: 12px;
+        color: var(--vscode-errorForeground);
+        border-color: var(--vscode-errorForeground);
+    }
+
+    .conversation-clear-all-btn:hover {
+        background-color: var(--vscode-inputValidation-errorBackground);
+        border-color: var(--vscode-errorForeground);
     }
 
     .conversation-meta {

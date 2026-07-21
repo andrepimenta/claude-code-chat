@@ -4564,9 +4564,22 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				type: 'loadConversation',
 				filename: filename
 			});
-			
+
 			// Hide conversation history and show chat
 			toggleConversationHistory();
+		}
+
+		function deleteConversation(filename) {
+			vscode.postMessage({
+				type: 'deleteConversation',
+				filename: filename
+			});
+		}
+
+		function clearAllConversations() {
+			vscode.postMessage({
+				type: 'clearAllConversations'
+			});
 		}
 
 		// File picker functions
@@ -4757,7 +4770,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 
 				item.innerHTML = \`
-					<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+					<div class="conversation-item-top">
+						<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+						<button class="conversation-delete-btn" title="Delete conversation" onclick="event.stopPropagation(); deleteConversation('\${conv.filename}')">✕</button>
+					</div>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
 					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
 				\`;

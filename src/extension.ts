@@ -446,6 +446,12 @@ class ClaudeChatProvider {
 			case 'loadConversation':
 				this.loadConversation(message.filename);
 				return;
+			case 'deleteConversation':
+				this._deleteConversation(message.filename);
+				return;
+			case 'clearAllConversations':
+				this._clearAllConversations();
+				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
 				return;
@@ -3047,6 +3053,60 @@ class ClaudeChatProvider {
 			type: 'conversationList',
 			data: this._conversationIndex
 		});
+	}
+
+	private async _deleteConversation(filename: string): Promise<void> {
+		const choice = await vscode.window.showWarningMessage(
+			'Delete this conversation?',
+			{ modal: true },
+			'Delete'
+		);
+		if (choice !== 'Delete') { return; }
+
+		try {
+			if (this._conversationsPath) {
+				const filePath = path.join(this._conversationsPath, filename);
+				try {
+					await vscode.workspace.fs.delete(vscode.Uri.file(filePath));
+				} catch {
+					// File might already be gone, ignore
+				}
+			}
+
+			this._conversationIndex = this._conversationIndex.filter(entry => entry.filename !== filename);
+			await this._context.workspaceState.update('claude.conversationIndex', this._conversationIndex);
+
+			this._sendConversationList();
+		} catch (error: any) {
+			console.error('Failed to delete conversation:', error.message);
+		}
+	}
+
+	private async _clearAllConversations(): Promise<void> {
+		const choice = await vscode.window.showWarningMessage(
+			'Delete ALL conversations? This cannot be undone.',
+			{ modal: true },
+			'Delete All'
+		);
+		if (choice !== 'Delete All') { return; }
+
+		try {
+			if (this._conversationsPath) {
+				try {
+					await vscode.workspace.fs.delete(vscode.Uri.file(this._conversationsPath), { recursive: true });
+					await vscode.workspace.fs.createDirectory(vscode.Uri.file(this._conversationsPath));
+				} catch {
+					// Directory might already be gone, ignore
+				}
+			}
+
+			this._conversationIndex = [];
+			await this._context.workspaceState.update('claude.conversationIndex', this._conversationIndex);
+
+			this._sendConversationList();
+		} catch (error: any) {
+			console.error('Failed to clear conversations:', error.message);
+		}
 	}
 
 	private async _sendWorkspaceFiles(searchTerm?: string): Promise<void> {
