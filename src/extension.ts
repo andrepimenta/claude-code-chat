@@ -959,9 +959,9 @@ class ClaudeChatProvider {
 			args.push('--permission-mode', 'plan');
 		}
 
-		// Add model selection for Claude models only (opus, sonnet)
+		// Add model selection for Claude models only (fable, opus, sonnet)
 		// OpenCredits models are handled via env vars or router mapping
-		const claudeModels = ['opus', 'sonnet'];
+		const claudeModels = ['fable', 'opus', 'sonnet'];
 		if (this._selectedModel && claudeModels.includes(this._selectedModel)) {
 			args.push('--model', this._selectedModel);
 		}
@@ -3481,7 +3481,7 @@ class ClaudeChatProvider {
 
 	private async _setSelectedModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
 		// Valid Claude models
-		const validClaudeModels = ['opus', 'sonnet', 'default'];
+		const validClaudeModels = ['fable', 'opus', 'sonnet', 'default'];
 
 		if (validClaudeModels.includes(model)) {
 			this._selectedModel = model;

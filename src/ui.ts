@@ -432,6 +432,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<span class="model-section-title">CLAUDE CODE STANDARD MODELS</span>
 				</div>
 				<div class="claude-cards-container" id="claudeModelCards">
+					<div class="claude-card" data-model="fable" onclick="selectModel('fable')">
+						<div class="claude-card-name">Fable</div>
+						<div class="claude-card-desc">Most intelligent, next-generation Claude model</div>
+					</div>
 					<div class="claude-card" data-model="opus" onclick="selectModel('opus')">
 						<div class="claude-card-name">Opus</div>
 						<div class="claude-card-desc">Most powerful, best for complex tasks</div>

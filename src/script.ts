@@ -2137,7 +2137,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		// Check if a model is a OpenCredits model (any model that's not a Claude model)
 		function isOpenCreditsModel(modelId) {
-			const claudeModels = ['opus', 'sonnet', 'default'];
+			const claudeModels = ['fable', 'opus', 'sonnet', 'default'];
 			return !claudeModels.includes(modelId);
 		}
 
@@ -2691,6 +2691,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// Helper function to get display name for a model
 		function getModelDisplayName(modelId) {
 			const claudeModels = {
+				'fable': 'Claude Fable',
 				'opus': 'Claude Opus',
 				'sonnet': 'Claude Sonnet',
 				'default': 'Claude'
@@ -2738,7 +2739,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			// Update inline model dropdown
 			if (modelDropdown) {
-				if (currentModel === 'opus') {
+				if (currentModel === 'fable') {
+					modelDropdown.textContent = 'Fable';
+				} else if (currentModel === 'opus') {
 					modelDropdown.textContent = 'Opus';
 				} else if (currentModel === 'sonnet') {
 					modelDropdown.textContent = 'Sonnet';
@@ -2751,9 +2754,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			if (currentModel === 'opus' || currentModel === 'sonnet') {
+			if (currentModel === 'fable' || currentModel === 'opus' || currentModel === 'sonnet') {
 				// Claude model selected - show model name, hide badge
-				const modelName = currentModel === 'opus' ? 'Claude Opus' : 'Claude Sonnet';
+				const modelName = currentModel === 'fable' ? 'Claude Fable' : currentModel === 'opus' ? 'Claude Opus' : 'Claude Sonnet';
 				selectorText.textContent = modelName;
 				selectorBadge.style.display = 'none';
 			} else if (currentModel === 'default' || predefinedModels.includes(currentModel)) {
@@ -3379,7 +3382,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 
 			// Check if this is a OpenCredits model (not a standard Claude model)
-			const claudeModels = ['opus', 'sonnet', 'default'];
+			const claudeModels = ['fable', 'opus', 'sonnet', 'default'];
 			const isOpenCreditsModel = !claudeModels.includes(model);
 
 			// If selecting a OpenCredits model and envs are disabled, re-enable them
