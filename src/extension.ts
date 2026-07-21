@@ -1679,15 +1679,30 @@ class ClaudeChatProvider {
 		return text.includes('Failed to authenticate. API Error: 401 Invalid authentication credentials');
 	}
 
+	// A custom (non-Anthropic, non-OpenCredits/router) endpoint may return its
+	// own error text that happens to contain one of the broad login patterns
+	// below (e.g. a relay pointing users to its own '/login' page). In that
+	// case only the strict, exact-match check should be trusted.
+	private _hasCustomAnthropicEndpoint(): boolean {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		const baseUrl = (envVars['ANTHROPIC_BASE_URL'] || process.env.ANTHROPIC_BASE_URL || '').trim();
+		if (!baseUrl) { return false; }
+		if (baseUrl.includes('api.anthropic.com')) { return false; }
+		if (baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787')) { return false; }
+		return true;
+	}
+
 	// Broader login-required signals — only trusted when they arrive on an
 	// error result, since these phrases can appear in benign explanations.
 	private _isLoginErrorResult(text: unknown): boolean {
 		if (typeof text !== 'string' || !text) { return false; }
 		if (this._isLoginError(text)) { return true; }
+		if (this._hasCustomAnthropicEndpoint()) { return false; }
 		const patterns = [
 			'Invalid API key',
 			'Not logged in',
-			'/login',
+			'Please run /login',
 			'not authenticated'
 		];
 		return patterns.some(pattern => text.includes(pattern));
