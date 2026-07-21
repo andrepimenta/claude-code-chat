@@ -207,10 +207,12 @@ class ClaudeChatProvider {
 
 		// Initialize backup repository and conversations
 		this._initializeBackupRepo();
-		this._initializeConversations();
 
-		// Load conversation index from workspace state
+		// Load conversation index from workspace state (before recovery runs inside
+		// _initializeConversations, which relies on this being populated already)
 		this._conversationIndex = this._context.workspaceState.get('claude.conversationIndex', []);
+
+		this._initializeConversations();
 
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
@@ -3234,14 +3236,15 @@ class ClaudeChatProvider {
 		this._sendOpenCreditsBalance();
 	}
 
-	private _updateConversationIndex(filename: string, conversationData: ConversationData): void {
+	// Build an index entry from parsed conversation data; shared by the normal save
+	// path and the orphan-recovery path.
+	private _buildConversationIndexEntry(filename: string, conversationData: ConversationData) {
 		// Extract first and last user messages
 		const userMessages = conversationData.messages.filter((m: any) => m.messageType === 'userInput');
 		const firstUserMessage = userMessages.length > 0 ? userMessages[0].data : 'No user message';
 		const lastUserMessage = userMessages.length > 0 ? userMessages[userMessages.length - 1].data : firstUserMessage;
 
-		// Create or update index entry
-		const indexEntry = {
+		return {
 			filename: filename,
 			sessionId: conversationData.sessionId,
 			startTime: conversationData.startTime || '',
@@ -3251,6 +3254,10 @@ class ClaudeChatProvider {
 			firstUserMessage: firstUserMessage.substring(0, 100), // Truncate for storage
 			lastUserMessage: lastUserMessage.substring(0, 100)
 		};
+	}
+
+	private _updateConversationIndex(filename: string, conversationData: ConversationData): void {
+		const indexEntry = this._buildConversationIndexEntry(filename, conversationData);
 
 		// Remove any existing entry for this session (in case of updates)
 		this._conversationIndex = this._conversationIndex.filter(entry => entry.filename !== conversationData.filename);
@@ -3289,7 +3296,18 @@ class ClaudeChatProvider {
 					const filePath = path.join(this._conversationsPath, name);
 					const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
 					const conversationData = JSON.parse(new TextDecoder().decode(content));
-					this._updateConversationIndex(name, conversationData);
+
+					// Skip files that don't look like a valid conversation (e.g. foreign/old schema)
+					if (!Array.isArray(conversationData?.messages) || typeof conversationData.sessionId !== 'string' || !conversationData.sessionId) {
+						continue;
+					}
+					if (typeof conversationData.totalCost !== 'number') {
+						conversationData.totalCost = 0;
+					}
+
+					// Add to the in-memory index only — do not call _updateConversationIndex here,
+					// which would unshift it as "latest" and persist to workspace state per file.
+					this._conversationIndex.push(this._buildConversationIndexEntry(name, conversationData));
 					recovered++;
 				} catch {
 					// Skip files that can't be parsed
@@ -3297,6 +3315,20 @@ class ClaudeChatProvider {
 			}
 
 			if (recovered > 0) {
+				// Re-sort by startTime (descending) so recovered — possibly old —
+				// conversations don't get treated as "latest" just because they were
+				// appended last. Missing/empty startTime sorts to the end.
+				this._conversationIndex.sort((a, b) => {
+					const aTime = a.startTime || '';
+					const bTime = b.startTime || '';
+					return aTime < bTime ? 1 : aTime > bTime ? -1 : 0;
+				});
+
+				if (this._conversationIndex.length > 50) {
+					this._conversationIndex = this._conversationIndex.slice(0, 50);
+				}
+
+				await this._context.workspaceState.update('claude.conversationIndex', this._conversationIndex);
 				console.log(`Recovered ${recovered} orphaned conversation(s)`);
 			}
 		} catch {
