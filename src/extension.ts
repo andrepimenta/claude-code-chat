@@ -14,6 +14,9 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
+// Base URL substrings that identify a known first-party endpoint (OpenCredits/router)
+const KNOWN_ENDPOINT_MARKERS = ['opencredits.ai', 'localhost:8787'];
+
 const exec = util.promisify(cp.exec);
 
 // Storage for diff content (used by DiffContentProvider)
@@ -289,8 +292,8 @@ class ClaudeChatProvider {
 			return false;
 		}
 		const envVars = config.get<Record<string, string>>('environment.variables', {});
-		const baseUrl = envVars['ANTHROPIC_BASE_URL'] || '';
-		return baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787');
+		const baseUrl = (envVars['ANTHROPIC_BASE_URL'] || '').toLowerCase();
+		return KNOWN_ENDPOINT_MARKERS.some(marker => baseUrl.includes(marker));
 	}
 
 	private async _setEnvsDisabled(disabled: boolean): Promise<void> {
@@ -1687,10 +1690,10 @@ class ClaudeChatProvider {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const envsDisabled = config.get<boolean>('environment.disabled', false);
 		const envVars = envsDisabled ? {} : config.get<Record<string, string>>('environment.variables', {});
-		const baseUrl = (envVars['ANTHROPIC_BASE_URL'] || process.env.ANTHROPIC_BASE_URL || '').trim();
+		const baseUrl = (envVars['ANTHROPIC_BASE_URL'] || process.env.ANTHROPIC_BASE_URL || '').trim().toLowerCase();
 		if (!baseUrl) { return false; }
 		if (baseUrl.includes('api.anthropic.com')) { return false; }
-		if (baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787')) { return false; }
+		if (KNOWN_ENDPOINT_MARKERS.some(marker => baseUrl.includes(marker))) { return false; }
 		return true;
 	}
 

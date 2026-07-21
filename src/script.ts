@@ -2119,6 +2119,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let hasOpenCreditsKey = false; // Whether OpenCredits key exists in env vars
 		let openCreditsBalance = null; // OpenCredits account balance
 		let envsDisabled = false; // Whether custom env vars are disabled
+		const OPENCREDITS_BASE_URL_MARKERS = ['opencredits', 'localhost:8787']; // Base URL substrings identifying an OpenCredits-style endpoint
 		let opencreditsEnabled = false; // Feature flag: whether OpenCredits is available in this region
 		let hasSavedOpenCreditsKey = false; // Whether a key exists in encrypted storage
 
@@ -4871,9 +4872,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			document.getElementById('wslOptions').style.display = wslEnabled ? 'block' : 'none';
 
 			// Update OpenCredits state from current env vars
-			const baseUrl = envVariables['ANTHROPIC_BASE_URL'] || '';
+			const baseUrl = (envVariables['ANTHROPIC_BASE_URL'] || '').toLowerCase();
 			const wasOpenCredits = hasOpenCreditsKey;
-			hasOpenCreditsKey = !!(baseUrl && (baseUrl.includes('opencredits') || baseUrl.includes('localhost:8787')));
+			hasOpenCreditsKey = !!(baseUrl && OPENCREDITS_BASE_URL_MARKERS.some(function(marker) { return baseUrl.includes(marker); }));
 			if (!hasOpenCreditsKey) {
 				openCreditsBalance = null;
 				// If a OpenCredits model was selected, revert to default
@@ -5199,7 +5200,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				envsDisabled = !!(message.data['environment.disabled']);
 				const envVars = message.data['environment.variables'] || {};
 				const wasOpenCreditsSettings = hasOpenCreditsKey;
-				hasOpenCreditsKey = !!(message.data['isOpenCredits'] || (!envsDisabled && envVars['ANTHROPIC_BASE_URL'] && (envVars['ANTHROPIC_BASE_URL'].includes('opencredits') || envVars['ANTHROPIC_BASE_URL'].includes('localhost:8787'))));
+				const settingsBaseUrl = (envVars['ANTHROPIC_BASE_URL'] || '').toLowerCase();
+				hasOpenCreditsKey = !!(message.data['isOpenCredits'] || (!envsDisabled && settingsBaseUrl && OPENCREDITS_BASE_URL_MARKERS.some(function(marker) { return settingsBaseUrl.includes(marker); })));
 
 				// Show/hide provider exclusion based on OpenCredits
 				var providerSection = document.getElementById('providerExclusionSection');
