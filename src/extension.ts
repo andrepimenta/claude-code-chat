@@ -36,8 +36,20 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
 
+	// Extra (non-primary) provider instances opened via "New Claude Chat (Separate)"
+	// (#24). Each gets its own CLI process and a forced-fresh session (no resume),
+	// since two processes on the same session would fight over the session lock.
+	const extraProviders = new Set<ClaudeChatProvider>();
+
 	const disposable = vscode.commands.registerCommand('claude-code-chat.openChat', (column?: vscode.ViewColumn) => {
 		provider.show(column);
+	});
+
+	const newChatDisposable = vscode.commands.registerCommand('claude-code-chat.newChat', () => {
+		const extra = new ClaudeChatProvider(context.extensionUri, context, true);
+		extraProviders.add(extra);
+		extra.onDidDispose = () => extraProviders.delete(extra);
+		extra.show(vscode.ViewColumn.Active);
 	});
 
 	const loadConversationDisposable = vscode.commands.registerCommand('claude-code-chat.loadConversation', (filename: string) => {
@@ -56,6 +68,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
 			provider.newSessionOnConfigChange();
+			for (const p of extraProviders) {
+				p.newSessionOnConfigChange();
+			}
 		}
 	});
 
@@ -98,7 +113,14 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler);
+	context.subscriptions.push(disposable, newChatDisposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler, {
+		dispose() {
+			for (const p of extraProviders) {
+				p.dispose();
+			}
+			extraProviders.clear();
+		}
+	});
 }
 
 export function deactivate() {
@@ -157,6 +179,10 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 
 class ClaudeChatProvider {
 	public _panel: vscode.WebviewPanel | undefined;
+	// Set by callers that track extra (non-primary) provider instances, e.g. the
+	// "New Claude Chat (Separate)" command, so they can clean up their registry
+	// entry when this provider's panel is closed (#24).
+	public onDidDispose?: () => void;
 	private _webview: vscode.Webview | undefined;
 	private _webviewView: vscode.WebviewView | undefined;
 	private _disposables: vscode.Disposable[] = [];
@@ -202,7 +228,8 @@ class ClaudeChatProvider {
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
-		private readonly _context: vscode.ExtensionContext
+		private readonly _context: vscode.ExtensionContext,
+		private readonly _freshSession: boolean = false
 	) {
 
 		// Initialize backup repository and conversations
@@ -219,7 +246,7 @@ class ClaudeChatProvider {
 		this._subscriptionType = this._context.globalState.get('claude.subscriptionType');
 
 		// Resume session from latest conversation
-		const latestConversation = this._getLatestConversation();
+		const latestConversation = this._freshSession ? undefined : this._getLatestConversation();
 		this._currentSessionId = latestConversation?.sessionId;
 	}
 
@@ -258,7 +285,7 @@ class ClaudeChatProvider {
 		this._initializePermissions();
 
 		// Resume session from latest conversation
-		const latestConversation = this._getLatestConversation();
+		const latestConversation = this._freshSession ? undefined : this._getLatestConversation();
 		this._currentSessionId = latestConversation?.sessionId;
 
 		// Load latest conversation history if available
@@ -3008,7 +3035,8 @@ class ClaudeChatProvider {
 				.toLowerCase();
 
 			const datePrefix = startTime.substring(0, 16).replace('T', '_').replace(/:/g, '-');
-			const filename = `${datePrefix}_${cleanMessage}.json`;
+			const suffix = this._freshSession ? '_' + sessionId.slice(0, 8) : '';
+			const filename = `${datePrefix}_${cleanMessage}${suffix}.json`;
 
 			const conversationData: ConversationData = {
 				sessionId: sessionId,
@@ -4045,5 +4073,14 @@ class ClaudeChatProvider {
 				disposable.dispose();
 			}
 		}
+
+		// Extra (non-primary) panels have no reopen path, so a still-running CLI
+		// process would otherwise be orphaned on panel close (#24). The primary
+		// instance intentionally keeps running — reopening reattaches to it.
+		if (this._freshSession) {
+			void this._killClaudeProcess();
+		}
+
+		this.onDidDispose?.();
 	}
 }

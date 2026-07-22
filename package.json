@@ -60,6 +60,12 @@
         "title": "Open Claude Code Chat",
         "category": "Claude Code Chat",
         "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.newChat",
+        "title": "New Claude Chat (Separate)",
+        "category": "Claude Code Chat",
+        "icon": "icon-bubble.png"
       }
     ],
     "keybindings": [
@@ -73,6 +79,9 @@
       "commandPalette": [
         {
           "command": "claude-code-chat.openChat"
+        },
+        {
+          "command": "claude-code-chat.newChat"
         }
       ],
       "editor/context": [
@@ -86,6 +95,11 @@
         {
           "command": "claude-code-chat.openChat",
           "group": "navigation@1",
+          "when": "true"
+        },
+        {
+          "command": "claude-code-chat.newChat",
+          "group": "navigation@2",
           "when": "true"
         }
       ],
