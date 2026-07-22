@@ -2033,13 +2033,15 @@ class ClaudeChatProvider {
 	}
 
 	/**
-	 * End the Claude process stdin once the turn is complete (result seen) and no
-	 * permission round-trip is still pending. Ending stdin closes the stdio control
-	 * channel, so doing it while a can_use_tool is in flight makes the CLI abort the
-	 * request with "Stream closed". Safe to call repeatedly (no-op until conditions
-	 * hold); called both after 'result' (with a grace delay) and after each
-	 * permission response, so a deferred close still fires once the last prompt is
-	 * answered — the process then exits cleanly (no zombie, no stuck "working").
+	 * #15: end stdin only once a result arrived AND no permission request is
+	 * pending. Known limitation (perm-log evidence 2026-07-22): background
+	 * subagents can request permissions AFTER the turn's result, which this
+	 * close still kills — but simply suppressing the close is worse: the CLI
+	 * runs in persistent stream-json mode and the whole turn lifecycle
+	 * (#16 queue flush, #17 notify, _currentClaudeProcess reset) hangs on the
+	 * process 'close' event, so never ending stdin risks a frozen chat. The
+	 * real fix is a lifecycle rework (keep channel open, detach on next user
+	 * message); until that lands, this stays the reviewed 2f1ae0d behavior.
 	 */
 	private _maybeEndClaudeStdin(claudeProcess: cp.ChildProcess): void {
 		if (!claudeProcess.stdin || claudeProcess.stdin.destroyed) {
@@ -2052,8 +2054,6 @@ class ClaudeChatProvider {
 			this._permLog(`stdin.end deferred: ${this._pendingPermissionRequests.size} pending pid=${claudeProcess.pid}`);
 			return;
 		}
-		// Log the call origin: 'result'-timer vs. answered-request path — this is
-		// the one place that legitimately closes the control channel (#15).
 		this._permLog(`stdin.end (turn done, no pending) pid=${claudeProcess.pid} stack=${new Error().stack?.split('\n').slice(2, 5).join(' | ')}`);
 		claudeProcess.stdin.end();
 	}
@@ -3511,6 +3511,8 @@ class ClaudeChatProvider {
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
 			'ui.compactMode': config.get<boolean>('ui.compactMode', false),
+			'notifications.completionPopup': config.get<boolean>('notifications.completionPopup', true),
+			'notifications.completionSound': config.get<boolean>('notifications.completionSound', false),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
