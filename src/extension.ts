@@ -215,6 +215,10 @@ class ClaudeChatProvider {
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
 
+		// Load persisted input draft so it survives panel disposal / VS Code
+		// restarts, restored to the webview once ready
+		this._draftMessage = this._context.workspaceState.get('claudeCodeChat.inputDraft', '');
+
 		// Load cached subscription type (will be refreshed on first message)
 		this._subscriptionType = this._context.globalState.get('claude.subscriptionType');
 
@@ -895,6 +899,7 @@ class ClaudeChatProvider {
 
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
+		this._context.workspaceState.update('claudeCodeChat.inputDraft', undefined);
 
 		// Show original user input in chat and save to conversation (without mode prefixes)
 		this._sendAndSaveMessage({
@@ -3428,6 +3433,12 @@ class ClaudeChatProvider {
 
 	private _saveInputText(text: string): void {
 		this._draftMessage = text || '';
+		// Persist so the draft survives panel disposal and VS Code restarts
+		if (this._draftMessage.trim()) {
+			this._context.workspaceState.update('claudeCodeChat.inputDraft', this._draftMessage);
+		} else {
+			this._context.workspaceState.update('claudeCodeChat.inputDraft', undefined);
+		}
 	}
 
 	private async _updateSettings(settings: { [key: string]: any }): Promise<void> {
