@@ -3,6 +3,7 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
@@ -172,6 +173,10 @@ class ClaudeChatProvider {
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
+	// Stable per-project key derived from the primary workspace folder's path,
+	// used to scope conversation history so it stays consistent whether the folder
+	// is opened directly or as part of a .code-workspace file.
+	private _projectKey: string | undefined;
 	// Pending permission requests from stdio control_request messages
 	private _pendingPermissionRequests: Map<string, {
 		requestId: string;
@@ -207,10 +212,25 @@ class ClaudeChatProvider {
 
 		// Initialize backup repository and conversations
 		this._initializeBackupRepo();
-		this._initializeConversations();
 
-		// Load conversation index from workspace state
-		this._conversationIndex = this._context.workspaceState.get('claude.conversationIndex', []);
+		// Compute the per-project key once; scopes conversation history to the
+		// primary workspace folder's path instead of the VS Code workspace identity,
+		// so the same folder doesn't split its history depending on how it was
+		// opened (#123).
+		this._projectKey = this._getProjectKey();
+
+		// Load conversation index from global state, scoped to this project.
+		// Falls back to the legacy workspace-scoped index — used previously —
+		// so the synchronous session resume below still works for projects
+		// that haven't run _migrateLegacyHistory() yet. Gated on the migration flag so
+		// a legitimately empty post-migration index (e.g. after "Clear All") doesn't
+		// get resurrected from the (never-cleared) legacy workspaceState index.
+		this._conversationIndex = this._context.globalState.get(`claude.conversationIndex::${this._projectKey}`, []);
+		if (this._conversationIndex.length === 0 && !this._context.globalState.get(`claude.historyMigrated::${this._projectKey}`, false)) {
+			this._conversationIndex = this._context.workspaceState.get('claude.conversationIndex', []);
+		}
+
+		this._initializeConversations();
 
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
@@ -860,7 +880,7 @@ class ClaudeChatProvider {
 	}
 
 	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
-		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		const workspaceFolder = this._getPrimaryWorkspaceFolder();
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
 		// Get thinking intensity setting
@@ -1720,7 +1740,7 @@ class ClaudeChatProvider {
 
 	private async _initializeBackupRepo(): Promise<void> {
 		try {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			const workspaceFolder = this._getPrimaryWorkspaceFolder();
 			if (!workspaceFolder) { return; }
 
 			const storagePath = this._context.storageUri?.fsPath;
@@ -1751,7 +1771,7 @@ class ClaudeChatProvider {
 
 	private async _createBackupCommit(userMessage: string): Promise<void> {
 		try {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			const workspaceFolder = this._getPrimaryWorkspaceFolder();
 			if (!workspaceFolder || !this._backupRepoPath) { return; }
 
 			const workspacePath = workspaceFolder.uri.fsPath;
@@ -1821,7 +1841,7 @@ class ClaudeChatProvider {
 				return;
 			}
 
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+			const workspaceFolder = this._getPrimaryWorkspaceFolder();
 			if (!workspaceFolder || !this._backupRepoPath) {
 				vscode.window.showErrorMessage('No workspace folder or backup repository available.');
 				return;
@@ -1857,15 +1877,46 @@ class ClaudeChatProvider {
 		}
 	}
 
+	// Resolve the workspace folder Claude should treat as its working directory
+	// (cwd, backup repo work-tree). Defaults to the first workspace folder; can be
+	// overridden for multi-root workspaces via claudeCodeChat.workspace.root.
+	private _getPrimaryWorkspaceFolder(): vscode.WorkspaceFolder | undefined {
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) { return undefined; }
+
+		const configuredRoot = vscode.workspace.getConfiguration('claudeCodeChat').get<string>('workspace.root', '').trim();
+		if (configuredRoot) {
+			const normalizedRoot = path.normalize(configuredRoot);
+			const match = folders.find(folder => {
+				const normalizedFolder = path.normalize(folder.uri.fsPath);
+				return process.platform === 'win32'
+					? normalizedFolder.toLowerCase() === normalizedRoot.toLowerCase()
+					: normalizedFolder === normalizedRoot;
+			});
+			if (match) { return match; }
+		}
+
+		return folders[0];
+	}
+
+	// Derive a stable per-project key from the primary workspace folder's path, so
+	// the same folder keeps a single conversation history regardless of whether it
+	// was opened directly or as part of a .code-workspace file — those use
+	// different VS Code workspace identities and used to split the history (#123).
+	// Falls back to a fixed key when no workspace folder is open.
+	private _getProjectKey(): string {
+		const workspaceFolder = this._getPrimaryWorkspaceFolder();
+		if (!workspaceFolder) { return 'no-workspace'; }
+
+		const normalizedPath = path.normalize(workspaceFolder.uri.fsPath);
+		const key = process.platform === 'win32' ? normalizedPath.toLowerCase() : normalizedPath;
+		return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
+	}
+
 	private async _initializeConversations(): Promise<void> {
 		try {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-			if (!workspaceFolder) { return; }
-
-			const storagePath = this._context.storageUri?.fsPath;
-			if (!storagePath) { return; }
-
-			this._conversationsPath = path.join(storagePath, 'conversations');
+			const projectKey = this._projectKey ?? this._getProjectKey();
+			this._conversationsPath = path.join(this._context.globalStorageUri.fsPath, 'conversations', projectKey);
 
 			// Create conversations directory if it doesn't exist
 			try {
@@ -1873,11 +1924,97 @@ class ClaudeChatProvider {
 			} catch {
 				await vscode.workspace.fs.createDirectory(vscode.Uri.file(this._conversationsPath));
 			}
+
+			// One-time copy of legacy workspace-scoped history into the new
+			// project-scoped location (never moves/deletes the originals)
+			await this._migrateLegacyHistory();
 		} catch (error: any) {
 			console.error('Failed to initialize conversations directory:', error.message);
 		}
 	}
 
+	// Legacy behavior (#123): conversation files lived under the workspace-scoped
+	// storageUri and the index lived in workspaceState, both keyed by the VS Code
+	// workspace identity (folder vs. .code-workspace hash differ for the same
+	// folder). Copies (never moves/deletes) any such files into the new
+	// project-scoped globalStorage location and merges the legacy index into the
+	// new one. Guarded so it only ever runs once per project.
+	private async _migrateLegacyHistory(): Promise<void> {
+		if (!this._projectKey || !this._conversationsPath) { return; }
+
+		const migratedFlagKey = `claude.historyMigrated::${this._projectKey}`;
+		if (this._context.globalState.get<boolean>(migratedFlagKey, false)) { return; }
+
+		try {
+			const legacyConversationsPath = this._context.storageUri
+				? path.join(this._context.storageUri.fsPath, 'conversations')
+				: undefined;
+
+			let mergedIndex = this._conversationIndex;
+			let copyErrors = 0;
+
+			if (legacyConversationsPath) {
+				let legacyEntries: Array<[string, vscode.FileType]> = [];
+				try {
+					legacyEntries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(legacyConversationsPath));
+				} catch {
+					legacyEntries = [];
+				}
+
+				for (const [name, type] of legacyEntries) {
+					if ((type & vscode.FileType.File) === 0 || !name.endsWith('.json')) { continue; }
+
+					const destPath = path.join(this._conversationsPath, name);
+					try {
+						await vscode.workspace.fs.stat(vscode.Uri.file(destPath));
+						continue; // Already present at the destination, don't overwrite
+					} catch {
+						// Doesn't exist yet, copy it
+					}
+
+					try {
+						const content = await vscode.workspace.fs.readFile(vscode.Uri.file(path.join(legacyConversationsPath, name)));
+						await vscode.workspace.fs.writeFile(vscode.Uri.file(destPath), content);
+					} catch (error: any) {
+						console.error('Failed to migrate conversation file:', name, error.message);
+						copyErrors++;
+					}
+				}
+
+				const legacyIndex = this._context.workspaceState.get<typeof this._conversationIndex>('claude.conversationIndex', []);
+
+				const byFilename = new Map<string, (typeof this._conversationIndex)[number]>();
+				for (const entry of [...mergedIndex, ...legacyIndex]) {
+					if (!byFilename.has(entry.filename)) {
+						byFilename.set(entry.filename, entry);
+					}
+				}
+
+				mergedIndex = Array.from(byFilename.values()).sort((a, b) => {
+					const aTime = a.startTime || '';
+					const bTime = b.startTime || '';
+					return aTime < bTime ? 1 : aTime > bTime ? -1 : 0;
+				});
+
+				if (mergedIndex.length > 50) {
+					mergedIndex = mergedIndex.slice(0, 50);
+				}
+			}
+
+			this._conversationIndex = mergedIndex;
+			await this._context.globalState.update(`claude.conversationIndex::${this._projectKey}`, this._conversationIndex);
+
+			// Only mark as migrated if every file copy succeeded — migration is
+			// idempotent (only copies missing destinations), so leaving the flag
+			// unset makes the next activation retry the failed file(s). The index
+			// merge above is safe to keep either way; originals stay in storageUri.
+			if (copyErrors === 0) {
+				await this._context.globalState.update(migratedFlagKey, true);
+			}
+		} catch (error: any) {
+			console.error('Failed to migrate legacy conversation history:', error.message);
+		}
+	}
 
 	/**
 	 * Check if a tool is pre-approved in local permissions
@@ -3260,8 +3397,8 @@ class ClaudeChatProvider {
 			this._conversationIndex = this._conversationIndex.slice(0, 50);
 		}
 
-		// Save to workspace state
-		this._context.workspaceState.update('claude.conversationIndex', this._conversationIndex);
+		// Save to global state, scoped to this project
+		this._context.globalState.update(`claude.conversationIndex::${this._projectKey}`, this._conversationIndex);
 	}
 
 	private _getLatestConversation(): any | undefined {

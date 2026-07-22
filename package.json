@@ -208,6 +208,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.workspace.root": {
+          "type": "string",
+          "default": "",
+          "description": "Multi-root workspaces: path of the workspace folder Claude should use as its working directory. Empty = first workspace folder."
         }
       }
     }
