@@ -76,8 +76,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isProcessRunning = false;
 		let filteredFiles = [];
 		let selectedFileIndex = -1;
-		let planModeEnabled = false;
-		let thinkingModeEnabled = false;
+		let currentMode = 'manual';
+		let currentEffort = null;
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
@@ -937,9 +937,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (text || attachedImages.length > 0) {
 				const msg = {
 					type: 'sendMessage',
-					text: text,
-					planMode: planModeEnabled,
-					thinkingMode: thinkingModeEnabled
+					text: text
 				};
 				if (attachedImages.length > 0) {
 					msg.images = attachedImages.map(img => img.filePath);
@@ -949,43 +947,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				messageInput.value = '';
 				attachedImages = [];
 				renderImagePreviews();
-			}
-		}
-
-		function togglePlanMode() {
-			planModeEnabled = !planModeEnabled;
-			const switchElement = document.getElementById('planModeSwitch');
-			if (planModeEnabled) {
-				switchElement.classList.add('active');
-			} else {
-				switchElement.classList.remove('active');
-			}
-		}
-
-		function toggleThinkingMode() {
-			thinkingModeEnabled = !thinkingModeEnabled;
-			sendStats('Thinking mode toggled', { enabled: thinkingModeEnabled });
-
-			var switchElement = document.getElementById('thinkingModeSwitch');
-			var toggleLabel = document.getElementById('thinkingModeLabel');
-			var thinkBtn = document.getElementById('thinkToggleBtn');
-			if (thinkingModeEnabled) {
-				if (switchElement) switchElement.classList.add('active');
-				if (thinkBtn) thinkBtn.classList.add('active');
-				if (toggleLabel) toggleLabel.textContent = 'Ultrathink Mode';
-				// Set ultrathink intensity directly
-				vscode.postMessage({
-					type: 'updateSettings',
-					settings: { 'thinking.intensity': 'ultrathink' }
-				});
-				vscode.postMessage({
-					type: 'showInfoMessage',
-					message: 'Ultrathink enabled \u2014 deep reasoning for complex tasks.'
-				});
-			} else {
-				if (switchElement) switchElement.classList.remove('active');
-				if (thinkBtn) thinkBtn.classList.remove('active');
-				if (toggleLabel) toggleLabel.textContent = 'Thinking Mode';
 			}
 		}
 
@@ -1007,21 +968,66 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
-		function cyclePlanMode() {
-			planModeEnabled = !planModeEnabled;
-			sendStats('Plan mode toggled', { enabled: planModeEnabled });
-			var switchElement = document.getElementById('planModeSwitch');
-			var toggleBtn = document.getElementById('planToggleBtn');
-			if (planModeEnabled) {
-				if (switchElement) switchElement.classList.add('active');
-				if (toggleBtn) toggleBtn.classList.add('active');
+		var modeLabels = {
+			manual: 'Manual',
+			acceptEdits: 'Edit automatically',
+			plan: 'Plan',
+			auto: 'Auto'
+		};
+		var modeOrder = ['manual', 'acceptEdits', 'plan', 'auto'];
+		var effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'];
+		var effortLevelLabels = ['Low', 'Medium', 'High', 'Extra high', 'Max'];
+
+		function toggleModesPopup() {
+			var popup = document.getElementById('modesPopup');
+			if (!popup) return;
+			popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+		}
+
+		function hideModesPopup() {
+			var popup = document.getElementById('modesPopup');
+			if (popup) popup.style.display = 'none';
+		}
+
+		// Close modes popup when clicking outside
+		document.addEventListener('click', function(e) {
+			if (!e.target.closest('.modes-dropdown-wrapper')) {
+				hideModesPopup();
+			}
+		});
+
+		function selectMode(mode, silent) {
+			currentMode = mode;
+			document.querySelectorAll('.mode-option').forEach(function(opt) {
+				opt.classList.toggle('active', opt.getAttribute('data-mode') === mode);
+			});
+			var label = document.getElementById('modesBtnLabel');
+			if (label) label.textContent = modeLabels[mode] || 'Manual';
+			if (!silent) {
+				hideModesPopup();
+				sendStats('Mode selected', { mode: mode });
+				vscode.postMessage({ type: 'setMode', mode: mode });
 				vscode.postMessage({
 					type: 'showInfoMessage',
-					message: 'Plan mode enabled \u2014 Claude will plan before making changes.'
+					message: 'Mode switched to: ' + (modeLabels[mode] || mode)
 				});
-			} else {
-				if (switchElement) switchElement.classList.remove('active');
-				if (toggleBtn) toggleBtn.classList.remove('active');
+			}
+		}
+
+		function setEffort(idx, silent) {
+			var index = parseInt(idx, 10);
+			if (isNaN(index) || index < 0 || index >= effortLevels.length) return;
+			currentEffort = effortLevels[index];
+			var slider = document.getElementById('effortSlider');
+			if (slider) slider.value = index;
+			document.querySelectorAll('.modes-effort-section .slider-label').forEach(function(lbl, i) {
+				lbl.classList.toggle('active', i === index);
+			});
+			var label = document.getElementById('effortLabel');
+			if (label) label.textContent = 'Effort (' + effortLevelLabels[index] + ')';
+			if (!silent) {
+				sendStats('Effort selected', { effort: currentEffort });
+				vscode.postMessage({ type: 'setEffort', effort: currentEffort });
 			}
 		}
 
@@ -1241,6 +1247,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						}
 					}, 50);
 				}, 0);
+			} else if (e.key === 'Tab' && e.shiftKey) {
+				e.preventDefault();
+				var currentIndex = modeOrder.indexOf(currentMode);
+				var nextMode = modeOrder[(currentIndex + 1) % modeOrder.length];
+				selectMode(nextMode);
 			}
 		});
 
@@ -3860,6 +3871,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Update the UI with the current model
 					currentModel = message.model;
 					selectModel(message.model, true);
+					break;
+				case 'modeSelected':
+					selectMode(message.mode, true);
+					break;
+				case 'effortSelected':
+					if (message.effort) {
+						var effortIndex = effortLevels.indexOf(message.effort);
+						if (effortIndex !== -1) setEffort(effortIndex, true);
+					}
 					break;
 				case 'terminalOpened':
 					// Display notification about checking the terminal

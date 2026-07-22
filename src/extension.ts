@@ -206,6 +206,8 @@ class ClaudeChatProvider {
 	private _isWslProcess: boolean = false;
 	private _wslDistro: string = 'Ubuntu';
 	private _selectedModel: string = 'default'; // Default model
+	private _selectedMode: string = 'manual';
+	private _selectedEffort: string | undefined = undefined;
 	private _isProcessing: boolean | undefined;
 	// Set once a 'result' message was seen for the current process. Gates the
 	// deferred stdin close so we never tear down the stdio control channel while
@@ -227,6 +229,10 @@ class ClaudeChatProvider {
 
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
+
+		// Load saved mode/effort preference
+		this._selectedMode = this._context.workspaceState.get('claude.selectedMode', 'manual');
+		this._selectedEffort = this._context.workspaceState.get('claude.selectedEffort', undefined);
 
 		// Load cached subscription type (will be refreshed on first message)
 		this._subscriptionType = this._context.globalState.get('claude.subscriptionType');
@@ -406,6 +412,16 @@ class ClaudeChatProvider {
 			model: this._selectedModel
 		});
 
+		// Send current mode/effort to webview
+		this._postMessage({
+			type: 'modeSelected',
+			mode: this._selectedMode
+		});
+		this._postMessage({
+			type: 'effortSelected',
+			effort: this._selectedEffort
+		});
+
 		// Send cached subscription type to webview (will be refreshed on first message)
 		if (this._subscriptionType) {
 			this._postMessage({
@@ -439,7 +455,7 @@ class ClaudeChatProvider {
 	private async _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.images);
+				this._sendMessageToClaude(message.text, message.images);
 				return;
 			case 'newSession':
 				this._newSession();
@@ -482,6 +498,12 @@ class ClaudeChatProvider {
 				return;
 			case 'selectModel':
 				this._setSelectedModel(message.model, message.tierModels);
+				return;
+			case 'setMode':
+				this._setSelectedMode(message.mode);
+				return;
+			case 'setEffort':
+				this._setSelectedEffort(message.effort);
 				return;
 			case 'openModelTerminal':
 				this._openModelTerminal();
@@ -872,7 +894,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
+	private async _sendMessageToClaude(message: string, images?: string[]) {
 		// Re-entrancy guard: a Claude process is already running for this session.
 		// Spawning a second overlapping process (same --resume session) closes the
 		// first one's stdio control channel and fights over the session lock, which
@@ -891,33 +913,7 @@ class ClaudeChatProvider {
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
-		// Get thinking intensity setting
-		const configThink = vscode.workspace.getConfiguration('claudeCodeChat');
-		const thinkingIntensity = configThink.get<string>('thinking.intensity', 'think');
-
-		// Prepend thinking mode instructions if enabled
 		let actualMessage = message;
-		if (thinkingMode) {
-			let thinkingPrompt = '';
-			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n'
-			switch (thinkingIntensity) {
-				case 'think':
-					thinkingPrompt = 'THINK';
-					break;
-				case 'think-hard':
-					thinkingPrompt = 'THINK HARD';
-					break;
-				case 'think-harder':
-					thinkingPrompt = 'THINK HARDER';
-					break;
-				case 'ultrathink':
-					thinkingPrompt = 'ULTRATHINK';
-					break;
-				default:
-					thinkingPrompt = 'THINK';
-			}
-			actualMessage = thinkingPrompt + thinkingMesssage + actualMessage;
-		}
 
 		this._isProcessing = true;
 
@@ -982,9 +978,13 @@ class ClaudeChatProvider {
 			}
 		}
 
-		// Add plan mode if enabled
-		if (planMode) {
-			args.push('--permission-mode', 'plan');
+		// Add permission mode / effort based on the selected mode (manual = no flag,
+		// i.e. byte-identical to the previous default spawn) (#31)
+		if (this._selectedMode && this._selectedMode !== 'manual') {
+			args.push('--permission-mode', this._selectedMode);
+		}
+		if (this._selectedEffort) {
+			args.push('--effort', this._selectedEffort);
 		}
 
 		// Add model selection for Claude models only (opus, sonnet)
@@ -3590,6 +3590,20 @@ class ClaudeChatProvider {
 		} catch (error) {
 			console.error('Failed to read clipboard:', error);
 		}
+	}
+
+	private async _setSelectedMode(mode: string): Promise<void> {
+		this._selectedMode = mode;
+
+		// Store the mode preference in workspace state
+		this._context.workspaceState.update('claude.selectedMode', mode);
+	}
+
+	private async _setSelectedEffort(effort: string | undefined): Promise<void> {
+		this._selectedEffort = effort;
+
+		// Store the effort preference in workspace state
+		this._context.workspaceState.update('claude.selectedEffort', effort);
 	}
 
 	private async _setSelectedModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
