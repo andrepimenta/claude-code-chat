@@ -3400,6 +3400,7 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'ui.colorblindMode': config.get<boolean>('ui.colorblindMode', false),
 			'isOpenCredits': this._isOpenCredits()
 		};
 

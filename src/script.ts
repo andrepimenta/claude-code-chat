@@ -397,10 +397,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			headerDiv.className = 'message-header';
 			
 			const iconDiv = document.createElement('div');
-			iconDiv.className = data.isError ? 'message-icon error' : 'message-icon';
-			iconDiv.style.background = data.isError ? 
-				'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)' : 
-				'linear-gradient(135deg, #1cc08c 0%, #16a974 100%)';
+			iconDiv.className = data.isError ? 'message-icon result-error' : 'message-icon result-success';
 			iconDiv.textContent = data.isError ? '❌' : '✅';
 			
 			const labelDiv = document.createElement('div');
@@ -4863,6 +4860,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			const colorblindMode = document.getElementById('colorblind-mode').checked;
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +4900,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'ui.colorblindMode': colorblindMode
 				}
 			});
 		}
@@ -5159,6 +5158,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				document.body.classList.toggle('colorblind-mode', !!message.data['ui.colorblindMode']);
+				document.getElementById('colorblind-mode').checked = !!message.data['ui.colorblindMode'];
+
+
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
