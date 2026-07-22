@@ -5159,6 +5159,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				document.body.classList.toggle('compact-mode', !!message.data['ui.compactMode']);
+
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);

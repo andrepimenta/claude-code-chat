@@ -208,6 +208,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.ui.compactMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reduce paddings, margins and font sizes for a denser chat layout."
         }
       }
     }

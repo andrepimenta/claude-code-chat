@@ -5049,6 +5049,66 @@ const styles = `
         color: #10b981 !important;
     }
 
+    /* Compact mode (#18) */
+    body.compact-mode .messages {
+        padding: 5px;
+        font-size: calc(var(--vscode-editor-font-size) - 1px);
+        line-height: 1.3;
+    }
+
+    body.compact-mode .message {
+        margin-bottom: 5px;
+        padding: 4px;
+    }
+
+    body.compact-mode .message-header {
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+    }
+
+    body.compact-mode .message-content {
+        padding-left: 3px;
+    }
+
+    body.compact-mode .message p {
+        margin: 0.3em 0;
+        line-height: 1.4;
+    }
+
+    body.compact-mode .message li {
+        margin: 0.15em 0;
+    }
+
+    body.compact-mode .tool-header {
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+    }
+
+    body.compact-mode .tool-input {
+        padding: 3px;
+    }
+
+    body.compact-mode .message-content pre.code-block {
+        padding: 6px;
+        margin: 4px 0;
+    }
+
+    body.compact-mode .code-block-container {
+        margin: 4px 0;
+    }
+
+    body.compact-mode .code-block-header {
+        padding: 2px 3px;
+    }
+
+    body.compact-mode .diff-header {
+        padding: 3px 6px;
+    }
+
+    body.compact-mode .diff-line {
+        padding: 1px 6px;
+    }
+
 </style>`
 
 export default styles

@@ -3,6 +3,7 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
@@ -15,6 +16,11 @@ let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
 const exec = util.promisify(cp.exec);
+
+// File target for [perm] diagnostics (#15): console.error of an installed
+// extension is only visible in the DevTools console, which makes field
+// debugging of the stdio permission channel impossible — mirror it to a file.
+const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
 
 // Storage for diff content (used by DiffContentProvider)
 const diffContentStore = new Map<string, string>();
@@ -56,6 +62,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
 			provider.newSessionOnConfigChange();
+		}
+		if (event.affectsConfiguration('claudeCodeChat.ui.compactMode')) {
+			provider.refreshSettingsOnConfigChange();
 		}
 	});
 
@@ -1095,7 +1104,16 @@ class ClaudeChatProvider {
 		// New process = new turn: no 'result' seen yet, so the deferred stdin
 		// close stays armed until this turn actually completes.
 		this._resultSeen = false;
-		console.error(`[perm] spawned claude pid=${claudeProcess.pid} session=${this._currentSessionId ?? '(new)'}`);
+		this._permLog(`spawned claude pid=${claudeProcess.pid} session=${this._currentSessionId ?? '(new)'}`);
+
+		// stdin lifecycle tracing (#15): record every way the control channel can
+		// die, so a field "Stream closed" can be attributed to a concrete event.
+		claudeProcess.stdin?.on('close', () => {
+			this._permLog(`stdin CLOSE event pid=${claudeProcess.pid} current=${this._currentClaudeProcess?.pid ?? 'none'}`);
+		});
+		claudeProcess.stdin?.on('error', (err) => {
+			this._permLog(`stdin ERROR event pid=${claudeProcess.pid}: ${err.message}`);
+		});
 
 		// Send the message to Claude's stdin as JSON (stream-json input format)
 		// Don't end stdin yet - we need to keep it open for permission responses
@@ -1234,7 +1252,7 @@ class ClaudeChatProvider {
 							// window for a trailing can_use_tool).
 							if (jsonData.type === 'result') {
 								this._resultSeen = true;
-								console.error(`[perm] result subtype=${jsonData.subtype} pending=${this._pendingPermissionRequests.size} pid=${claudeProcess.pid}`);
+								this._permLog(`result subtype=${jsonData.subtype} pending=${this._pendingPermissionRequests.size} pid=${claudeProcess.pid}`);
 								setTimeout(() => this._maybeEndClaudeStdin(claudeProcess), 500);
 							}
 
@@ -1683,6 +1701,11 @@ class ClaudeChatProvider {
 		});
 	}
 
+	public refreshSettingsOnConfigChange() {
+		// Push current settings (e.g. ui.compactMode) to the webview without a reload
+		this._sendCurrentSettings();
+	}
+
 	public newSessionOnConfigChange() {
 		// Start a new session due to configuration change
 		this._newSession();
@@ -1995,6 +2018,21 @@ class ClaudeChatProvider {
 	}
 
 	/**
+	 * [perm] diagnostics (#15): mirror to console AND a temp file, because the
+	 * console of an installed extension host is not persisted anywhere readable.
+	 * Logging must never break the extension — swallow all fs errors.
+	 */
+	private _permLog(msg: string): void {
+		const line = `${new Date().toISOString()} [perm] ${msg}`;
+		console.error(line);
+		try {
+			fs.appendFileSync(PERM_LOG_FILE, line + '\n');
+		} catch {
+			// ignore — diagnostics only
+		}
+	}
+
+	/**
 	 * End the Claude process stdin once the turn is complete (result seen) and no
 	 * permission round-trip is still pending. Ending stdin closes the stdio control
 	 * channel, so doing it while a can_use_tool is in flight makes the CLI abort the
@@ -2011,10 +2049,12 @@ class ClaudeChatProvider {
 			return;
 		}
 		if (this._pendingPermissionRequests.size > 0) {
-			console.error(`[perm] stdin.end deferred: ${this._pendingPermissionRequests.size} pending pid=${claudeProcess.pid}`);
+			this._permLog(`stdin.end deferred: ${this._pendingPermissionRequests.size} pending pid=${claudeProcess.pid}`);
 			return;
 		}
-		console.error(`[perm] stdin.end (turn done, no pending) pid=${claudeProcess.pid}`);
+		// Log the call origin: 'result'-timer vs. answered-request path — this is
+		// the one place that legitimately closes the control channel (#15).
+		this._permLog(`stdin.end (turn done, no pending) pid=${claudeProcess.pid} stack=${new Error().stack?.split('\n').slice(2, 5).join(' | ')}`);
 		claudeProcess.stdin.end();
 	}
 
@@ -2031,7 +2071,8 @@ class ClaudeChatProvider {
 			return;
 		}
 
-		console.error(`[perm] can_use_tool received ts=${new Date().toISOString()} tool=${request.tool_name} reqId=${requestId} resultSeen=${this._resultSeen} pid=${this._currentClaudeProcess?.pid}`);
+		const curStdin = this._currentClaudeProcess?.stdin;
+		this._permLog(`can_use_tool received tool=${request.tool_name} reqId=${requestId} resultSeen=${this._resultSeen} pid=${this._currentClaudeProcess?.pid} stdin.destroyed=${curStdin?.destroyed} stdin.writableEnded=${curStdin?.writableEnded}`);
 
 		const toolName = request.tool_name || 'Unknown Tool';
 		const input = request.input || {};
@@ -2110,7 +2151,7 @@ class ClaudeChatProvider {
 			console.error('Cannot send permission response: stdin not available');
 			return;
 		}
-		console.error(`[perm] sending response reqId=${requestId} approved=${approved} -> pid=${this._currentClaudeProcess.pid}`);
+		this._permLog(`sending response reqId=${requestId} approved=${approved} -> pid=${this._currentClaudeProcess.pid} stdin.writableEnded=${this._currentClaudeProcess.stdin?.writableEnded}`);
 
 		let response: any;
 		if (approved) {
@@ -2251,7 +2292,7 @@ class ClaudeChatProvider {
 			}
 		};
 
-		console.error(`[perm] sending askUserQuestion response reqId=${requestId} -> pid=${this._currentClaudeProcess.pid}`);
+		this._permLog(`sending askUserQuestion response reqId=${requestId} -> pid=${this._currentClaudeProcess.pid} stdin.writableEnded=${this._currentClaudeProcess.stdin?.writableEnded}`);
 		const responseJson = JSON.stringify(response) + '\n';
 		this._currentClaudeProcess.stdin.write(responseJson);
 
@@ -3235,7 +3276,7 @@ class ClaudeChatProvider {
 	private async _killClaudeProcess(): Promise<void> {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
-		console.error(`[perm] killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
+		this._permLog(`killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
 
 		// 1. Abort via controller (clean API)
 		this._abortController?.abort();
@@ -3469,6 +3510,7 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'ui.compactMode': config.get<boolean>('ui.compactMode', false),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
