@@ -79,6 +79,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
 		let isWindows = false;
+		let sendOnEnter = true;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
@@ -1211,7 +1212,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		});
 		
 		messageInput.addEventListener('keydown', (e) => {
-			if (e.key === 'Enter' && !e.shiftKey) {
+			// Alt/Option+Enter always inserts a line break, regardless of the sendOnEnter setting
+			if (e.key === 'Enter' && !e.shiftKey && !e.altKey && (sendOnEnter || e.ctrlKey || e.metaKey)) {
 				e.preventDefault();
 				const sendBtn = document.getElementById('sendBtn');
 				if (sendBtn.disabled){
@@ -4863,6 +4865,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			const sendOnEnterSetting = document.getElementById('send-on-enter').checked;
+			sendOnEnter = sendOnEnterSetting; // Keep module state in sync without waiting for the settingsData round trip
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +4906,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'input.sendOnEnter': sendOnEnterSetting
 				}
 			});
 		}
@@ -5159,6 +5164,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				sendOnEnter = message.data['input.sendOnEnter'] !== false;
+				document.getElementById('send-on-enter').checked = sendOnEnter;
+
+
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
