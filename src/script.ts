@@ -78,6 +78,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let selectedFileIndex = -1;
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
+		let isComposing = false;
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
@@ -1209,9 +1210,22 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			}, 500); // Save after 500ms of no typing
 		});
-		
+
+		// Handle IME composition events (Korean, Japanese, Chinese input)
+		messageInput.addEventListener('compositionstart', () => {
+			isComposing = true;
+		});
+
+		messageInput.addEventListener('compositionend', () => {
+			isComposing = false;
+		});
+
 		messageInput.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter' && !e.shiftKey) {
+				// Prevent duplicate submission during IME composition (Korean, Japanese, Chinese)
+				if (isComposing || e.isComposing) {
+					return;
+				}
 				e.preventDefault();
 				const sendBtn = document.getElementById('sendBtn');
 				if (sendBtn.disabled){
