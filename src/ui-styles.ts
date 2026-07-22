@@ -287,6 +287,23 @@ const styles = `
         vertical-align: baseline;
     }
 
+    .permission-scope {
+        margin-top: 4px;
+        text-align: right;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    .permission-scope .scope-toggle {
+        color: var(--vscode-textLink-foreground);
+        text-decoration: underline dotted;
+        cursor: pointer;
+    }
+
+    .permission-scope .scope-toggle:hover {
+        color: var(--vscode-textLink-activeForeground);
+    }
+
     .permission-decision {
         font-size: 13px;
         font-weight: 600;

@@ -3959,6 +3959,23 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
 			}
 
+			// Show a scope line under the always-allow button when the CLI offered scoped
+			// suggestions (project vs. user settings). Default scope: project if available,
+			// otherwise user.
+			const showAlwaysAllow = data.tool !== 'ExitPlanMode';
+			const hasScopeChoice = showAlwaysAllow && (data.hasProjectScope || data.hasUserScope);
+			let scopeHtml = '';
+			if (hasScopeChoice) {
+				messageDiv.dataset.scope = data.hasProjectScope ? 'project' : 'user';
+				if (data.hasProjectScope && data.hasUserScope) {
+					scopeHtml = \`<div class="permission-scope">Always allow for <span class="scope-toggle" onclick="togglePermissionScope('\${data.id}')">this project (just you)</span></div>\`;
+				} else if (data.hasProjectScope) {
+					scopeHtml = '<div class="permission-scope">Always allow for this project (just you)</div>';
+				} else {
+					scopeHtml = '<div class="permission-scope">Always allow for all projects</div>';
+				}
+			}
+
 			// Show different content based on status
 			let contentHtml = '';
 			if (status === 'pending') {
@@ -3986,6 +4003,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							\${data.tool === 'ExitPlanMode' ? '' : '<button class="btn always-allow" onclick="respondToPermission(\\'' + data.id + '\\', true, true)" ' + alwaysAllowTooltip + '>' + alwaysAllowText + '</button>'}
 							<button class="btn allow" onclick="respondToPermission('\${data.id}', true)">\${data.tool === 'ExitPlanMode' ? 'Approve' : 'Allow'}</button>
 						</div>
+						\${scopeHtml}
 					</div>
 				\`;
 			} else if (status === 'approved') {
@@ -4076,14 +4094,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 		
 		function respondToPermission(id, approved, alwaysAllow = false) {
+			let scope;
+			if (alwaysAllow) {
+				const permissionMsgForScope = document.getElementById(\`permission-\${id}\`);
+				scope = permissionMsgForScope ? permissionMsgForScope.dataset.scope : undefined;
+			}
+
 			// Send response back to extension
 			vscode.postMessage({
 				type: 'permissionResponse',
 				id: id,
 				approved: approved,
-				alwaysAllow: alwaysAllow
+				alwaysAllow: alwaysAllow,
+				scope: scope
 			});
-			
+
 			// Update the UI to show the decision
 			const permissionMsg = document.querySelector(\`.permission-request:has([onclick*="\${id}"])\`);
 			if (permissionMsg) {
@@ -4108,6 +4133,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				permissionContent.appendChild(decisionDiv);
 				
 				permissionMsg.classList.add('permission-decided', decisionClass);
+			}
+		}
+
+		function togglePermissionScope(permissionId) {
+			const permissionMsg = document.getElementById(\`permission-\${permissionId}\`);
+			if (!permissionMsg) return;
+
+			const nextScope = permissionMsg.dataset.scope === 'project' ? 'user' : 'project';
+			permissionMsg.dataset.scope = nextScope;
+
+			const scopeToggle = permissionMsg.querySelector('.scope-toggle');
+			if (scopeToggle) {
+				scopeToggle.textContent = nextScope === 'project' ? 'this project (just you)' : 'all projects';
 			}
 		}
 
