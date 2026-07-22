@@ -661,6 +661,9 @@ class ClaudeChatProvider {
 			case 'getCustomSnippets':
 				this._sendCustomSnippets();
 				return;
+			case 'getCustomCommands':
+				this._sendCustomCommands();
+				return;
 			case 'saveCustomSnippet':
 				this._saveCustomSnippet(message.snippet);
 				return;
@@ -3874,6 +3877,90 @@ class ClaudeChatProvider {
 		} catch (error) {
 			vscode.window.showErrorMessage(`Failed to open file: ${filePath}`);
 			console.error('Error opening file:', error);
+		}
+	}
+
+	// ─── Custom Slash Commands (.claude/commands) ───
+
+	// Extracts the `description:` value from a command file's YAML frontmatter.
+	// Not a full YAML parser on purpose (minimal, no new dependency): only the
+	// first `---`...`---` block within the given text is inspected line by line.
+	private _parseCommandDescription(text: string): string {
+		if (!text.startsWith('---')) {
+			return '';
+		}
+		const closingIndex = text.indexOf('---', 3);
+		if (closingIndex === -1) {
+			return '';
+		}
+		const frontmatter = text.substring(3, closingIndex);
+		for (const line of frontmatter.split(/\r?\n/)) {
+			const match = line.match(/^\s*description\s*:\s*(.*)$/);
+			if (match) {
+				let value = match[1].trim();
+				value = value.replace(/^["']|["']$/g, '');
+				if (value.length > 100) {
+					value = value.substring(0, 100);
+				}
+				return value;
+			}
+		}
+		return '';
+	}
+
+	// Scans the top level of a commands directory (no recursion) for `*.md` files.
+	private async _scanCommandsDir(dirPath: string): Promise<{ name: string; description: string }[]> {
+		let entries: [string, vscode.FileType][];
+		try {
+			entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(dirPath));
+		} catch {
+			return [];
+		}
+
+		const mdFiles = entries.filter(([name, type]) => (type & vscode.FileType.File) !== 0 && name.toLowerCase().endsWith('.md'));
+		const commands: { name: string; description: string }[] = [];
+		for (const [name] of mdFiles) {
+			let description = '';
+			try {
+				const content = await vscode.workspace.fs.readFile(vscode.Uri.file(path.join(dirPath, name)));
+				const text = new TextDecoder().decode(content).substring(0, 2000);
+				description = this._parseCommandDescription(text);
+			} catch { /* unreadable file, fall back to empty description */ }
+			commands.push({ name: name.replace(/\.md$/i, ''), description });
+		}
+		return commands;
+	}
+
+	private async _sendCustomCommands(): Promise<void> {
+		try {
+			const commandsMap = new Map<string, { name: string; description: string; source: 'workspace' | 'user' }>();
+
+			const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+			if (workspaceRoot) {
+				const workspaceCommands = await this._scanCommandsDir(path.join(workspaceRoot, '.claude', 'commands'));
+				for (const cmd of workspaceCommands) {
+					commandsMap.set(cmd.name, { ...cmd, source: 'workspace' });
+				}
+			}
+
+			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+			const globalCommands = await this._scanCommandsDir(path.join(homeDir, '.claude', 'commands'));
+			for (const cmd of globalCommands) {
+				if (!commandsMap.has(cmd.name)) {
+					commandsMap.set(cmd.name, { ...cmd, source: 'user' });
+				}
+			}
+
+			this._postMessage({
+				type: 'customCommandsData',
+				data: Array.from(commandsMap.values())
+			});
+		} catch (error) {
+			console.error('Error loading custom commands:', error);
+			this._postMessage({
+				type: 'customCommandsData',
+				data: []
+			});
 		}
 	}
 

@@ -2790,6 +2790,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// Slash commands modal functions
 		function showSlashCommandsModal() {
 			document.getElementById('slashCommandsModal').style.display = 'flex';
+			// Re-scan .claude/commands/ (workspace + global) each time the modal opens
+			vscode.postMessage({
+				type: 'getCustomCommands'
+			});
 			// Auto-focus the search input
 			setTimeout(() => {
 				document.getElementById('slashCommandsSearch').focus();
@@ -3311,6 +3315,48 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				type: 'deleteCustomSnippet',
 				snippetId: snippetId
 			});
+		}
+
+		// Render custom commands discovered in .claude/commands/ (workspace + global)
+		function loadCustomCommands(commandsData = []) {
+			const section = document.getElementById('customCommandsSection');
+			const list = document.getElementById('customCommandsList');
+			if (!list) {
+				return;
+			}
+			list.innerHTML = '';
+
+			if (!commandsData || commandsData.length === 0) {
+				if (section) section.style.display = 'none';
+				return;
+			}
+
+			commandsData.forEach(cmd => {
+				const fallbackDescription = cmd.source === 'workspace' ? 'Project command' : 'User command';
+				const description = cmd.description && cmd.description.length > 0 ? cmd.description : fallbackDescription;
+
+				list.insertAdjacentHTML('beforeend', \`
+					<div class="slash-command-item" onclick="useCustomCommand(this.dataset.command)">
+						<div class="slash-command-icon">📄</div>
+						<div class="slash-command-content">
+							<div class="slash-command-title">/\${escapeHtml(cmd.name)}</div>
+							<div class="slash-command-description">\${escapeHtml(description)}</div>
+						</div>
+					</div>
+				\`);
+				// Set via dataset (not the HTML template) so the command name can never
+				// break out of an attribute, regardless of the characters it contains.
+				list.lastElementChild.dataset.command = cmd.name;
+			});
+
+			if (section) section.style.display = 'block';
+		}
+
+		function useCustomCommand(name) {
+			hideSlashCommandsModal();
+			messageInput.value = '/' + name + ' ';
+			messageInput.focus();
+			autoResizeTextarea();
 		}
 
 		function filterSlashCommands() {
@@ -5157,6 +5203,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				vscode.postMessage({
 					type: 'getCustomSnippets'
 				});
+			} else if (message.type === 'customCommandsData') {
+				// Render commands discovered in .claude/commands/ (workspace + global)
+				loadCustomCommands(message.data || []);
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
