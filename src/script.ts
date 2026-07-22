@@ -192,6 +192,35 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+			return messageDiv;
+		}
+
+		// Grayed placeholder shown while a message waits in the queue. Removed
+		// (removeQueued) when it is actually sent, or dropped (queueCleared) on stop/
+		// new session/error. Tagged with data-queue-id so we can target it later.
+		function addQueuedMessage(id, text) {
+			const messagesDiv = document.getElementById('messages');
+			const shouldScroll = shouldAutoScroll(messagesDiv);
+
+			const messageDiv = document.createElement('div');
+			messageDiv.className = 'message system queued';
+			messageDiv.setAttribute('data-queue-id', String(id));
+
+			const contentDiv = document.createElement('div');
+			contentDiv.className = 'message-content';
+			const preElement = document.createElement('pre');
+			preElement.textContent = '⏳ Queued — will be sent when Claude finishes\\n' + (text || '');
+			contentDiv.appendChild(preElement);
+			messageDiv.appendChild(contentDiv);
+
+			messagesDiv.appendChild(messageDiv);
+			moveProcessingIndicatorToLast();
+			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+		}
+
+		function removeQueuedMessage(id) {
+			const el = document.querySelector('[data-queue-id="' + id + '"]');
+			if (el) { el.remove(); }
 		}
 
 
@@ -3480,10 +3509,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			hideStopButton();
 		}
 
-		// Disable/enable buttons during processing
+		// Disable/enable buttons during processing.
+		// The send path stays active on purpose: a message typed while Claude is
+		// working is sent normally and enqueued by the extension-host guard. We keep the
+		// sendBtn enabled so Enter (guarded by sendBtn.disabled) and the button both work.
 		function disableButtons() {
-			const sendBtn = document.getElementById('sendBtn');
-			if (sendBtn) sendBtn.disabled = true;
+			// no-op for the send button — queueing relies on it staying enabled.
 		}
 
 		function enableButtons() {
@@ -3597,9 +3628,28 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						addMessage(parseSimpleMarkdown(message.data), 'user');
 					}
 					break;
+
+				case 'queued':
+					// Message entered while Claude was working — show a grayed placeholder.
+					addQueuedMessage(message.data.id, message.data.message);
+					break;
+
+				case 'removeQueued':
+					// Placeholder is about to be re-sent as a normal user message.
+					removeQueuedMessage(message.data.id);
+					break;
+
+				case 'queueCleared':
+					// Queue dropped (stop/new session/error/reload) — remove placeholders.
+					(message.data.ids || []).forEach(removeQueuedMessage);
+					break;
 					
 				case 'loading':
-					addMessage(message.data, 'system');
+					// Tag the loading bubble with a dedicated class so clearLoading can
+					// remove it unambiguously — independent of position and of other
+					// system messages (e.g. "Compacting…") or queued placeholders.
+					const loadingBubble = addMessage(message.data, 'system');
+					if (loadingBubble) loadingBubble.classList.add('loading-indicator');
 					updateStatusWithTotals();
 					break;
 					
@@ -3620,14 +3670,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 					
 				case 'clearLoading':
-					// Remove the last loading message
-					const messages = messagesDiv.children;
-					if (messages.length > 0) {
-						const lastMessage = messages[messages.length - 1];
-						if (lastMessage.classList.contains('system')) {
-							lastMessage.remove();
-						}
-					}
+					// Remove only the tagged loading bubble(s) — position-independent and
+					// unaffected by other system messages or queued placeholders.
+					messagesDiv.querySelectorAll('.loading-indicator').forEach(el => el.remove());
 					updateStatusWithTotals();
 					break;
 					

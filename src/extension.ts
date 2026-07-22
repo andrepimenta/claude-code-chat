@@ -199,6 +199,12 @@ class ClaudeChatProvider {
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
+	// FIFO queue of messages entered while a Claude process is still running.
+	// In-memory only — never persisted. Drained one-by-one via _sendMessageToClaude
+	// on clean process completion. The re-entrancy guard still prevents a second
+	// overlapping process; these entries just wait their turn.
+	private _messageQueue: Array<{ id: number; message: string; planMode?: boolean; thinkingMode?: boolean; images?: string[] }> = [];
+	private _queueSeq: number = 0;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -372,6 +378,10 @@ class ClaudeChatProvider {
 	}
 
 	private _sendReadyMessage() {
+		// A (re)loaded webview has no queued placeholders in its DOM, so drop any
+		// in-memory queue to avoid silently auto-sending after a panel reload.
+		this._clearQueue('webview-reload');
+
 		// Send current session info if available
 		/*if (this._currentSessionId) {
 			this._postMessage({
@@ -860,6 +870,24 @@ class ClaudeChatProvider {
 	}
 
 	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
+		// Re-entrancy guard: a Claude process is already running for this session.
+		// Spawning a second overlapping process (same --resume session) closes the
+		// first one's stdio control channel and fights over the session lock, which
+		// surfaces as "AbortError: Stream closed" on every permission request (#128).
+		// Instead of rejecting, enqueue the message and auto-send it once the current
+		// process finishes cleanly. The guard itself stays intact — we NEVER
+		// start a second overlapping process. Covers sendMessage, slash-command and
+		// plan-file-save entry points, which all funnel through here.
+		if (this._isProcessing || this._currentClaudeProcess) {
+			const id = ++this._queueSeq;
+			this._messageQueue.push({ id, message, planMode, thinkingMode, images });
+			this._postMessage({
+				type: 'queued',
+				data: { id, message }
+			});
+			return;
+		}
+
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -1226,15 +1254,24 @@ class ClaudeChatProvider {
 
 		claudeProcess.on('close', (code) => {
 
+			// Ignore a late close from an already-superseded process: after a queue
+			// drain the next process can start inside the previous one's close/error
+			// handlers; resetting shared state or cancelling permissions would clobber
+			// the CURRENT process. Only bail when a *different* process is current —
+			// if none is current (plain stop), fall through to the normal cleanup below.
+			if (this._currentClaudeProcess && claudeProcess !== this._currentClaudeProcess) {
+				return;
+			}
+
+			// Cancel any pending permission requests (process is gone)
+			this._cancelPendingPermissionRequests();
+
 			if (!this._currentClaudeProcess) {
 				return;
 			}
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			// Clear loading indicator and set processing to false
 			this._postMessage({
@@ -1265,10 +1302,27 @@ class ClaudeChatProvider {
 					});
 				}
 			}
+
+			// Drain the queue: on a clean exit send the next message, on a
+			// non-zero exit drop the queue rather than feed a broken session.
+			if (code === 0) {
+				this._dequeueAndSend();
+			} else {
+				this._clearQueue('process-exit-error');
+			}
 		});
 
 		claudeProcess.on('error', (error) => {
 			console.error('Claude process error:', error.message);
+
+			// Ignore a late error from an already-superseded process — see the
+			// close handler above. Only bail when a *different* process is current.
+			if (this._currentClaudeProcess && claudeProcess !== this._currentClaudeProcess) {
+				return;
+			}
+
+			// Cancel any pending permission requests (process is gone)
+			this._cancelPendingPermissionRequests();
 
 			if (!this._currentClaudeProcess) {
 				return;
@@ -1276,9 +1330,6 @@ class ClaudeChatProvider {
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			this._postMessage({
 				type: 'clearLoading'
@@ -1304,6 +1355,45 @@ class ClaudeChatProvider {
 					data: `Error running Claude: ${error.message}`
 				});
 			}
+
+			// Don't auto-send queued messages into a broken session — drop them.
+			this._clearQueue('process-error');
+		});
+	}
+
+	// Send the next queued message once the previous process has fully closed.
+	// Routes through _sendMessageToClaude so each one waits for the prior to finish
+	// (the guard re-queues if something is still running) — no overlapping process.
+	private _dequeueAndSend(): void {
+		if (this._messageQueue.length === 0) {
+			return;
+		}
+		if (this._isProcessing || this._currentClaudeProcess) {
+			// Safety: something is still running — leave it queued, close/result will retry.
+			return;
+		}
+		const next = this._messageQueue.shift()!;
+		// Replace the grayed placeholder with the real user message (sent inside
+		// _sendMessageToClaude's userInput echo) — avoids a duplicate in the log.
+		this._postMessage({
+			type: 'removeQueued',
+			data: { id: next.id }
+		});
+		this._sendMessageToClaude(next.message, next.planMode, next.thinkingMode, next.images);
+	}
+
+	// Drop all queued messages and tell the webview to remove their placeholders.
+	// Used when the user stops, starts a new session, the process errors, or the
+	// webview reloads — we never auto-send into a stopped/foreign/broken session.
+	private _clearQueue(reason: string): void {
+		if (this._messageQueue.length === 0) {
+			return;
+		}
+		const ids = this._messageQueue.map(q => q.id);
+		this._messageQueue = [];
+		this._postMessage({
+			type: 'queueCleared',
+			data: { ids, reason }
 		});
 	}
 
@@ -3167,6 +3257,15 @@ class ClaudeChatProvider {
 	private async _killClaudeProcess(): Promise<void> {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
+
+		// Stopping or starting a new session must not auto-send queued messages.
+		this._clearQueue('kill');
+
+		// Cancel pending permission requests synchronously on kill. A late close from
+		// this process is now ignored by the stale-guard once a new process is current,
+		// so we must clear the map here — otherwise a stale entry keeps
+		// _maybeEndClaudeStdin(B) from ever closing the new process's stdin.
+		this._cancelPendingPermissionRequests();
 
 		// 1. Abort via controller (clean API)
 		this._abortController?.abort();

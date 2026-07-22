@@ -1017,6 +1017,12 @@ const styles = `
         font-style: italic;
     }
 
+    /* Queued message placeholder — pending, waiting for Claude to finish. */
+    .message.system.queued {
+        opacity: 0.7;
+        border-left: 2px dashed var(--vscode-descriptionForeground);
+    }
+
     .message.tool {
         border: 1px solid rgba(120, 139, 237, 0.12);
         border-radius: 8px;
