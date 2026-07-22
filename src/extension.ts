@@ -198,6 +198,10 @@ class ClaudeChatProvider {
 	private _wslDistro: string = 'Ubuntu';
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
+	// Set once a 'result' message was seen for the current process. Gates the
+	// deferred stdin close so we never tear down the stdio control channel while
+	// a permission round-trip is still pending (would surface as "Stream closed").
+	private _resultSeen: boolean = false;
 	private _draftMessage: string = '';
 
 	constructor(
@@ -860,6 +864,21 @@ class ClaudeChatProvider {
 	}
 
 	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
+		// Re-entrancy guard: a Claude process is already running for this session.
+		// Spawning a second overlapping process (same --resume session) closes the
+		// first one's stdio control channel and fights over the session lock, which
+		// surfaces as "AbortError: Stream closed" on every permission request.
+		// Reject the new send instead (covers sendMessage, slash-command and
+		// plan-file-save entry points, which all funnel through here).
+		if (this._isProcessing || this._currentClaudeProcess) {
+			console.error(`[perm] rejected re-entrant send (guard hit) processing=${this._isProcessing} pid=${this._currentClaudeProcess?.pid}`);
+			this._postMessage({
+				type: 'error',
+				data: '⏳ Claude is still working on the previous message. Please wait for it to finish or press Stop.'
+			});
+			return;
+		}
+
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
@@ -1073,6 +1092,10 @@ class ClaudeChatProvider {
 
 		// Store process reference for potential termination
 		this._currentClaudeProcess = claudeProcess;
+		// New process = new turn: no 'result' seen yet, so the deferred stdin
+		// close stays armed until this turn actually completes.
+		this._resultSeen = false;
+		console.error(`[perm] spawned claude pid=${claudeProcess.pid} session=${this._currentSessionId ?? '(new)'}`);
 
 		// Send the message to Claude's stdin as JSON (stream-json input format)
 		// Don't end stdin yet - we need to keep it open for permission responses
@@ -1202,11 +1225,17 @@ class ClaudeChatProvider {
 								continue;
 							}
 
-							// Handle result message - end stdin when done
+							// Handle result message - end stdin when the turn is truly done.
+							// Do NOT close immediately: closing stdin tears down the shared
+							// stdio control channel, so any permission request still pending
+							// (or a late can_use_tool arriving right after 'result') aborts with
+							// "Stream closed". Defer via _maybeEndClaudeStdin, which only closes
+							// once no permission round-trip is in flight (plus a short grace
+							// window for a trailing can_use_tool).
 							if (jsonData.type === 'result') {
-								if (claudeProcess.stdin && !claudeProcess.stdin.destroyed) {
-									claudeProcess.stdin.end();
-								}
+								this._resultSeen = true;
+								console.error(`[perm] result subtype=${jsonData.subtype} pending=${this._pendingPermissionRequests.size} pid=${claudeProcess.pid}`);
+								setTimeout(() => this._maybeEndClaudeStdin(claudeProcess), 500);
 							}
 
 							this._processJsonStreamData(jsonData);
@@ -1966,6 +1995,30 @@ class ClaudeChatProvider {
 	}
 
 	/**
+	 * End the Claude process stdin once the turn is complete (result seen) and no
+	 * permission round-trip is still pending. Ending stdin closes the stdio control
+	 * channel, so doing it while a can_use_tool is in flight makes the CLI abort the
+	 * request with "Stream closed". Safe to call repeatedly (no-op until conditions
+	 * hold); called both after 'result' (with a grace delay) and after each
+	 * permission response, so a deferred close still fires once the last prompt is
+	 * answered — the process then exits cleanly (no zombie, no stuck "working").
+	 */
+	private _maybeEndClaudeStdin(claudeProcess: cp.ChildProcess): void {
+		if (!claudeProcess.stdin || claudeProcess.stdin.destroyed) {
+			return;
+		}
+		if (!this._resultSeen) {
+			return;
+		}
+		if (this._pendingPermissionRequests.size > 0) {
+			console.error(`[perm] stdin.end deferred: ${this._pendingPermissionRequests.size} pending pid=${claudeProcess.pid}`);
+			return;
+		}
+		console.error(`[perm] stdin.end (turn done, no pending) pid=${claudeProcess.pid}`);
+		claudeProcess.stdin.end();
+	}
+
+	/**
 	 * Handle control_request messages from Claude CLI via stdio
 	 * This is the new permission flow that replaces the MCP file-based approach
 	 */
@@ -1977,6 +2030,8 @@ class ClaudeChatProvider {
 		if (request?.subtype !== 'can_use_tool') {
 			return;
 		}
+
+		console.error(`[perm] can_use_tool received ts=${new Date().toISOString()} tool=${request.tool_name} reqId=${requestId} resultSeen=${this._resultSeen} pid=${this._currentClaudeProcess?.pid}`);
 
 		const toolName = request.tool_name || 'Unknown Tool';
 		const input = request.input || {};
@@ -2055,6 +2110,7 @@ class ClaudeChatProvider {
 			console.error('Cannot send permission response: stdin not available');
 			return;
 		}
+		console.error(`[perm] sending response reqId=${requestId} approved=${approved} -> pid=${this._currentClaudeProcess.pid}`);
 
 		let response: any;
 		if (approved) {
@@ -2127,6 +2183,13 @@ class ClaudeChatProvider {
 		if (alwaysAllow && approved) {
 			void this._saveLocalPermission(pendingRequest.toolName, pendingRequest.input);
 		}
+
+		// If 'result' already arrived while this prompt was still open, the stdin
+		// close was deferred — now that the last pending request is answered, close
+		// it so the process terminates cleanly.
+		if (this._currentClaudeProcess) {
+			this._maybeEndClaudeStdin(this._currentClaudeProcess);
+		}
 	}
 
 	/**
@@ -2188,8 +2251,13 @@ class ClaudeChatProvider {
 			}
 		};
 
+		console.error(`[perm] sending askUserQuestion response reqId=${requestId} -> pid=${this._currentClaudeProcess.pid}`);
 		const responseJson = JSON.stringify(response) + '\n';
 		this._currentClaudeProcess.stdin.write(responseJson);
+
+		// If 'result' already arrived while this prompt was open, the stdin close
+		// was deferred — close it now that the last pending request is answered.
+		this._maybeEndClaudeStdin(this._currentClaudeProcess);
 
 		// Update the saved conversation message to reflect answered status
 		const savedMsg = this._currentConversation.find(
@@ -3167,6 +3235,7 @@ class ClaudeChatProvider {
 	private async _killClaudeProcess(): Promise<void> {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
+		console.error(`[perm] killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
 
 		// 1. Abort via controller (clean API)
 		this._abortController?.abort();
