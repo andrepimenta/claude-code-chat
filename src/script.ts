@@ -1066,13 +1066,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// Approximate context-window size per model, used to turn currentContextTokens
 		// into a percentage for the status bar (#27). Best-effort approximation, not the
 		// model's authoritative limit — router models use context_length from the
-		// recommended-models catalog; native Claude models get a conservative 200K:
-		// underestimating only warns early, overestimating would silently disable the
-		// warning thresholds and reproduce the surprise-limit bug this fixes.
+		// recommended-models catalog. Native fable/opus/sonnet are the 1M-token variants
+		// per user decision (this setup runs on those); 'default' and unknown models
+		// fall back to a conservative 200K (underestimating only warns early).
 		function getContextWindow(model) {
-			const nativeModels = ['fable', 'opus', 'sonnet', 'default'];
-			if (nativeModels.includes(model)) {
-				return 200000;
+			const nativeWindows = { fable: 1000000, opus: 1000000, sonnet: 1000000, 'default': 200000 };
+			if (nativeWindows[model]) {
+				return nativeWindows[model];
 			}
 			const recommended = (window.__recommendedModels || []).find(function(m) { return m.id === model; });
 			return (recommended && recommended.context_length) || 200000;
@@ -1086,7 +1086,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const win = getContextWindow(currentModel);
 			const pct = win > 0 ? Math.round((currentContextTokens / win) * 100) : 0;
 			const ctxClass = pct >= 95 ? ' class="ctx-crit"' : pct >= 80 ? ' class="ctx-warn"' : '';
-			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${Math.round(win / 1000)}K (\${pct}%)</span>\`;
+			const winStr = win >= 1000000 ? \`\${Math.round(win / 1000000)}M\` : \`\${Math.round(win / 1000)}K\`;
+			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
 		}
 
 		function updateStatusWithTotals() {
@@ -1103,11 +1104,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show tokens and elapsed time
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-					statusText = \`Processing • \${tokensStr}\${getContextIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
+					// Regular users: show context usage and elapsed time (#27 — the
+					// context indicator replaced the old cumulative token sum here)
+					statusText = \`Processing\${getContextIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
 				updateStatusHtml(statusText, 'processing');
 			} else {
@@ -1140,12 +1139,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show tokens, requests, and usage
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					// Regular users: show context usage, requests, and usage (#27 — the
+					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
-					statusText = \`Ready • \${tokensStr}\${getContextIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
+					statusText = \`Ready\${getContextIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				}
 				updateStatusHtml(statusText, 'ready');
 			}
