@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register webview view provider for sidebar chat (using shared provider instance)
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
-	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
+	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider, { webviewOptions: { retainContextWhenHidden: true } });
 
 	// Register custom content provider for read-only diff views
 	const diffProvider = new DiffContentProvider();
@@ -188,15 +188,31 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 		// Use the shared chat provider instance for the sidebar
 		this._chatProvider.showInWebview(webviewView.webview, webviewView);
 
-		// Handle visibility changes to reinitialize when sidebar reopens
+		// Handle visibility changes: reinitialize only to reconcile with one of two
+		// situations caused by an editor panel sharing the chat provider with the
+		// sidebar (#24 phase 4). The view registration above now keeps this
+		// webview's content around across hide/show on its own, so an
+		// unconditional reinit here would re-render/re-fetch state that's already
+		// current.
+		//   1. A panel was open just now: while open it owned the shared chat
+		//      provider's webview and could have advanced the conversation, so the
+		//      sidebar's kept-around DOM is stale and needs reconciling now that
+		//      the panel is gone.
+		//   2. The message handler isn't bound to the sidebar: the panel took the
+		//      handler over and was then closed (e.g. via its tab's close button)
+		//      without the sidebar ever getting it back, leaving the sidebar's DOM
+		//      alive but unable to send/receive messages.
 		webviewView.onDidChangeVisibility(() => {
 			if (webviewView.visible) {
+				const hadPanel = !!this._chatProvider._panel;
 				// Close main panel when sidebar becomes visible
 				if (this._chatProvider._panel) {
 					this._chatProvider._panel.dispose();
 					this._chatProvider._panel = undefined;
 				}
-				this._chatProvider.reinitializeWebview();
+				if (hadPanel || this._chatProvider._messageHandlerWebview !== this._chatProvider._webview) {
+					this._chatProvider.reinitializeWebview();
+				}
 			}
 		});
 	}
@@ -209,10 +225,15 @@ class ClaudeChatProvider {
 	// "New Claude Chat (Separate)" command, so they can clean up their registry
 	// entry when this provider's panel is closed (#24).
 	public onDidDispose?: () => void;
-	private _webview: vscode.Webview | undefined;
+	public _webview: vscode.Webview | undefined;
 	private _webviewView: vscode.WebviewView | undefined;
 	private _disposables: vscode.Disposable[] = [];
 	private _messageHandlerDisposable: vscode.Disposable | undefined;
+	// Webview the message handler above is currently bound to. The sidebar's
+	// view provider compares this against _webview to detect when a panel stole
+	// the shared handler and was then closed without the sidebar ever getting
+	// it back (#24 phase 4 fix).
+	public _messageHandlerWebview: vscode.Webview | undefined;
 	private _totalCost: number = 0;
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
@@ -851,6 +872,7 @@ class ClaudeChatProvider {
 			null,
 			this._disposables
 		);
+		this._messageHandlerWebview = webview;
 	}
 
 	private _closeSidebar() {
