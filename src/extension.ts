@@ -1745,6 +1745,23 @@ class ClaudeChatProvider {
 		}
 	}
 
+	private static _backupLock = { p: Promise.resolve() };
+	private static _indexLock = { p: Promise.resolve() };
+
+	// In-host mutual exclusion via promise chaining. All chat panels live in one
+	// extension host and share the workspace backup repo / project conversation index;
+	// this serializes a critical section across instances. Release is in `finally` so a
+	// thrown error never wedges the chain. Non-reentrant: no critical section re-enters
+	// the same lock. Cross-window races (two VS Code windows) bypass this.
+	private static async _runExclusive<T>(lock: { p: Promise<void> }, fn: () => Promise<T>): Promise<T> {
+		const prev = lock.p;
+		let release!: () => void;
+		lock.p = new Promise<void>(res => { release = res; });
+		await prev;
+		try { return await fn(); }
+		finally { release(); }
+	}
+
 	private async _initializeBackupRepo(): Promise<void> {
 		try {
 			const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -1787,33 +1804,40 @@ class ClaudeChatProvider {
 			const displayTimestamp = now.toISOString();
 			const commitMessage = `Before: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
 
-			// Add all files using git-dir and work-tree (excludes .git automatically)
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			// Serialize the add/status/commit sequence across panels sharing this
+			// backup repo (#24 phase 2) — otherwise two concurrent commits could
+			// interleave (e.g. one's `add -A` racing another's `commit`).
+			const { sha, actualMessage } = await ClaudeChatProvider._runExclusive(ClaudeChatProvider._backupLock, async () => {
+				// Add all files using git-dir and work-tree (excludes .git automatically)
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
 
-			// Check if this is the first commit (no HEAD exists yet)
-			let isFirstCommit = false;
-			try {
-				await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
-			} catch {
-				isFirstCommit = true;
-			}
+				// Check if this is the first commit (no HEAD exists yet)
+				let isFirstCommit = false;
+				try {
+					await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+				} catch {
+					isFirstCommit = true;
+				}
 
-			// Check if there are changes to commit
-			const { stdout: status } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" status --porcelain`);
+				// Check if there are changes to commit
+				const { stdout: status } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" status --porcelain`);
 
-			// Always create a checkpoint, even if no files changed
-			let actualMessage;
-			if (isFirstCommit) {
-				actualMessage = `Initial backup: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
-			} else if (status.trim()) {
-				actualMessage = commitMessage;
-			} else {
-				actualMessage = `Checkpoint (no changes): ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
-			}
+				// Always create a checkpoint, even if no files changed
+				let actualMessage;
+				if (isFirstCommit) {
+					actualMessage = `Initial backup: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
+				} else if (status.trim()) {
+					actualMessage = commitMessage;
+				} else {
+					actualMessage = `Checkpoint (no changes): ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
+				}
 
-			// Create commit with --allow-empty to ensure checkpoint is always created
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "${actualMessage}"`);
-			const { stdout: sha } = await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+				// Create commit with --allow-empty to ensure checkpoint is always created
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "${actualMessage}"`);
+				const { stdout: sha } = await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+
+				return { sha, actualMessage };
+			});
 
 			// Store commit info
 			const commitInfo = {
@@ -1861,8 +1885,12 @@ class ClaudeChatProvider {
 				data: 'Restoring files from backup...'
 			});
 
-			// Restore files directly to workspace using git checkout
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
+			// Restore files directly to workspace using git checkout. Serialized on the
+			// same lock as _createBackupCommit (#24 phase 2) so a concurrent commit from
+			// another panel can't race this checkout.
+			await ClaudeChatProvider._runExclusive(ClaudeChatProvider._backupLock, async () => {
+				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
+			});
 
 			vscode.window.showInformationMessage(`Restored to commit: ${commit.message}`);
 
@@ -3057,7 +3085,7 @@ class ClaudeChatProvider {
 			await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), content);
 
 			// Update conversation index
-			this._updateConversationIndex(filename, conversationData);
+			await this._updateConversationIndex(filename, conversationData);
 
 		} catch (error: any) {
 			console.error('Failed to save conversation:', error.message);
@@ -3259,7 +3287,7 @@ class ClaudeChatProvider {
 		this._sendOpenCreditsBalance();
 	}
 
-	private _updateConversationIndex(filename: string, conversationData: ConversationData): void {
+	private async _updateConversationIndex(filename: string, conversationData: ConversationData): Promise<void> {
 		// Extract first and last user messages
 		const userMessages = conversationData.messages.filter((m: any) => m.messageType === 'userInput');
 		const firstUserMessage = userMessages.length > 0 ? userMessages[0].data : 'No user message';
@@ -3277,19 +3305,25 @@ class ClaudeChatProvider {
 			lastUserMessage: lastUserMessage.substring(0, 100)
 		};
 
-		// Remove any existing entry for this session (in case of updates)
-		this._conversationIndex = this._conversationIndex.filter(entry => entry.filename !== conversationData.filename);
+		// Serialize read-modify-write access to the conversation index across chat
+		// panels (#24 phase 2): re-read the persisted value under the lock (not just
+		// the in-memory copy) so a concurrent panel's write isn't clobbered.
+		await ClaudeChatProvider._runExclusive(ClaudeChatProvider._indexLock, async () => {
+			let next = this._context.workspaceState.get('claude.conversationIndex', this._conversationIndex)
+				.filter(entry => entry.filename !== conversationData.filename);
 
-		// Add new entry at the beginning (most recent first)
-		this._conversationIndex.unshift(indexEntry);
+			// Add new entry at the beginning (most recent first)
+			next.unshift(indexEntry);
 
-		// Keep only last 50 conversations to avoid workspace state bloat
-		if (this._conversationIndex.length > 50) {
-			this._conversationIndex = this._conversationIndex.slice(0, 50);
-		}
+			// Keep only last 50 conversations to avoid workspace state bloat
+			if (next.length > 50) {
+				next = next.slice(0, 50);
+			}
 
-		// Save to workspace state
-		this._context.workspaceState.update('claude.conversationIndex', this._conversationIndex);
+			// Save to workspace state
+			await this._context.workspaceState.update('claude.conversationIndex', next);
+			this._conversationIndex = next;
+		});
 	}
 
 	private _getLatestConversation(): any | undefined {
