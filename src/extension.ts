@@ -2962,10 +2962,14 @@ class ClaudeChatProvider {
 		// The message index will be the current length (0-indexed position after push)
 		const messageIndex = this._currentConversation.length;
 
+		// Shared between the live UI message and the saved history entry so
+		// both report the exact same moment.
+		const timestamp = new Date().toISOString();
+
 		// For tool messages that support diff, include the message index
 		const messageToSend = (message.type === 'toolUse' || message.type === 'toolResult')
-			? { ...message, data: { ...message.data, messageIndex } }
-			: message;
+			? { ...message, data: { ...message.data, messageIndex }, timestamp }
+			: { ...message, timestamp };
 
 		// Send to UI using the helper method
 		this._postMessage(messageToSend);
@@ -2980,7 +2984,7 @@ class ClaudeChatProvider {
 
 		// Save to conversation
 		this._currentConversation.push({
-			timestamp: new Date().toISOString(),
+			timestamp,
 			messageType: message.type,
 			data: dataToSave
 		});
@@ -3335,7 +3339,8 @@ class ClaudeChatProvider {
 
 						this._postMessage({
 							type: message.messageType,
-							data: messageData
+							data: messageData,
+							timestamp: message.timestamp
 						});
 						if (message.messageType === 'userInput') {
 							try {
