@@ -127,6 +127,11 @@
           "command": "claude-code-chat.openChat",
           "group": "navigation@1",
           "when": "view == workbench.explorer.fileView"
+        },
+        {
+          "command": "claude-code-chat.newChat",
+          "group": "navigation@1",
+          "when": "view == claude-code-chat.chat"
         }
       ],
       "touchBar": [

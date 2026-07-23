@@ -3550,7 +3550,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					addMessage(message.data, 'system');
 					updateStatusWithTotals();
 					break;
-					
+
+				case '__persistPanelState':
+					vscode.setState({ ...(vscode.getState() || {}), __panel: message.state });
+					break;
+
 				case 'restoreInputText':
 					const inputField = document.getElementById('messageInput');
 					if (inputField && message.data) {

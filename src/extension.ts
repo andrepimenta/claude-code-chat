@@ -64,6 +64,32 @@ export function activate(context: vscode.ExtensionContext) {
 	const diffProvider = new DiffContentProvider();
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
 
+	// Restore "New Claude Chat (Separate)" panels across VS Code reloads (#24 phase 3):
+	// each such panel persists a small state blob (kind/filename/sessionId/title) via
+	// webview.vscode.setState(); VS Code hands it back here on restart so it can be
+	// re-adopted by a fresh ClaudeChatProvider instance. Panels without recognizable
+	// state (e.g. leftover from before this feature) are simply not restored.
+	context.subscriptions.push(vscode.window.registerWebviewPanelSerializer('claudeChat', {
+		async deserializeWebviewPanel(panel: vscode.WebviewPanel, stateAny: any) {
+			const st = stateAny && stateAny.__panel;
+			if (st && st.kind === 'extra') {
+				const extra = new ClaudeChatProvider(context.extensionUri, context, true);
+				extraProviders.add(extra);
+				extra.onDidDispose = () => extraProviders.delete(extra);
+				try {
+					await extra.restoreInPanel(panel, st);
+				} catch (error) {
+					console.error('Failed to restore chat panel:', error);
+					extraProviders.delete(extra);
+					extra.onDidDispose = undefined;
+					try { panel.dispose(); } catch { }
+				}
+			} else {
+				panel.dispose();
+			}
+		}
+	}));
+
 	// Listen for configuration changes
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
@@ -195,6 +221,11 @@ class ClaudeChatProvider {
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
+	// Derived title + last-saved filename for extra (non-primary) panels, persisted
+	// via _persistPanelState() so a VS Code reload can restore this panel's own
+	// conversation instead of the project's latest one (#24 phase 3).
+	private _panelTitle: string | undefined;
+	private _lastSavedFilename: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
@@ -277,6 +308,10 @@ class ClaudeChatProvider {
 		const iconPath = vscode.Uri.joinPath(this._extensionUri, 'icon-bubble.png');
 		this._panel.iconPath = iconPath;
 
+		if (this._freshSession) {
+			this._panel.title = 'Claude Chat (Separate)';
+		}
+
 		this._panel.webview.html = this._getHtmlForWebview();
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
@@ -299,6 +334,90 @@ class ClaudeChatProvider {
 			if (!latestConversation) {
 				this._sendReadyMessage();
 			}
+			this._persistPanelState();
+		}, 100);
+	}
+
+	// Adopts a webview panel VS Code recreated after a reload for a "New Claude Chat
+	// (Separate)" instance (#24 phase 3). Mirrors show()'s post-creation setup exactly
+	// (webview options, icon, html, dispose hook, message handler, permissions), then
+	// restores THIS panel's own conversation (via st, from _persistPanelState()) instead
+	// of resuming the project's latest one.
+	public async restoreInPanel(panel: vscode.WebviewPanel, st: any): Promise<void> {
+		this._panel = panel;
+
+		// A panel handed back by the serializer has default webview options — a fresh
+		// createWebviewPanel() call isn't made here, so re-apply what show() passes in
+		// its options object. retainContextWhenHidden/enableFindWidget can't be changed
+		// after panel creation and are left to VS Code's own restoration defaults.
+		panel.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this._extensionUri]
+		};
+
+		// Set icon for the webview tab using URI path
+		const iconPath = vscode.Uri.joinPath(this._extensionUri, 'icon-bubble.png');
+		panel.iconPath = iconPath;
+
+		this._panelTitle = st?.title;
+		panel.title = st?.title || 'Claude Chat (Separate)';
+
+		panel.webview.html = this._getHtmlForWebview();
+
+		panel.onDidDispose(() => this.dispose(), null, this._disposables);
+
+		// Restored panels don't get retainContextWhenHidden (only settable at
+		// createWebviewPanel time, which doesn't happen here) — the webview's DOM,
+		// and with it the visible chat history, is torn down while the tab is
+		// hidden. Re-send this panel's own conversation whenever it becomes visible
+		// again to compensate (#24 phase 3). _loadConversationHistory always posts
+		// 'sessionCleared' before repopulating from the freshly re-read file, so an
+		// occasional double-fire (e.g. right after deserialize) is at most a brief,
+		// harmless re-render — not a correctness issue.
+		panel.onDidChangeViewState((e) => {
+			if (e.webviewPanel.visible && this._lastSavedFilename) {
+				void this._loadConversationHistory(this._lastSavedFilename);
+			}
+		}, null, this._disposables);
+
+		this._setupWebviewMessageHandler(panel.webview);
+		this._initializePermissions();
+
+		// _initializeConversations() runs fire-and-forget from the constructor and may
+		// not have populated _conversationsPath yet by the time this runs — derive it
+		// synchronously the same way, so the stat() check below has a path to use.
+		if (!this._conversationsPath) {
+			const storagePath = this._context.storageUri?.fsPath;
+			if (storagePath) {
+				this._conversationsPath = path.join(storagePath, 'conversations');
+			}
+		}
+
+		let ok = false;
+		if (st?.filename && this._conversationsPath) {
+			try {
+				await vscode.workspace.fs.stat(vscode.Uri.file(path.join(this._conversationsPath, st.filename)));
+				ok = true;
+			} catch { }
+		}
+
+		if (ok && st.sessionId) {
+			this._currentSessionId = st.sessionId;
+			this._lastSavedFilename = st.filename;
+			// Load this panel's own conversation, same fire-and-forget timing as show()'s resume branch.
+			this._loadConversationHistory(st.filename);
+		} else {
+			this._currentSessionId = undefined;
+			// No (usable) saved conversation — same fallback timing as show().
+			setTimeout(() => {
+				this._sendReadyMessage();
+			}, 100);
+		}
+
+		// Same 100ms "give the webview a moment to attach its listener" delay as
+		// show() uses for its own first _persistPanelState() call.
+		setTimeout(() => {
+			this._persistPanelState();
 		}, 100);
 	}
 
@@ -385,6 +504,23 @@ class ClaudeChatProvider {
 		} else if (this._webview) {
 			this._webview.postMessage(message);
 		}
+	}
+
+	// Pushes this extra panel's identity (filename/sessionId/title) into the
+	// webview's vscode.setState() so VS Code can hand it back to the panel
+	// serializer after a reload (#24 phase 3). Primary instance never persists
+	// panel state — it resumes the project's latest conversation on its own.
+	private _persistPanelState(): void {
+		if (!this._freshSession || !this._panel) { return; }
+		this._panel.webview.postMessage({
+			type: '__persistPanelState',
+			state: {
+				kind: 'extra',
+				filename: this._lastSavedFilename,
+				sessionId: this._currentSessionId,
+				title: this._panelTitle
+			}
+		});
 	}
 
 	private async _getImageDataUri(filePath: string): Promise<string | undefined> {
@@ -928,6 +1064,15 @@ class ClaudeChatProvider {
 			type: 'userInput',
 			data: message
 		});
+
+		// Derive this extra panel's tab title from its first message (#24 phase 3) —
+		// only once, so later messages in the same conversation don't rename it.
+		if (this._freshSession && !this._panelTitle && this._panel) {
+			const t = message.trim().replace(/\s+/g, ' ');
+			this._panelTitle = t.length > 30 ? t.slice(0, 30) + '…' : t;
+			this._panel.title = this._panelTitle;
+			this._persistPanelState();
+		}
 
 		// Set processing state to true
 		this._postMessage({
@@ -3086,6 +3231,11 @@ class ClaudeChatProvider {
 
 			// Update conversation index
 			await this._updateConversationIndex(filename, conversationData);
+
+			// Keep this extra panel's persisted state in sync with the latest save
+			// (#24 phase 3), so a reload restores this exact conversation.
+			this._lastSavedFilename = filename;
+			this._persistPanelState();
 
 		} catch (error: any) {
 			console.error('Failed to save conversation:', error.message);
