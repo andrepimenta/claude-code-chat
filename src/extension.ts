@@ -1726,7 +1726,15 @@ class ClaudeChatProvider {
 						return;
 					}
 
-					this._isProcessing = false;
+					// #32: do NOT clear _isProcessing / post setProcessing(false) here.
+					// This 'result' arrives when the main turn finishes, but in the
+					// persistent stream-json process background subagents (Task tool)
+					// can keep running and request permissions after it (see the
+					// _maybeEndClaudeStdin note above). Flipping to idle here made the
+					// status line show "Ready" and hide the Stop button while the CLI
+					// was still working. The close/error handlers, _stopClaudeProcess,
+					// _newSession and _handleLoginRequired remain the authoritative
+					// teardown signals that actually end processing.
 
 					// Capture session ID from final result
 					if (jsonData.session_id) {
@@ -1743,12 +1751,6 @@ class ClaudeChatProvider {
 							}
 						});
 					}
-
-					// Clear processing state
-					this._postMessage({
-						type: 'setProcessing',
-						data: { isProcessing: false }
-					});
 
 					// Update cumulative tracking
 					this._requestCount++;
