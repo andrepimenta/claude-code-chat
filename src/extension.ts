@@ -67,22 +67,30 @@ export function activate(context: vscode.ExtensionContext) {
 	// Restore "New Claude Chat (Separate)" panels across VS Code reloads (#24 phase 3):
 	// each such panel persists a small state blob (kind/filename/sessionId/title) via
 	// webview.vscode.setState(); VS Code hands it back here on restart so it can be
-	// re-adopted by a fresh ClaudeChatProvider instance. Panels without recognizable
-	// state (e.g. leftover from before this feature) are simply not restored.
+	// replaced by a freshly created, retained panel owned by a new ClaudeChatProvider
+	// instance (#33). Panels without recognizable state (e.g. leftover from before
+	// this feature) are simply not restored.
 	context.subscriptions.push(vscode.window.registerWebviewPanelSerializer('claudeChat', {
 		async deserializeWebviewPanel(panel: vscode.WebviewPanel, stateAny: any) {
 			const st = stateAny && stateAny.__panel;
 			if (st && st.kind === 'extra') {
+				// Handed panel has no retainContextWhenHidden (readonly, not settable
+				// post-creation) -> would reload its whole conversation on every tab
+				// switch (#33). Discard it while it's still naked (no provider/handlers
+				// bound, so nothing cascades) and let the provider rebuild a retained
+				// panel in the same column.
+				const column = panel.viewColumn ?? vscode.ViewColumn.Active;
+				panel.dispose();
 				const extra = new ClaudeChatProvider(context.extensionUri, context, true);
 				extraProviders.add(extra);
 				extra.onDidDispose = () => extraProviders.delete(extra);
 				try {
-					await extra.restoreInPanel(panel, st);
+					await extra.restoreInPanel(column, st);
 				} catch (error) {
 					console.error('Failed to restore chat panel:', error);
 					extraProviders.delete(extra);
 					extra.onDidDispose = undefined;
-					try { panel.dispose(); } catch { }
+					extra.dispose();
 				}
 			} else {
 				panel.dispose();
@@ -362,22 +370,28 @@ class ClaudeChatProvider {
 		}, 100);
 	}
 
-	// Adopts a webview panel VS Code recreated after a reload for a "New Claude Chat
-	// (Separate)" instance (#24 phase 3). Mirrors show()'s post-creation setup exactly
-	// (webview options, icon, html, dispose hook, message handler, permissions), then
-	// restores THIS panel's own conversation (via st, from _persistPanelState()) instead
-	// of resuming the project's latest one.
-	public async restoreInPanel(panel: vscode.WebviewPanel, st: any): Promise<void> {
-		this._panel = panel;
-
-		// A panel handed back by the serializer has default webview options — a fresh
-		// createWebviewPanel() call isn't made here, so re-apply what show() passes in
-		// its options object. retainContextWhenHidden/enableFindWidget can't be changed
-		// after panel creation and are left to VS Code's own restoration defaults.
-		panel.webview.options = {
-			enableScripts: true,
-			localResourceRoots: [this._extensionUri]
-		};
+	// Creates a fresh webview panel for a "New Claude Chat (Separate)" instance VS Code
+	// is recreating after a reload (#24 phase 3), then mirrors show()'s post-creation
+	// setup (icon, html, dispose hook, message handler, permissions) and restores THIS
+	// panel's own conversation (via st, from _persistPanelState()) instead of resuming
+	// the project's latest one. The panel handed back by the serializer is discarded
+	// instead of adopted: it has no retainContextWhenHidden (not settable after panel
+	// creation), which forced a reload of the visible history on every tab switch — the
+	// panel created here gets retainContextWhenHidden and is placed in the same
+	// viewColumn instead (#33).
+	public async restoreInPanel(column: vscode.ViewColumn, st: any): Promise<void> {
+		this._panel = vscode.window.createWebviewPanel(
+			'claudeChat',
+			st?.title || 'Claude Chat (Separate)',
+			column,
+			{
+				enableScripts: true,
+				retainContextWhenHidden: true,
+				localResourceRoots: [this._extensionUri],
+				enableFindWidget: true
+			}
+		);
+		const panel = this._panel;
 
 		// Set icon for the webview tab using URI path
 		const iconPath = vscode.Uri.joinPath(this._extensionUri, 'icon-bubble.png');
@@ -389,20 +403,6 @@ class ClaudeChatProvider {
 		panel.webview.html = this._getHtmlForWebview();
 
 		panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-		// Restored panels don't get retainContextWhenHidden (only settable at
-		// createWebviewPanel time, which doesn't happen here) — the webview's DOM,
-		// and with it the visible chat history, is torn down while the tab is
-		// hidden. Re-send this panel's own conversation whenever it becomes visible
-		// again to compensate (#24 phase 3). _loadConversationHistory always posts
-		// 'sessionCleared' before repopulating from the freshly re-read file, so an
-		// occasional double-fire (e.g. right after deserialize) is at most a brief,
-		// harmless re-render — not a correctness issue.
-		panel.onDidChangeViewState((e) => {
-			if (e.webviewPanel.visible && this._lastSavedFilename) {
-				void this._loadConversationHistory(this._lastSavedFilename);
-			}
-		}, null, this._disposables);
 
 		this._setupWebviewMessageHandler(panel.webview);
 		this._initializePermissions();
