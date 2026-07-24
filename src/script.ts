@@ -3883,6 +3883,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				case 'conversationList':
 					displayConversationList(message.data);
 					break;
+				case 'cliSessionList':
+					displayCliSessionList(message.data);
+					break;
+				case 'cliResumeInfo':
+					addMessage(message.data, 'system');
+					break;
 				case 'clipboardText':
 					handleClipboardText(message.data);
 					break;
@@ -4608,6 +4614,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			toggleConversationHistory();
 		}
 
+		function resumeCliSession(sessionId) {
+			vscode.postMessage({
+				type: 'resumeCliSession',
+				sessionId: sessionId
+			});
+
+			// Hide conversation history and show chat
+			toggleConversationHistory();
+		}
+
+
 		// File picker functions
 		function showFilePicker() {
 			// Request initial file list from VS Code
@@ -4802,6 +4819,37 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				\`;
 
 				listDiv.appendChild(item);
+			});
+		}
+
+		function displayCliSessionList(sessions) {
+			const section = document.getElementById('cliSessionSection');
+			const list = document.getElementById('cliSessionList');
+			list.innerHTML = '';
+
+			if (!sessions || sessions.length === 0) {
+				section.style.display = 'none';
+				return;
+			}
+			section.style.display = 'block';
+
+			sessions.forEach(s => {
+				const date = new Date(s.mtime).toLocaleDateString();
+				const time = new Date(s.mtime).toLocaleTimeString();
+
+				list.insertAdjacentHTML('beforeend', \`
+					<div class="conversation-item">
+						<div class="conversation-item-top">
+							<div class="conversation-title">\${escapeHtml(s.title)} <span class="cli-badge">CLI</span></div>
+						</div>
+						<div class="conversation-meta">\${date} at \${time}</div>
+					</div>
+				\`);
+				// Set via dataset (not the HTML template) so the session id can never
+				// break out of an attribute, regardless of the characters it contains.
+				const el = list.lastElementChild;
+				el.dataset.sessionId = s.sessionId;
+				el.onclick = () => resumeCliSession(el.dataset.sessionId);
 			});
 		}
 

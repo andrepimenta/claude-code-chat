@@ -3981,6 +3981,9 @@ const styles = `
         margin-bottom: 4px;
     }
 
+    .cli-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+    .cli-session-header { margin: 12px 4px 4px; font-size: 12px; color: var(--vscode-descriptionForeground); }
+
     .conversation-preview {
         font-size: 11px;
         color: var(--vscode-descriptionForeground);

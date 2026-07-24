@@ -43,6 +43,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 		<div id="conversationList" class="conversation-list">
 			<!-- Conversations will be loaded here -->
 		</div>
+		<div id="cliSessionSection" style="display: none;">
+			<h4 class="cli-session-header">CLI Sessions</h4>
+			<div id="cliSessionList" class="conversation-list"></div>
+		</div>
 	</div>
 
 	<div class="chat-container" id="chatContainer">

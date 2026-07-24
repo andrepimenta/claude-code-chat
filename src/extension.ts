@@ -235,6 +235,9 @@ class ClaudeChatProvider {
 	private _pendingCompactSummary: string | undefined;
 	private _forceFreshSession = false;
 	private _pinnedConversationFilename: string | undefined;
+	// CLI-session resume (#37): guards against a double-click interleaving two
+	// preview loads once the first call yields at an await.
+	private _cliResumeInProgress = false;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -489,6 +492,7 @@ class ClaudeChatProvider {
 				return;
 			case 'getConversationList':
 				this._sendConversationList();
+				void this._sendCliSessionList();
 				return;
 			case 'getWorkspaceFiles':
 				this._sendWorkspaceFiles(message.searchTerm);
@@ -498,6 +502,9 @@ class ClaudeChatProvider {
 				return;
 			case 'loadConversation':
 				this.loadConversation(message.filename);
+				return;
+			case 'resumeCliSession':
+				this._resumeCliSession(message.sessionId);
 				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
@@ -3239,6 +3246,267 @@ class ClaudeChatProvider {
 		this._postMessage({
 			type: 'conversationList',
 			data: this._conversationIndex
+		});
+	}
+
+	// Resolve the on-disk directory holding this workspace's CLI session transcripts
+	// (~/.claude/projects/<slug>/*.jsonl), so the "CLI Sessions" list can surface
+	// conversations started directly from a `claude` terminal instead of this
+	// extension (#37). Skipped for WSL workspaces — those transcripts live inside the
+	// WSL filesystem, not under the Windows home directory this runs against.
+	private async _getCliProjectsDirs(): Promise<string[]> {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		if (config.get<boolean>('wsl.enabled', false)) { return []; }
+
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) { return []; }
+
+		const expected = workspaceFolder.uri.fsPath.replace(/[^a-zA-Z0-9]/g, '-');
+		const base = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+		const projectsDir = path.join(base, 'projects');
+
+		try {
+			const entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+			return entries
+				.filter(entry => entry.isDirectory() && entry.name.toLowerCase() === expected.toLowerCase())
+				.map(entry => path.join(projectsDir, entry.name));
+		} catch {
+			return [];
+		}
+	}
+
+	// Send the "CLI Sessions" list for the History panel (#37): sessions found on disk
+	// for this workspace that aren't already tracked in this extension's own
+	// _conversationIndex (or the currently active session). Read-only and best-effort
+	// throughout — the JSONL format is CLI-internal and unstable, so any failure here
+	// must never break the extension's own conversation list.
+	private async _sendCliSessionList(): Promise<void> {
+		try {
+			const dirs = await this._getCliProjectsDirs();
+			if (dirs.length === 0) { return; }
+
+			const known = new Set(this._conversationIndex.map(entry => entry.sessionId));
+			if (this._currentSessionId) { known.add(this._currentSessionId); }
+
+			const bySid = new Map<string, { sid: string; fullPath: string; mtime: number }>();
+			for (const dir of dirs) {
+				let entries: fs.Dirent[];
+				try {
+					entries = await fs.promises.readdir(dir, { withFileTypes: true });
+				} catch {
+					continue;
+				}
+				for (const entry of entries) {
+					if (!entry.isFile() || !entry.name.endsWith('.jsonl')) { continue; }
+					const sid = entry.name.slice(0, -6);
+					if (known.has(sid)) { continue; }
+					const fullPath = path.join(dir, entry.name);
+					try {
+						const stat = await fs.promises.stat(fullPath);
+						bySid.set(sid, { sid, fullPath, mtime: stat.mtimeMs });
+					} catch {
+						// Unreadable entry — skip it
+					}
+				}
+			}
+
+			const items = Array.from(bySid.values())
+				.sort((a, b) => b.mtime - a.mtime)
+				.slice(0, 25);
+
+			const data = await Promise.all(items.map(async item => ({
+				sessionId: item.sid,
+				title: await this._readCliSessionTitle(item.fullPath),
+				mtime: item.mtime
+			})));
+
+			this._postMessage({ type: 'cliSessionList', data });
+		} catch (error) {
+			console.error('Failed to list CLI sessions:', error);
+		}
+	}
+
+	// Best-effort title for a CLI session: the text of its first non-sidechain user
+	// message, read from just the first 64KB of the file (titles live at the start;
+	// no need to read a potentially large transcript in full).
+	private async _readCliSessionTitle(filePath: string): Promise<string> {
+		const fallback = 'CLI session';
+		let fh: fs.promises.FileHandle | undefined;
+		try {
+			fh = await fs.promises.open(filePath, 'r');
+			const buf = Buffer.alloc(65536);
+			const { bytesRead } = await fh.read(buf, 0, 65536, 0);
+			const chunkText = buf.toString('utf8', 0, bytesRead);
+			const lines = chunkText.split('\n');
+			// The last line may be a partial line cut off by the 64KB window — drop it.
+			lines.pop();
+
+			for (const line of lines) {
+				if (!line.trim()) { continue; }
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (obj?.type === 'user' && obj?.isSidechain !== true) {
+					const messageText = this._extractCliText(obj.message?.content);
+					if (messageText) {
+						return messageText.replace(/\r?\n+/g, ' ').slice(0, 80);
+					}
+				}
+			}
+			return fallback;
+		} catch {
+			return fallback;
+		} finally {
+			try {
+				await fh?.close();
+			} catch {
+				// Ignore close errors
+			}
+		}
+	}
+
+	// Extract the plain-text portion of a CLI transcript message's `content` field,
+	// which is either a plain string or an array of content blocks (only `text`
+	// blocks are relevant for a preview/title — tool_use/tool_result are skipped).
+	private _extractCliText(content: unknown): string {
+		if (typeof content === 'string') { return content.trim(); }
+		if (Array.isArray(content)) {
+			return content
+				.filter((block: any) => block?.type === 'text')
+				.map((block: any) => block.text)
+				.join(' ')
+				.trim();
+		}
+		return '';
+	}
+
+	// Best-effort preview of the last ~20 user/assistant messages in a CLI session,
+	// for display only when resuming one (#37) — read from just the last 512KB of the
+	// file so a long-running CLI session doesn't require loading its full transcript.
+	private async _readCliSessionPreview(filePath: string): Promise<Array<{ role: 'user' | 'assistant', text: string }>> {
+		const collected: Array<{ role: 'user' | 'assistant', text: string }> = [];
+		let fh: fs.promises.FileHandle | undefined;
+		try {
+			const stat = await fs.promises.stat(filePath);
+			const start = Math.max(0, stat.size - 512 * 1024);
+			const length = stat.size - start;
+			if (length <= 0) { return collected; }
+
+			fh = await fs.promises.open(filePath, 'r');
+			const buf = Buffer.alloc(length);
+			const { bytesRead } = await fh.read(buf, 0, length, start);
+			const chunkText = buf.toString('utf8', 0, bytesRead);
+			const lines = chunkText.split('\n');
+			// When the window starts mid-file, the first line is a partial line — drop it.
+			if (start > 0) { lines.shift(); }
+
+			for (const line of lines) {
+				if (!line.trim()) { continue; }
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (obj?.type !== 'user' && obj?.type !== 'assistant') { continue; }
+				if (obj?.isSidechain === true) { continue; }
+				const role = obj.message?.role ?? obj.type;
+				if (role !== 'user' && role !== 'assistant') { continue; }
+				const messageText = this._extractCliText(obj.message?.content);
+				if (messageText) {
+					collected.push({ role, text: messageText });
+				}
+			}
+			return collected.slice(-20);
+		} catch {
+			return collected;
+		} finally {
+			try {
+				await fh?.close();
+			} catch {
+				// Ignore close errors
+			}
+		}
+	}
+
+	// Resume a CLI session (~/.claude/projects/<slug>/<sid>.jsonl) picked from the
+	// "CLI Sessions" list (#37). Mirrors the state reset in _newSession(), minus the
+	// process kill — there's nothing to kill, since a CLI session was never spawned
+	// by this extension. Only sets _currentSessionId so the next real message resumes
+	// it via the unchanged --resume send path; the preview posted below is display-only
+	// and never touches _currentConversation, so it can't leak into a save.
+	private async _resumeCliSession(sessionId: unknown): Promise<void> {
+		if (typeof sessionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(sessionId)) {
+			return;
+		}
+
+		if (this._isProcessing || this._currentClaudeProcess) {
+			vscode.window.showInformationMessage('Stop the current turn before resuming a CLI session.');
+			return;
+		}
+
+		if (this._cliResumeInProgress) {
+			return;
+		}
+		this._cliResumeInProgress = true;
+
+		// Clear current session (mirrors _newSession(), minus _killClaudeProcess())
+		this._currentConversation = [];
+		this._conversationStartTime = undefined;
+
+		// Reset counters
+		this._totalCost = 0;
+		this._totalTokensInput = 0;
+		this._totalTokensOutput = 0;
+		this._requestCount = 0;
+
+		// Manual compact (#36): clear any in-flight/pending compaction state so the
+		// resumed session starts clean.
+		this._commits = [];
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
+		this._pinnedConversationFilename = undefined;
+
+		this._currentSessionId = sessionId;
+
+		this._postMessage({ type: 'sessionCleared' });
+
+		// Best-effort display-only preview of the last ~20 messages.
+		try {
+			const dirs = await this._getCliProjectsDirs();
+			for (const dir of dirs) {
+				const p = path.join(dir, sessionId + '.jsonl');
+				const resolvedDir = path.resolve(dir) + path.sep;
+				if (!path.resolve(p).startsWith(resolvedDir)) { continue; }
+
+				try {
+					await fs.promises.stat(p);
+				} catch {
+					continue;
+				}
+
+				const preview = await this._readCliSessionPreview(p);
+				for (const entry of preview) {
+					this._postMessage({
+						type: entry.role === 'user' ? 'userInput' : 'output',
+						data: entry.text
+					});
+				}
+				break;
+			}
+		} catch (error) {
+			console.error('Failed to load CLI session preview:', error);
+		} finally {
+			this._cliResumeInProgress = false;
+		}
+
+		this._postMessage({
+			type: 'cliResumeInfo',
+			data: '📎 Continuing a CLI session — the messages above are a preview; from your next message on, this conversation is saved normally.'
 		});
 	}
 
