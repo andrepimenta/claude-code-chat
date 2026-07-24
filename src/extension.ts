@@ -62,7 +62,7 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.showInformationMessage('Select some code in the editor first.');
 			return;
 		}
-		provider.addSelectionFromEditor(editor);
+		(ClaudeChatProvider.lastActive ?? provider).addSelectionFromEditor(editor);
 	});
 
 	// Register webview view provider for sidebar chat (using shared provider instance)
@@ -237,6 +237,10 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 
 
 class ClaudeChatProvider {
+	// Most recently created or activated chat surface (panel or sidebar).
+	// addSelectionToChat routes here so the selection reaches the chat the
+	// user last worked in instead of always the primary instance (#28).
+	public static lastActive: ClaudeChatProvider | undefined;
 	public _panel: vscode.WebviewPanel | undefined;
 	// Set by callers that track extra (non-primary) provider instances, e.g. the
 	// "New Claude Chat (Separate)" command, so they can clean up their registry
@@ -346,6 +350,8 @@ class ClaudeChatProvider {
 				localResourceRoots: [this._extensionUri]
 			}
 		);
+		ClaudeChatProvider.lastActive = this;
+		this._panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { ClaudeChatProvider.lastActive = this; } }, null, this._disposables);
 
 		// Set icon for the webview tab using URI path
 		const iconPath = vscode.Uri.joinPath(this._extensionUri, 'icon-bubble.png');
@@ -424,6 +430,8 @@ class ClaudeChatProvider {
 				enableFindWidget: true
 			}
 		);
+		ClaudeChatProvider.lastActive = this;
+		this._panel.onDidChangeViewState(e => { if (e.webviewPanel.active) { ClaudeChatProvider.lastActive = this; } }, null, this._disposables);
 		const panel = this._panel;
 
 		// Set icon for the webview tab using URI path
@@ -933,6 +941,10 @@ class ClaudeChatProvider {
 
 		this._webview = webview;
 		this._webviewView = webviewView;
+		// Must stay below the _panel.dispose() above: dispose() re-enters
+		// this provider's dispose(), which clears lastActive when it still
+		// points at this instance.
+		ClaudeChatProvider.lastActive = this;
 		this._webview.html = this._getHtmlForWebview();
 
 		this._setupWebviewMessageHandler(this._webview);
@@ -4318,6 +4330,9 @@ class ClaudeChatProvider {
 	}
 
 	public dispose() {
+		if (ClaudeChatProvider.lastActive === this) {
+			ClaudeChatProvider.lastActive = undefined;
+		}
 		if (this._panel) {
 			this._panel.dispose();
 			this._panel = undefined;
