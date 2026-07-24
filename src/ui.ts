@@ -414,6 +414,15 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					</p>
 				</div>
 
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Input</h3>
+				<div class="settings-group">
+					<div class="tool-item">
+						<input type="checkbox" id="send-on-enter" onchange="updateSettings()">
+						<label for="send-on-enter">Send message on Enter (Ctrl+Enter/Cmd+Enter to send when off)</label>
+					</div>
+				</div>
+
+
 			</div>
 		</div>
 	</div>

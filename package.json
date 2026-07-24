@@ -208,6 +208,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.input.sendOnEnter": {
+          "type": "boolean",
+          "default": true,
+          "description": "When enabled, Enter sends the message. When disabled, Enter inserts a line break and messages are sent with Ctrl+Enter (Cmd+Enter on macOS)."
         }
       }
     }
