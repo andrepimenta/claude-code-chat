@@ -4767,9 +4767,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 
 				item.innerHTML = \`
-					<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+					<div class="conversation-title">\${escapeHtml(conv.firstUserMessage.substring(0, 60))}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
-					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
+					<div class="conversation-preview">Last: \${escapeHtml(conv.lastUserMessage.substring(0, 80))}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
 				\`;
 
 				listDiv.appendChild(item);
