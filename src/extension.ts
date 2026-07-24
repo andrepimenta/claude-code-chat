@@ -9,6 +9,7 @@ import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 import { updateWithWorkspaceThenGlobalFallback } from './settings-batch';
+import { quoteWinShellArgs } from './shell-utils';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -1062,9 +1063,10 @@ class ClaudeChatProvider {
 			// path we skip shell wrapping to avoid cmd.exe mis-quoting paths with spaces
 			// (e.g. the default globalStorage location "...Application Support...").
 			const executable = customExecutablePath || 'claude';
-			claudeProcess = cp.spawn(executable, args, {
+			const useShell = process.platform === 'win32' && !customExecutablePath;
+			claudeProcess = cp.spawn(executable, quoteWinShellArgs(args, useShell), {
 				signal: this._abortController.signal,
-				shell: process.platform === 'win32' && !customExecutablePath,
+				shell: useShell,
 				detached: process.platform !== 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -2731,6 +2733,10 @@ class ClaudeChatProvider {
 	}
 
 	private _getMCPConfigPathForScope(scope: string): string | undefined {
+		// Local scope (fork-issue-39) is owned by the CLI (~/.claude.json → projects);
+		// the extension never writes it. Guard against a future caller falling
+		// through to the extension config path by mistake.
+		if (scope === 'local') { return undefined; }
 		if (scope === 'global') {
 			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
 			return homeDir ? path.join(homeDir, '.claude.json') : undefined;
@@ -2787,6 +2793,42 @@ class ClaudeChatProvider {
 						servers[name] = { ...config as any, _scope: 'global' };
 					}
 				}
+			}
+
+			// Read CLI local-scope servers (~/.claude.json → projects[cwd].mcpServers).
+			// Display-only (fork-issue-39): local scope is owned and managed by the CLI
+			// itself, so we merge it in read-only here — see displayMCPServers, which
+			// must not render edit/delete for these, since _getMCPConfigPathForScope
+			// has no 'local' case and would otherwise write into the extension's own
+			// config by mistake. Any failure here (missing file, malformed JSON, no
+			// workspace) just means local scope doesn't show up; other scopes are
+			// unaffected.
+			try {
+				const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+				const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (homeDir && cwd) {
+					const claudeJsonPath = path.join(homeDir, '.claude.json');
+					const content = await vscode.workspace.fs.readFile(vscode.Uri.file(claudeJsonPath));
+					const parsed = JSON.parse(new TextDecoder().decode(content));
+					// The CLI stores project keys with forward slashes and an
+					// inconsistent drive-letter case (both "c:/..." and "C:/..." occur),
+					// while uri.fsPath is "C:\...". Match on a normalized form and merge
+					// every matching key (there can be two casings for one path).
+					const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+					const cwdNorm = norm(cwd);
+					const projects = parsed?.projects || {};
+					for (const projKey of Object.keys(projects)) {
+						if (norm(projKey) !== cwdNorm) { continue; }
+						const localServers = projects[projKey]?.mcpServers || {};
+						for (const [name, config] of Object.entries(localServers)) {
+							if (!servers[name]) {
+								servers[name] = { ...config as any, _scope: 'local' };
+							}
+						}
+					}
+				}
+			} catch {
+				// No ~/.claude.json, no matching project entry, or malformed JSON.
 			}
 
 			this._postMessage({ type: 'mcpServers', data: servers });

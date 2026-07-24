@@ -2116,15 +2116,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					configDisplay = \`Type: \${escapeHtml(serverType)}\`;
 				}
 
-				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : 'Extension';
+				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : serverScope === 'local' ? 'Local' : 'Extension';
 				// fork-issue-60: name/config moved out of the inline onclick -- a name containing a single
 				// quote used to break straight out of editMCPServer('...') into the attribute,
 				// and JSON.stringify(config) was a second, un-escapeAttr-able sink. The config
 				// now lives only in mcpServerConfigsByName; editMCPServer looks it up by name,
 				// which itself travels through data-server-name (escapeAttr) + this.dataset,
 				// same pattern as fork-issue-57/fork-issue-58.
+				// Local scope (fork-issue-39) is configured via the Claude CLI itself and has
+				// no _getMCPConfigPathForScope case — edit/delete would silently hit the
+				// extension's own config instead, so render it read-only with a badge.
 				mcpServerConfigsByName[name] = config;
-				const serverActionsHtml = \`<button class="btn outlined server-edit-btn" data-server-name="\${escapeAttr(name)}" onclick="editMCPServer(this.dataset.serverName)">Edit</button>
+				const serverActionsHtml = serverScope === 'local'
+					? '<span class="cli-badge" data-tooltip="Configured via Claude CLI (local scope) — read-only here">via CLI</span>'
+					: \`<button class="btn outlined server-edit-btn" data-server-name="\${escapeAttr(name)}" onclick="editMCPServer(this.dataset.serverName)">Edit</button>
 						<button class="btn outlined server-delete-btn" data-server-name="\${escapeAttr(name)}" data-server-scope="\${escapeAttr(serverScope)}" onclick="deleteMCPServer(this.dataset.serverName, this.dataset.serverScope)">Delete</button>\`;
 
 				serverItem.innerHTML = \`

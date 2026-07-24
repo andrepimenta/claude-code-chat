@@ -239,7 +239,8 @@
     "test:webview-attr-escape": "npm run compile && mocha --ui tdd out/test/webview-attr-escape.test.js --reporter spec",
     "test:markdown-restore": "npm run compile && mocha --ui tdd out/test/markdown-restore.test.js --reporter spec",
     "test:user-message-rawtext": "npm run compile && mocha --ui tdd out/test/user-message-rawtext.test.js --reporter spec",
-    "test:settings-batch": "npm run compile && mocha --ui tdd out/test/settings-batch.test.js --reporter spec"
+    "test:settings-batch": "npm run compile && mocha --ui tdd out/test/settings-batch.test.js --reporter spec",
+    "test:quote-win-shell-args": "npm run compile && mocha --ui tdd out/test/quote-win-shell-args.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
