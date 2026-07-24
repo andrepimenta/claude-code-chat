@@ -3588,7 +3588,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
 					}
 					break;
-					
+
+				case 'insertContext': {
+					const field = document.getElementById('messageInput');
+					if (field && message.data) {
+						const existing = field.value;
+						const sep = existing ? (existing.endsWith('\\n') ? '\\n' : '\\n\\n') : '';
+						field.value = existing + sep + message.data;
+						field.focus();
+						const endPos = field.value.length;
+						field.setSelectionRange(endPos, endPos);
+						field.dispatchEvent(new Event('input', { bubbles: true }));
+					}
+					break;
+				}
+
 				case 'output':
 					if (message.data.trim()) {
 						let displayData = message.data;

@@ -66,6 +66,11 @@
         "title": "New Claude Chat (Separate)",
         "category": "Claude Code Chat",
         "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.addSelectionToChat",
+        "title": "Add Selection to Claude Chat",
+        "category": "Claude Code Chat"
       }
     ],
     "keybindings": [
@@ -82,6 +87,9 @@
         },
         {
           "command": "claude-code-chat.newChat"
+        },
+        {
+          "command": "claude-code-chat.addSelectionToChat"
         }
       ],
       "editor/context": [
@@ -89,6 +97,11 @@
           "command": "claude-code-chat.openChat",
           "group": "claude@1",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "claude-code-chat.addSelectionToChat",
+          "group": "claude@2",
+          "when": "editorHasSelection"
         }
       ],
       "editor/title": [

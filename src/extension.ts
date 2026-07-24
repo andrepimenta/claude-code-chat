@@ -56,6 +56,15 @@ export function activate(context: vscode.ExtensionContext) {
 		provider.loadConversation(filename);
 	});
 
+	const addSelectionDisposable = vscode.commands.registerCommand('claude-code-chat.addSelectionToChat', () => {
+		const editor = vscode.window.activeTextEditor;
+		if (!editor || editor.selection.isEmpty) {
+			vscode.window.showInformationMessage('Select some code in the editor first.');
+			return;
+		}
+		provider.addSelectionFromEditor(editor);
+	});
+
 	// Register webview view provider for sidebar chat (using shared provider instance)
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider, { webviewOptions: { retainContextWhenHidden: true } });
@@ -147,7 +156,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	});
 
-	context.subscriptions.push(disposable, newChatDisposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler, {
+	context.subscriptions.push(disposable, newChatDisposable, loadConversationDisposable, addSelectionDisposable, configChangeDisposable, statusBarItem, uriHandler, {
 		dispose() {
 			for (const p of extraProviders) {
 				p.dispose();
@@ -288,6 +297,8 @@ class ClaudeChatProvider {
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
+	// Selection block queued while no webview is live yet; flushed in _sendReadyMessage() (#28)
+	private _pendingSelectionContext: string | undefined;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -368,6 +379,28 @@ class ClaudeChatProvider {
 			}
 			this._persistPanelState();
 		}, 100);
+	}
+
+	public addSelectionFromEditor(editor: vscode.TextEditor) {
+		const doc = editor.document;
+		const sel = editor.selection;
+		const rel = vscode.workspace.asRelativePath(doc.uri);
+		const startLine = sel.start.line + 1;
+		const endLine = sel.end.line + 1;
+		const lang = path.extname(doc.fileName).slice(1);
+		const fence = '```';
+		const block = `${rel}:${startLine}-${endLine}\n${fence}${lang}\n${doc.getText(sel)}\n${fence}\n`;
+
+		if (this._panel) {
+			this._panel.reveal();
+			this._postMessage({ type: 'insertContext', data: block });
+		} else if (this._webview) {
+			this._postMessage({ type: 'insertContext', data: block });
+			vscode.commands.executeCommand('claude-code-chat.chat.focus');
+		} else {
+			this._pendingSelectionContext = (this._pendingSelectionContext || '') + block;
+			this.show();
+		}
 	}
 
 	// Creates a fresh webview panel for a "New Claude Chat (Separate)" instance VS Code
@@ -607,6 +640,12 @@ class ClaudeChatProvider {
 				type: 'restoreInputText',
 				data: this._draftMessage
 			});
+		}
+
+		// Deliver a selection block queued while the webview was still initializing (#28)
+		if (this._pendingSelectionContext) {
+			this._postMessage({ type: 'insertContext', data: this._pendingSelectionContext });
+			this._pendingSelectionContext = undefined;
 		}
 	}
 
