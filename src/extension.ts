@@ -1265,6 +1265,9 @@ class ClaudeChatProvider {
 					});
 				}
 			}
+
+			// Notify the user once the turn is over — clean or error exit.
+			this._notifyCompletion();
 		});
 
 		claudeProcess.on('error', (error) => {
@@ -1305,6 +1308,35 @@ class ClaudeChatProvider {
 				});
 			}
 		});
+	}
+
+	// Notify the user that Claude finished a turn, but only while the window isn't
+	// focused — no point interrupting someone who's already watching the chat.
+	private _notifyCompletion(): void {
+		if (vscode.window.state.focused) {
+			return;
+		}
+
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const popupEnabled = config.get<boolean>('notifications.completionPopup', true);
+		const soundEnabled = config.get<boolean>('notifications.completionSound', false);
+
+		if (popupEnabled) {
+			// An action button makes the toast sticky (no VS Code auto-hide after a
+			// few seconds) — without one, a notification fired while unfocused is
+			// gone by the time the user switches back.
+			vscode.window.showInformationMessage('Claude has finished responding.', 'Open Chat').then(selection => {
+				if (selection === 'Open Chat') {
+					this.show();
+				}
+			});
+		}
+		if (soundEnabled) {
+			this._postMessage({
+				type: 'playCompletionSound'
+			});
+		}
+
 	}
 
 	private async _processJsonStreamData(jsonData: any) {
