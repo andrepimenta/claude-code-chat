@@ -1171,6 +1171,14 @@ const styles = `
         background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
     }
 
+    .message-icon.result-success {
+        background: linear-gradient(135deg, #1cc08c 0%, #16a974 100%);
+    }
+
+    .message-icon.result-error {
+        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    }
+
     .message-label {
         font-weight: 500;
         font-size: 12px;
@@ -1178,6 +1186,26 @@ const styles = `
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+
+    /* Colorblind preset: green- and purple-free palette, luminance-laddered */
+    body.colorblind-mode .message.user { border-color: rgba(74, 163, 255, 0.55); }
+    body.colorblind-mode .message.user::before { background: linear-gradient(180deg, #4aa3ff 0%, #0f6fd0 100%); }
+    body.colorblind-mode .message.claude { border-color: rgba(30, 200, 212, 0.5); }
+    body.colorblind-mode .message.claude::before { background: linear-gradient(180deg, #1ec8d4 0%, #0f8f99 100%); }
+    body.colorblind-mode .message.error { border-color: rgba(255, 79, 59, 0.55); }
+    body.colorblind-mode .message.error::before { background: linear-gradient(180deg, #ff4f3b 0%, #cc2718 100%); }
+    body.colorblind-mode .message.tool { border-color: rgba(229, 138, 0, 0.55); }
+    body.colorblind-mode .message.tool::before { background: linear-gradient(180deg, #e58a00 0%, #b36b00 100%); }
+    body.colorblind-mode .message.tool-result { border-color: rgba(255, 210, 26, 0.55); }
+    body.colorblind-mode .message.tool-result::before { background: linear-gradient(180deg, #ffd21a 0%, #d9b000 100%); }
+    body.colorblind-mode .message.thinking { border-color: rgba(154, 160, 166, 0.5); }
+    body.colorblind-mode .message.thinking::before { background: linear-gradient(180deg, #9aa0a6 0%, #676c71 100%); }
+    body.colorblind-mode .message-icon.user { background: linear-gradient(135deg, #4aa3ff 0%, #0f6fd0 100%); }
+    body.colorblind-mode .message-icon.claude { background: linear-gradient(135deg, #1ec8d4 0%, #0f8f99 100%); }
+    body.colorblind-mode .message-icon.error { background: linear-gradient(135deg, #ff4f3b 0%, #cc2718 100%); }
+    body.colorblind-mode .message-icon.result-success { background: linear-gradient(135deg, #ffd21a 0%, #d9b000 100%); }
+    body.colorblind-mode .message-icon.result-error { background: linear-gradient(135deg, #ff4f3b 0%, #cc2718 100%); }
+    body.colorblind-mode .tool-icon { background: linear-gradient(135deg, #e58a00 0%, #b36b00 100%); }
 
     .message-content {
         padding-left: 6px;
