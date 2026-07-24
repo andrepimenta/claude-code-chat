@@ -949,6 +949,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				messageInput.value = '';
 				attachedImages = [];
 				renderImagePreviews();
+
+				// Clear the persisted draft immediately so no stale text survives
+				// a restart shortly after sending
+				clearTimeout(saveInputTimeout);
+				vscode.postMessage({
+					type: 'saveInputText',
+					text: ''
+				});
 			}
 		}
 
@@ -3553,7 +3561,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					
 				case 'restoreInputText':
 					const inputField = document.getElementById('messageInput');
-					if (inputField && message.data) {
+					// retainContextWhenHidden already keeps in-progress typing across tab
+					// switches, so this restore is only the fallback for a fresh panel /
+					// VS Code restart — don't clobber text the user already has
+					if (inputField && message.data && !inputField.value.trim()) {
 						inputField.value = message.data;
 						// Auto-resize the textarea
 						inputField.style.height = 'auto';
