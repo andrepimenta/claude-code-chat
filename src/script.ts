@@ -1029,6 +1029,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let totalCost = 0;
 		let totalTokensInput = 0;
 		let totalTokensOutput = 0;
+		let currentContextTokens = 0;
+		let latestUsage = null;
 		let requestCount = 0;
 		let isProcessing = false;
 		let requestStartTime = null;
@@ -1062,6 +1064,64 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			vscode.postMessage({ type: 'viewUsage', usageType: usageType });
 		}
 
+		// Approximate context-window size per model, used to turn currentContextTokens
+		// into a percentage for the status bar (#27). Best-effort approximation, not the
+		// model's authoritative limit — router models use context_length from the
+		// recommended-models catalog. Native fable/opus/sonnet are the 1M-token variants
+		// per user decision (this setup runs on those); 'default' and unknown models
+		// fall back to a conservative 200K (underestimating only warns early).
+		function getContextWindow(model) {
+			const nativeWindows = { fable: 1000000, opus: 1000000, sonnet: 1000000, 'default': 200000 };
+			if (nativeWindows[model]) {
+				return nativeWindows[model];
+			}
+			const recommended = (window.__recommendedModels || []).find(function(m) { return m.id === model; });
+			return (recommended && recommended.context_length) || 200000;
+		}
+
+		// Builds the "Ctx 12,345 / ~200K (62%)" status-bar fragment, with a warning/
+		// critical class once usage crosses 80%/95% (#27). Empty string when there's no
+		// context reading yet, so the status line looks exactly like before in that case.
+		function getContextIndicatorHtml() {
+			if (!currentContextTokens || currentContextTokens <= 0) {
+				return '';
+			}
+			const win = getContextWindow(currentModel);
+			const pct = win > 0 ? Math.round((currentContextTokens / win) * 100) : 0;
+			const ctxClass = pct >= 95 ? ' class="ctx-crit"' : pct >= 80 ? ' class="ctx-warn"' : '';
+			const winStr = win >= 1000000 ? \`\${Math.round(win / 1000000)}M\` : \`\${Math.round(win / 1000)}K\`;
+			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
+		}
+
+		// Builds the "5h 42% · Wo 18%" status-bar fragment (#35), same structure/escaping
+		// as the #27 Ctx indicator above. Empty string when there's no usage data yet.
+		function getUsageIndicatorHtml() {
+			if (!latestUsage) return '';
+			const fiveHour = latestUsage.fiveHour;
+			const week = latestUsage.week;
+			if (!fiveHour && !week) return '';
+
+			const fiveHourPct = fiveHour ? Math.round(fiveHour.pct) : undefined;
+			const weekPct = week ? Math.round(week.pct) : undefined;
+			const maxPct = Math.max(fiveHourPct || 0, weekPct || 0);
+			const usageClass = maxPct >= 95 ? ' class="ctx-crit"' : maxPct >= 80 ? ' class="ctx-warn"' : '';
+
+			const titleParts = [];
+			if (fiveHour && fiveHour.resetsAt) {
+				titleParts.push(\`5h resets \${new Date(fiveHour.resetsAt * 1000).toLocaleTimeString()}\`);
+			}
+			if (week && week.resetsAt) {
+				titleParts.push(\`Week resets \${new Date(week.resetsAt * 1000).toLocaleString()}\`);
+			}
+			const titleAttr = titleParts.length ? \` title="\${titleParts.join(' · ')}"\` : '';
+
+			const fiveHourStr = fiveHour ? \`5h \${fiveHourPct}%\` : '';
+			const weekStr = week ? \`Wo \${weekPct}%\` : '';
+			const text = fiveHour && week ? \`\${fiveHourStr} · \${weekStr}\` : (fiveHourStr || weekStr);
+
+			return \` • <span\${usageClass}\${titleAttr}>\${text}</span>\`;
+		}
+
 		function updateStatusWithTotals() {
 			if (isProcessing) {
 				// While processing, show elapsed time (and tokens for non-OpenCredits users)
@@ -1076,13 +1136,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show tokens and elapsed time
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-					statusText = \`Processing • \${tokensStr}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
+					// Regular users: show context usage and elapsed time (#27 — the
+					// context indicator replaced the old cumulative token sum here)
+					statusText = \`Processing\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
-				updateStatus(statusText, 'processing');
+				updateStatusHtml(statusText, 'processing');
 			} else {
 				// When ready, show full info
 				let usageStr;
@@ -1113,12 +1171,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show tokens, requests, and usage
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					// Regular users: show context usage, requests, and usage (#27 — the
+					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
-					statusText = \`Ready • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
+					statusText = \`Ready\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				}
 				updateStatusHtml(statusText, 'ready');
 			}
@@ -3727,6 +3783,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Store subscription type to determine cost vs plan display
 					subscriptionType = message.data.subscriptionType || null;
 					// Update status bar to reflect plan type
+					updateStatusWithTotals();
+					break;
+
+				case 'usageLimits':
+					// Store session-usage / weekly-limit snapshot (#35) and refresh the status bar
+					latestUsage = message.data || null;
 					updateStatusWithTotals();
 					break;
 

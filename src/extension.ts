@@ -14,6 +14,15 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
+// Undocumented endpoint for session-usage / weekly-limit percentages (#35). The
+// server responds 429 to requests without a recognized User-Agent, hence pinning
+// one that matches a real claude-code CLI release.
+const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const USAGE_USER_AGENT = 'claude-code/2.1.218';
+
+// Base URL substrings that identify a known first-party endpoint (OpenCredits/router)
+const KNOWN_ENDPOINT_MARKERS = ['opencredits.ai', 'localhost:8787'];
+
 const exec = util.promisify(cp.exec);
 
 // Storage for diff content (used by DiffContentProvider)
@@ -166,6 +175,14 @@ class ClaudeChatProvider {
 	private _totalTokensOutput: number = 0;
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
+	// Session-usage / weekly-limit snapshot from the undocumented oauth/usage endpoint
+	// (#35), shown next to the #27 context indicator. Account-wide, not session-scoped
+	// — deliberately not reset in _newSession()/sessionCleared.
+	private _usageLimits: { fiveHour?: { pct: number; resetsAt?: number }, week?: { pct: number; resetsAt?: number } } | undefined = undefined;
+	private _usageLastFetchMs = 0;
+	// Fallback resetsAt for the five-hour window, learned from the CLI's own
+	// stream-json rate-limit events when the usage endpoint's resets_at is absent.
+	private _lastRateLimitResetsAt: number | undefined;
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
@@ -402,6 +419,9 @@ class ClaudeChatProvider {
 				}
 			});
 		}
+
+		// Send (possibly cached) session-usage / weekly-limit percentages (#35)
+		void this._maybeSendUsageLimits();
 
 		// Send platform information to webview
 		this._sendPlatformInfo();
@@ -1612,12 +1632,28 @@ class ClaudeChatProvider {
 						}
 					});
 
+					// #35: refresh session-usage / weekly-limit percentages alongside the
+					// existing totals update (throttled internally to 5 minutes).
+					void this._maybeSendUsageLimits();
+
 					// Refresh OpenCredits balance after each request if using OpenCredits
 					if (this._isOpenCredits() || this._getOpenCreditsKey()) {
 						this._sendOpenCreditsBalance();
 					}
 				}
 				break;
+
+			case 'rate_limit_event': {
+				// #35: learn the five-hour window's reset time from the CLI's own
+				// rate-limit events, as a fallback for when the usage endpoint's
+				// response doesn't include one for that window.
+				const rateLimitType = jsonData.rate_limit_info?.rateLimitType;
+				if (!rateLimitType || rateLimitType === 'five_hour') {
+					this._lastRateLimitResetsAt = jsonData.rate_limit_info?.resetsAt;
+				}
+				void this._maybeSendUsageLimits();
+				break;
+			}
 		}
 	}
 
@@ -3607,6 +3643,123 @@ class ClaudeChatProvider {
 			type: 'openedExternalUrl',
 			url: url
 		});
+	}
+
+	// Reads the CLI's OAuth access token from ~/.claude/.credentials.json for the
+	// undocumented usage endpoint (#35). Read-only: never touches refreshToken, never
+	// logs the token, never sends it to the webview. Any failure (file missing, parse
+	// error) yields null.
+	private async _readOAuthAccessToken(): Promise<string | null> {
+		try {
+			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+			const credentialsPath = path.join(homeDir, '.claude', '.credentials.json');
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(credentialsPath));
+			const parsed = JSON.parse(new TextDecoder().decode(content));
+			return parsed?.claudeAiOauth?.accessToken ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	// Fetch session-usage / weekly-limit percentages from the undocumented oauth/usage
+	// endpoint (#35). Best-effort: any failure (missing token, network error,
+	// unexpected response shape) yields null instead of throwing, so the caller can
+	// keep serving a stale cache.
+	private async _fetchUsageLimits(): Promise<typeof this._usageLimits | null> {
+		const token = await this._readOAuthAccessToken();
+		if (!token) {
+			return null;
+		}
+
+		try {
+			const response = await fetch(USAGE_URL, {
+				method: 'GET',
+				headers: {
+					'Authorization': 'Bearer ' + token,
+					'anthropic-beta': 'oauth-2025-04-20',
+					'User-Agent': USAGE_USER_AGENT
+				}
+			});
+
+			if (!response.ok) {
+				this._permLog(`usageLimits fetch status=${response.status} hasData=false`);
+				return null;
+			}
+
+			const data = await response.json() as any;
+
+			// Parses one usage window (five_hour / seven_day). Drops the window
+			// entirely unless it has a valid numeric percentage; resets_at may be a
+			// unix-seconds number or an ISO string, anything else is left out.
+			const parseWindow = (win: any, isFiveHour: boolean): { pct: number; resetsAt?: number } | undefined => {
+				if (!win || typeof win !== 'object') {
+					return undefined;
+				}
+				const pct = win.utilization ?? win.used_percentage;
+				if (typeof pct !== 'number' || !isFinite(pct)) {
+					return undefined;
+				}
+
+				let resetsAt: number | undefined;
+				const rawResetsAt = win.resets_at;
+				if (typeof rawResetsAt === 'number' && isFinite(rawResetsAt)) {
+					resetsAt = rawResetsAt;
+				} else if (typeof rawResetsAt === 'string') {
+					const parsedMs = Date.parse(rawResetsAt);
+					if (!isNaN(parsedMs)) {
+						resetsAt = parsedMs / 1000;
+					}
+				}
+				if (resetsAt === undefined && isFiveHour) {
+					resetsAt = this._lastRateLimitResetsAt;
+				}
+
+				return { pct, resetsAt };
+			};
+
+			const result: typeof this._usageLimits = {};
+			const fiveHour = parseWindow(data?.five_hour, true);
+			if (fiveHour) {
+				result.fiveHour = fiveHour;
+			}
+			const week = parseWindow(data?.seven_day, false);
+			if (week) {
+				result.week = week;
+			}
+
+			const hasData = !!(result.fiveHour || result.week);
+			this._permLog(`usageLimits fetch status=${response.status} hasData=${hasData}`);
+
+			return hasData ? result : null;
+		} catch {
+			return null;
+		}
+	}
+
+	// Pushes a (possibly cached) usage-limits snapshot to the webview, throttled to at
+	// most one real fetch every 5 minutes (#35). Gated on subscription type: API and
+	// OpenCredits users have no session/weekly limits to show.
+	private async _maybeSendUsageLimits(): Promise<void> {
+		if (!this._subscriptionType) {
+			return;
+		}
+
+		if (Date.now() - this._usageLastFetchMs < 300000) {
+			if (this._usageLimits) {
+				this._postMessage({ type: 'usageLimits', data: this._usageLimits });
+			}
+			return;
+		}
+
+		this._usageLastFetchMs = Date.now();
+		const u = await this._fetchUsageLimits();
+		if (u) {
+			this._usageLimits = u;
+		}
+
+		if (this._usageLimits) {
+			this._postMessage({ type: 'usageLimits', data: this._usageLimits });
+		}
 	}
 
 	// Update the model configuration for the local router
