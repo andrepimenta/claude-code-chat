@@ -2271,6 +2271,12 @@ const styles = `
         background-color: var(--vscode-list-hoverBackground);
     }
 
+    /* Compact suggested (#36) once context usage crosses the same 85%+ range the
+       Ctx indicator starts warning at — a subtle nudge, no animation. */
+    .slash-btn.compact-suggested {
+        box-shadow: 0 0 0 1px var(--vscode-inputValidation-warningBorder);
+    }
+
     .image-btn {
         background-color: transparent;
         color: var(--vscode-foreground);

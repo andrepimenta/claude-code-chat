@@ -15,6 +15,17 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
+// Manual compact (#36): the headless CLI has no real /compact, so the compact button
+// asks the running session for a handoff summary instead, then starts the next turn
+// as a fresh session seeded with that summary (see _startCompact/_finishCompact).
+const COMPACT_PROMPT = 'Write a concise handoff summary of this conversation so a fresh session can continue seamlessly, then stop. Include, as compact markdown: (1) the overall task/goal; (2) key decisions, constraints and assumptions; (3) relevant or changed files and paths, each with its role in one line; (4) what is done vs. still open, as concrete next steps; (5) any gotchas or non-obvious context. Do not call any tools or make changes — output only the summary.';
+
+// Prefixes the first user message of a fresh, post-compact session with the previous
+// session's handoff summary so the new (unseen) session has the same context.
+function buildCompactSeedMessage(summary: string, message: string): string {
+	return 'Context summary from the previous (compacted) session — treat as established background, do not re-summarize:\n\n' + summary + '\n\n---\n\nContinuing. My next message:\n' + message;
+}
+
 const exec = util.promisify(cp.exec);
 
 // File target for [perm] diagnostics (#15): console.error of an installed
@@ -214,6 +225,16 @@ class ClaudeChatProvider {
 	// a permission round-trip is still pending (would surface as "Stream closed").
 	private _resultSeen: boolean = false;
 	private _draftMessage: string = '';
+	// Manual compact (#36): true while the summarize turn started by _startCompact()
+	// is in flight. _pendingCompactSummary holds its result once seen, consumed as the
+	// seed for the next fresh session. _forceFreshSession is a one-shot override that
+	// skips --resume on the very next _sendMessageToClaude() call. _pinnedConversationFilename
+	// keeps saving to the same conversation file across the CLI-session swap, since the
+	// new session gets its own session_id (which the filename would otherwise follow).
+	private _compactInProgress = false;
+	private _pendingCompactSummary: string | undefined;
+	private _forceFreshSession = false;
+	private _pinnedConversationFilename: string | undefined;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -459,6 +480,9 @@ class ClaudeChatProvider {
 				return;
 			case 'newSession':
 				this._newSession();
+				return;
+			case 'startCompact':
+				this._startCompact();
 				return;
 			case 'restoreCommit':
 				this._restoreToCommit(message.commitSha);
@@ -894,7 +918,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, images?: string[]) {
+	private async _sendMessageToClaude(message: string, images?: string[], opts?: { compact?: boolean }) {
 		// Re-entrancy guard: a Claude process is already running for this session.
 		// Spawning a second overlapping process (same --resume session) closes the
 		// first one's stdio control channel and fights over the session lock, which
@@ -915,16 +939,30 @@ class ClaudeChatProvider {
 
 		let actualMessage = message;
 
+		// Manual compact (#36): seed the first real message of a fresh, post-compact
+		// session with the previous session's handoff summary. Consumed once — later
+		// messages in the same (new) session go through unmodified.
+		if (!opts?.compact && this._pendingCompactSummary) {
+			actualMessage = buildCompactSeedMessage(this._pendingCompactSummary, message);
+			this._pendingCompactSummary = undefined;
+		}
+
 		this._isProcessing = true;
 
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
 
-		// Show original user input in chat and save to conversation (without mode prefixes)
-		this._sendAndSaveMessage({
-			type: 'userInput',
-			data: message
-		});
+		if (opts?.compact) {
+			// Summarize turn for the compact button (#36): no user-visible echo — show
+			// the compacting indicator instead.
+			this._postMessage({ type: 'compacting', data: { isCompacting: true } });
+		} else {
+			// Show original user input in chat and save to conversation (without mode prefixes)
+			this._sendAndSaveMessage({
+				type: 'userInput',
+				data: message
+			});
+		}
 
 		// Set processing state to true
 		this._postMessage({
@@ -932,12 +970,15 @@ class ClaudeChatProvider {
 			data: { isProcessing: true }
 		});
 
-		// Create backup commit before Claude makes changes
-		try {
-			await this._createBackupCommit(message);
-		}
-		catch (e) {
-			console.error("error", e);
+		// Create backup commit before Claude makes changes (skipped for the internal
+		// compact summarize turn — #36)
+		if (!opts?.compact) {
+			try {
+				await this._createBackupCommit(message);
+			}
+			catch (e) {
+				console.error("error", e);
+			}
 		}
 
 		// Show loading indicator
@@ -994,9 +1035,14 @@ class ClaudeChatProvider {
 			args.push('--model', this._selectedModel);
 		}
 
-		// Add session resume if we have a current session
-		if (this._currentSessionId) {
+		// Add session resume if we have a current session. Skipped once right after a
+		// compact (#36): _forceFreshSession forces a session-less spawn so the CLI
+		// starts clean instead of resuming the (now summarized-away) old session.
+		if (this._currentSessionId && !this._forceFreshSession) {
 			args.push('--resume', this._currentSessionId);
+		}
+		if (this._forceFreshSession) {
+			this._forceFreshSession = false;
 		}
 
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
@@ -1273,6 +1319,11 @@ class ClaudeChatProvider {
 
 		claudeProcess.on('close', (code) => {
 
+			// Manual compact (#36): captured before any of the branches below run, so
+			// _finishCompact() below always sees whether THIS turn was the summarize
+			// turn, regardless of exit code.
+			const wasCompact = this._compactInProgress;
+
 			if (!this._currentClaudeProcess) {
 				return;
 			}
@@ -1304,13 +1355,20 @@ class ClaudeChatProvider {
 						type: 'showInstallModal',
 						installAttempted: !!this._context.globalState.get('installAttempted')
 					});
-				} else {
-					// Error with output
+				} else if (!wasCompact) {
+					// Error with output. Suppressed for the compact summarize turn (#36) —
+					// _finishCompact's own compactSeparator message explains the failure.
 					this._sendAndSaveMessage({
 						type: 'error',
 						data: errorOutput.trim()
 					});
 				}
+			}
+
+			// Manual compact (#36): resolve the pending compaction (seed captured or not)
+			// before the queue drains, regardless of exit code.
+			if (wasCompact) {
+				this._finishCompact(code === 0);
 			}
 		});
 
@@ -1603,6 +1661,13 @@ class ClaudeChatProvider {
 
 					this._isProcessing = false;
 
+					// Manual compact (#36): capture the summarize turn's own result text
+					// as the seed for the next (fresh) session. Just capture it here —
+					// _finishCompact (driven by the close handler) does the state transition.
+					if (this._compactInProgress && typeof jsonData.result === 'string') {
+						this._pendingCompactSummary = jsonData.result.trim() || undefined;
+					}
+
 					// Capture session ID from final result
 					if (jsonData.session_id) {
 
@@ -1683,6 +1748,13 @@ class ClaudeChatProvider {
 
 		// Clear current session
 		this._currentSessionId = undefined;
+
+		// Manual compact (#36): clear any in-flight/pending compaction state so the new
+		// session starts clean.
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
+		this._pinnedConversationFilename = undefined;
 
 		// Clear commits and conversation
 		this._commits = [];
@@ -3098,29 +3170,41 @@ class ClaudeChatProvider {
 		void this._saveCurrentConversation();
 	}
 
+	// Derives the conversation's JSON filename from its first user message and start
+	// time. Shared by the normal save path and _finishCompact's pinning (#36), which
+	// snapshots it before a compact-triggered session swap changes _currentSessionId
+	// out from under it.
+	private _deriveConversationFilename(): string {
+		const firstUserMessage = this._currentConversation.find(m => m.messageType === 'userInput');
+		const firstMessage = firstUserMessage ? firstUserMessage.data : 'conversation';
+		const startTime = this._conversationStartTime || new Date().toISOString();
+
+		// Clean and truncate first message for filename
+		const cleanMessage = firstMessage
+			.replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
+			.replace(/\s+/g, '-') // Replace spaces with dashes
+			.substring(0, 50) // Limit length
+			.toLowerCase();
+
+		const datePrefix = startTime.substring(0, 16).replace('T', '_').replace(/:/g, '-');
+		return `${datePrefix}_${cleanMessage}.json`;
+	}
+
 	private async _saveCurrentConversation(): Promise<void> {
 		if (!this._conversationsPath || this._currentConversation.length === 0) { return; }
 		if (!this._currentSessionId) { return; }
 
 		try {
-			// Create filename from first user message and timestamp
-			const firstUserMessage = this._currentConversation.find(m => m.messageType === 'userInput');
-			const firstMessage = firstUserMessage ? firstUserMessage.data : 'conversation';
-			const startTime = this._conversationStartTime || new Date().toISOString();
-			const sessionId = this._currentSessionId || 'unknown';
-
-			// Clean and truncate first message for filename
-			const cleanMessage = firstMessage
-				.replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
-				.replace(/\s+/g, '-') // Replace spaces with dashes
-				.substring(0, 50) // Limit length
-				.toLowerCase();
-
-			const datePrefix = startTime.substring(0, 16).replace('T', '_').replace(/:/g, '-');
-			const filename = `${datePrefix}_${cleanMessage}.json`;
+			// Filename is normally re-derived every save; pinned once a compact (#36)
+			// has swapped in a new session, so the conversation keeps saving to the same
+			// file instead of splitting when _currentSessionId changes underneath it.
+			let filename = this._deriveConversationFilename();
+			if (this._pinnedConversationFilename) {
+				filename = this._pinnedConversationFilename;
+			}
 
 			const conversationData: ConversationData = {
-				sessionId: sessionId,
+				sessionId: this._currentSessionId || 'unknown',
 				startTime: this._conversationStartTime,
 				endTime: new Date().toISOString(),
 				messageCount: this._currentConversation.length,
@@ -3277,6 +3361,15 @@ class ClaudeChatProvider {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
 		this._permLog(`killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
+
+		// Manual compact (#36): a kill always ends any in-flight summarize turn. The
+		// seed must go too — after a completed compaction it is consumed before the
+		// next spawn, so the only state where it can still be set here is a stop
+		// mid-summarize (result already parsed, close not yet fired). Leaving it
+		// would prefix the summary onto a resumed, still-full session.
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
 
 		// 1. Abort via controller (clean API)
 		this._abortController?.abort();
@@ -3935,9 +4028,10 @@ class ClaudeChatProvider {
 	}
 
 	private _executeSlashCommand(command: string): void {
-		// Handle /compact in chat instead of spawning a terminal
+		// Handle /compact via the summarize-and-restart flow (#36) instead of sending a
+		// literal "/compact" to the CLI — the headless CLI has no real /compact.
 		if (command === 'compact') {
-			this._sendMessageToClaude(`/${command}`);
+			this._startCompact();
 			return;
 		}
 
@@ -3968,6 +4062,55 @@ class ClaudeChatProvider {
 			type: 'terminalOpened',
 			data: `Executing /${command} command in terminal. Check the terminal output and return when ready.`,
 		});
+	}
+
+	// Manual compact (#36): kicks off the summarize turn on the current (full-context)
+	// session. The actual state transition happens in _finishCompact, driven by the
+	// close handler once that turn's process exits.
+	private _startCompact(): void {
+		if (this._isProcessing || this._currentClaudeProcess) {
+			vscode.window.showInformationMessage('Finish the current turn before compacting.');
+			return;
+		}
+		if (!this._currentSessionId) {
+			vscode.window.showInformationMessage('No active conversation to compact.');
+			return;
+		}
+		if (this._pendingCompactSummary || this._forceFreshSession) {
+			vscode.window.showInformationMessage('A compaction is already pending — send a message to continue.');
+			return;
+		}
+		this._compactInProgress = true;
+		this._sendMessageToClaude(COMPACT_PROMPT, undefined, { compact: true });
+	}
+
+	// Manual compact (#36): called once the summarize turn's process has exited
+	// (success or not). Pins the conversation filename and arms a forced-fresh-session
+	// for the next _sendMessageToClaude() call regardless of outcome — a failed
+	// summarize (e.g. a context-limit error) still needs a guaranteed way out of a
+	// dead/over-full session, just without a seed.
+	private _finishCompact(success: boolean): void {
+		this._compactInProgress = false;
+		const ok = success && !!this._pendingCompactSummary;
+		if (!ok) {
+			this._pendingCompactSummary = undefined;
+		}
+		this._pinnedConversationFilename = this._deriveConversationFilename();
+		this._forceFreshSession = true;
+
+		// Reset token counters exactly like the native compact_boundary handler does
+		// (~1855-1857) — the next session starts with an empty context window.
+		this._totalTokensInput = 0;
+		this._totalTokensOutput = 0;
+		this._postMessage({
+			type: 'updateTokens',
+			data: {
+				totalTokensInput: 0,
+				totalTokensOutput: 0
+			}
+		});
+
+		this._sendAndSaveMessage({ type: 'compactSeparator', data: { ok } });
 	}
 
 	private _sendPlatformInfo() {

@@ -3484,11 +3484,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function stopRequest() {
 			sendStats('Stop request');
-			
+
 			vscode.postMessage({
 				type: 'stopRequest'
 			});
 			hideStopButton();
+		}
+
+		function startCompact() {
+			vscode.postMessage({ type: 'startCompact' });
 		}
 
 		// Disable/enable buttons during processing
@@ -3775,6 +3779,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				case 'compacting':
 					if (message.data.isCompacting) {
 						addMessage('📦 Compacting conversation...', 'system');
+					}
+					break;
+
+				case 'compactSeparator':
+					// Manual compact (#36): the backend already reset its own token
+					// counters; mirror that here so the status bar doesn't linger at
+					// the pre-compact value.
+					totalTokensInput = 0;
+					totalTokensOutput = 0;
+					updateStatusWithTotals();
+
+					if (message.data.ok) {
+						addMessage('────  📦 Context compacted — your next message starts a fresh, lean session (seeded by the summary above)  ────', 'system');
+					} else {
+						addMessage('────  ⚠️ Compact could not summarize (context-limit error). Your next message starts a fresh session WITHOUT summary; earlier messages remain above.  ────', 'system');
 					}
 					break;
 

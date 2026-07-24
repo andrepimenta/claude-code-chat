@@ -155,6 +155,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 							</div>
 						</div>
 						<div class="right-controls">
+							<button class="slash-btn" id="compactBtn" onclick="startCompact()" title="Compact conversation — summarize & start a fresh, lean session">📦</button>
 							<button class="slash-btn" onclick="showSlashCommandsModal()" title="Slash commands">/</button>
 							<button class="at-btn" onclick="showFilePicker()" title="Reference files">@</button>
 							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="Attach images">
