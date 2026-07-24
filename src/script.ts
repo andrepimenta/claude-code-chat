@@ -4442,7 +4442,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				codeBlockPlaceholders.push(codeBlockHtml);
 				return placeholder;
 			});
-			
+
+			// #40 (upstream #63): escape raw HTML in the remaining prose before any
+			// further markdown processing. contentDiv.innerHTML = content (addMessage)
+			// renders this output as real DOM, so an unescaped tag like "<select>" in
+			// Claude's/the user's text gets parsed as HTML and an unbalanced tag can
+			// corrupt the whole message. Code blocks were already pulled out above into
+			// __CODEBLOCK_N__ placeholders (their contents are escaped individually),
+			// and those placeholders contain only [A-Za-z0-9_], so escapeHtml leaves
+			// them unchanged.
+			processedMarkdown = escapeHtml(processedMarkdown);
+
 			// Handle inline code with single backticks
 			const inlineCodeRegex = new RegExp('\\\`([^\\\`]+)\\\`', 'g');
 			processedMarkdown = processedMarkdown.replace(inlineCodeRegex, '<code>$1</code>');
