@@ -194,6 +194,93 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
+		// Lazily created and reused AudioContext for the completion sound —
+		// browsers suspend it until a user gesture, so we resume() on each play.
+		let completionAudioCtx = null;
+
+		function playCompletionSound() {
+			// Schedules the actual tones against the AudioContext's *current*
+			// currentTime — must only run once the context is guaranteed to be
+			// running, otherwise the tones are scheduled against a frozen
+			// suspended-state currentTime and never audibly play.
+			function scheduleTones() {
+				const now = completionAudioCtx.currentTime;
+				const tones = [
+					{ freq: 880, start: now, duration: 0.12 },
+					{ freq: 1175, start: now + 0.12, duration: 0.12 }
+				];
+				tones.forEach((tone) => {
+					const oscillator = completionAudioCtx.createOscillator();
+					const gainNode = completionAudioCtx.createGain();
+					oscillator.type = 'sine';
+					oscillator.frequency.value = tone.freq;
+					gainNode.gain.setValueAtTime(0.08, tone.start);
+					gainNode.gain.exponentialRampToValueAtTime(0.0001, tone.start + tone.duration);
+					oscillator.connect(gainNode);
+					gainNode.connect(completionAudioCtx.destination);
+					oscillator.start(tone.start);
+					oscillator.stop(tone.start + tone.duration);
+				});
+			}
+
+			try {
+				if (!completionAudioCtx) {
+					completionAudioCtx = new AudioContext();
+				}
+
+				const stateBefore = completionAudioCtx.state;
+				if (stateBefore === 'suspended') {
+					// resume() only settles once a user gesture has occurred somewhere
+					// on the page (see warmUpCompletionAudio below). If the window was
+					// unfocused the whole time, it can hang forever — guard with a
+					// timeout so a hanging resume can't leak state.
+					let resumeSettled = false;
+					const resumeTimeoutId = setTimeout(() => {
+						if (resumeSettled) { return; }
+						resumeSettled = true;
+					}, 2000);
+					completionAudioCtx.resume().then(() => {
+						if (resumeSettled) { return; }
+						resumeSettled = true;
+						clearTimeout(resumeTimeoutId);
+						scheduleTones();
+					}).catch(() => {
+						if (resumeSettled) { return; }
+						resumeSettled = true;
+						clearTimeout(resumeTimeoutId);
+					});
+					return;
+				}
+
+				scheduleTones();
+			} catch (err) {
+				// Never let an audio failure break the message handler.
+			}
+		}
+
+		// One-time warm-up: the first user gesture anywhere on the page resumes
+		// the completion AudioContext while the webview still has focus, so it is
+		// already 'running' by the time a completion sound needs to play from an
+		// unfocused window (resume() never settles without a prior gesture).
+		let completionAudioWarmedUp = false;
+		function warmUpCompletionAudio() {
+			if (completionAudioWarmedUp) { return; }
+			completionAudioWarmedUp = true;
+			document.removeEventListener('pointerdown', warmUpCompletionAudio);
+			document.removeEventListener('keydown', warmUpCompletionAudio);
+			try {
+				if (!completionAudioCtx) {
+					completionAudioCtx = new AudioContext();
+				}
+				completionAudioCtx.resume().catch(() => {});
+			} catch (err) {
+				// Never let warm-up break page load — the resume timeout in
+				// playCompletionSound() still keeps a stuck context from leaking state.
+			}
+		}
+		document.addEventListener('pointerdown', warmUpCompletionAudio);
+		document.addEventListener('keydown', warmUpCompletionAudio);
+
 
 		function addToolUseMessage(data) {
 			const messagesDiv = document.getElementById('messages');
@@ -3596,6 +3683,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					if (message.data.trim()) {
 						addMessage(parseSimpleMarkdown(message.data), 'user');
 					}
+					break;
+
+				case 'playCompletionSound':
+					// Turn finished while the window wasn't focused.
+					playCompletionSound();
 					break;
 					
 				case 'loading':
