@@ -172,6 +172,10 @@ class ClaudeChatProvider {
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
+	// Cached workspace file list for the @-file picker, refreshed whenever the
+	// search term is empty; subsequent keystrokes filter this cache instead of
+	// re-running findFiles, which kept returning an unspecified 500-entry subset.
+	private _workspaceFileCache: Array<{ name: string; path: string; fsPath: string }> | undefined;
 	// Pending permission requests from stdio control_request messages
 	private _pendingPermissionRequests: Map<string, {
 		requestId: string;
@@ -3049,46 +3053,116 @@ class ClaudeChatProvider {
 		});
 	}
 
+	// Build the findFiles exclude glob: the previous 9 hard-coded default excludes
+	// merged with whatever the user enabled in files.exclude / search.exclude,
+	// scoped to the primary workspace folder.
+	private _buildExcludeGlob(): string {
+		const excludes = new Set<string>([
+			'**/node_modules/**',
+			'**/.git/**',
+			'**/dist/**',
+			'**/build/**',
+			'**/.next/**',
+			'**/.nuxt/**',
+			'**/target/**',
+			'**/bin/**',
+			'**/obj/**'
+		]);
+
+		const scope = vscode.workspace.workspaceFolders?.[0]?.uri;
+		const filesExclude = vscode.workspace.getConfiguration('files', scope).get<Record<string, boolean>>('exclude');
+		const searchExclude = vscode.workspace.getConfiguration('search', scope).get<Record<string, boolean>>('exclude');
+
+		for (const excludeSetting of [filesExclude, searchExclude]) {
+			if (!excludeSetting) { continue; }
+			for (const [pattern, enabled] of Object.entries(excludeSetting)) {
+				// Skip patterns containing , { } — they would corrupt the combined
+				// {a,b,...} glob and could disable every exclude at once.
+				if (enabled === true && !/[,{}]/.test(pattern)) {
+					excludes.add(pattern);
+				}
+			}
+		}
+
+		return `{${Array.from(excludes).join(',')}}`;
+	}
+
 	private async _sendWorkspaceFiles(searchTerm?: string): Promise<void> {
 		try {
-			// Always get all files and filter on the backend for better search results
-			const files = await vscode.workspace.findFiles(
-				'**/*',
-				'{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/.nuxt/**,**/target/**,**/bin/**,**/obj/**}',
-				500 // Reasonable limit for filtering
-			);
+			const term = searchTerm && searchTerm.trim() ? searchTerm.trim().toLowerCase() : undefined;
 
-			let fileList = files.map(file => {
-				const relativePath = vscode.workspace.asRelativePath(file);
-				return {
-					name: file.path.split('/').pop() || '',
-					path: relativePath,
-					fsPath: file.fsPath
-				};
-			});
+			// Refresh the cache whenever the picker just opened (no search term yet) or
+			// it hasn't been populated yet; keystrokes afterwards filter the cached list
+			// instead of re-running findFiles, which used to return an unspecified
+			// 500-entry subset on every keystroke (incomplete + non-deterministic).
+			if (!term || !this._workspaceFileCache) {
+				const files = await vscode.workspace.findFiles(
+					'**/*',
+					this._buildExcludeGlob(),
+					10000 // High enough to capture the whole workspace before filtering/ranking
+				);
 
-			// Filter results based on search term
-			if (searchTerm && searchTerm.trim()) {
-				const term = searchTerm.toLowerCase();
-				fileList = fileList.filter(file => {
-					const fileName = file.name.toLowerCase();
-					const filePath = file.path.toLowerCase();
-
-					// Check if term matches filename or any part of the path
-					return fileName.includes(term) ||
-						filePath.includes(term) ||
-						filePath.split('/').some(segment => segment.includes(term));
+				this._workspaceFileCache = files.map(file => {
+					const relativePath = vscode.workspace.asRelativePath(file);
+					return {
+						name: file.path.split('/').pop() || '',
+						path: relativePath,
+						fsPath: file.fsPath
+					};
 				});
 			}
 
-			// Sort and limit results
-			fileList = fileList
-				.sort((a, b) => a.name.localeCompare(b.name))
-				.slice(0, 50);
+			const cachedFiles = this._workspaceFileCache || [];
+			let fileList: Array<{ name: string; path: string; fsPath: string; score: number }>;
+
+			if (term) {
+				fileList = [];
+				for (const file of cachedFiles) {
+					const fileName = file.name.toLowerCase();
+					const filePath = file.path.toLowerCase();
+					let score: number;
+					if (fileName === term) {
+						score = 100;
+					} else if (fileName.startsWith(term)) {
+						score = 90;
+					} else if (fileName.includes(term)) {
+						score = 80;
+					} else if (filePath.includes(term)) {
+						score = 60;
+					} else {
+						continue;
+					}
+					fileList.push({ ...file, score });
+				}
+				fileList.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+			} else {
+				fileList = cachedFiles.map(file => ({ ...file, score: 0 }));
+				fileList.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+			}
+
+			// Pin the active tab to the top, before slicing so it can't be cut off
+			// by the 50-result limit. Only reorders an entry that already survived the
+			// filter/sort above; never force-adds a file outside the workspace or filter.
+			const activeEditor = vscode.window.activeTextEditor;
+			if (activeEditor && activeEditor.document.uri.scheme === 'file') {
+				const activeRelPath = vscode.workspace.asRelativePath(activeEditor.document.uri);
+				const isWin32 = process.platform === 'win32';
+				const activeIndex = fileList.findIndex(file =>
+					isWin32
+						? file.path.toLowerCase() === activeRelPath.toLowerCase()
+						: file.path === activeRelPath
+				);
+				if (activeIndex > 0) {
+					const [activeFile] = fileList.splice(activeIndex, 1);
+					fileList.unshift(activeFile);
+				}
+			}
+
+			const payload = fileList.slice(0, 50).map(file => ({ name: file.name, path: file.path, fsPath: file.fsPath }));
 
 			this._postMessage({
 				type: 'workspaceFiles',
-				data: fileList
+				data: payload
 			});
 		} catch (error) {
 			console.error('Error getting workspace files:', error);
