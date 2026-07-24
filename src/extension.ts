@@ -421,6 +421,15 @@ class ClaudeChatProvider {
 				data: this._draftMessage
 			});
 		}
+
+		// Restore the plan-mode toggle: its state only lives in the webview and
+		// would otherwise silently reset on every webview rebuild / VS Code restart.
+		if (this._context.workspaceState.get<boolean>('claude.planModeEnabled', false)) {
+			this._postMessage({
+				type: 'restorePlanMode',
+				data: true
+			});
+		}
 	}
 
 	private async _handleWebviewMessage(message: any) {
@@ -669,6 +678,9 @@ class ClaudeChatProvider {
 				return;
 			case 'enableYoloMode':
 				this._enableYoloMode();
+				return;
+			case 'planModeChanged':
+				this._context.workspaceState.update('claude.planModeEnabled', !!message.enabled);
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);

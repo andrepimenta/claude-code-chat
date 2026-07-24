@@ -954,6 +954,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function togglePlanMode() {
 			planModeEnabled = !planModeEnabled;
+			vscode.postMessage({ type: 'planModeChanged', enabled: planModeEnabled });
 			const switchElement = document.getElementById('planModeSwitch');
 			if (planModeEnabled) {
 				switchElement.classList.add('active');
@@ -1009,6 +1010,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function cyclePlanMode() {
 			planModeEnabled = !planModeEnabled;
+			vscode.postMessage({ type: 'planModeChanged', enabled: planModeEnabled });
 			sendStats('Plan mode toggled', { enabled: planModeEnabled });
 			var switchElement = document.getElementById('planModeSwitch');
 			var toggleBtn = document.getElementById('planToggleBtn');
@@ -3558,6 +3560,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						// Auto-resize the textarea
 						inputField.style.height = 'auto';
 						inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
+					}
+					break;
+
+				case 'restorePlanMode':
+					// Plan mode state only lives in the webview; without this restore
+					// it silently resets on every webview rebuild / VS Code restart.
+					if (message.data && !planModeEnabled) {
+						planModeEnabled = true;
+						const planSwitchEl = document.getElementById('planModeSwitch');
+						const planBtnEl = document.getElementById('planToggleBtn');
+						if (planSwitchEl) planSwitchEl.classList.add('active');
+						if (planBtnEl) planBtnEl.classList.add('active');
 					}
 					break;
 					
