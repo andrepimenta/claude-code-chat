@@ -194,6 +194,12 @@
           "default": "",
           "description": "Custom path to the Claude Code executable. Leave empty to use the default 'claude' command."
         },
+        "claudeCodeChat.advanced.maxOutputTokens": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Maximum number of tokens Claude may generate in a single response (sets the CLAUDE_CODE_MAX_OUTPUT_TOKENS environment variable for the CLI). Increase this if you hit a \"response exceeded the output token maximum\" error. 0 = use the CLI default."
+        },
         "claudeCodeChat.environment.variables": {
           "type": "object",
           "default": {},

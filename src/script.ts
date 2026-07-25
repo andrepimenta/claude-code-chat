@@ -188,6 +188,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				messageDiv.appendChild(yoloSuggestion);
 			}
 			
+			// Check if this is an output token limit error and offer a shortcut to
+			// raise CLAUDE_CODE_MAX_OUTPUT_TOKENS via the setting (#42, upstream #150)
+			if ((type === 'error' || type === 'claude') && isOutputTokenLimitError(content)) {
+				const tokenLimitSuggestion = document.createElement('div');
+				tokenLimitSuggestion.className = 'yolo-suggestion';
+				tokenLimitSuggestion.innerHTML = \`
+					<div class="yolo-suggestion-text">
+						<span>💡 Claude's response exceeded the output token limit. You can raise the limit in settings.</span>
+					</div>
+					<button class="yolo-suggestion-btn" onclick="openMaxOutputTokensSettings()">Increase output token limit</button>
+				\`;
+				messageDiv.appendChild(tokenLimitSuggestion);
+			}
+
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
@@ -1434,6 +1448,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			);
 		}
 		
+		function isOutputTokenLimitError(content) {
+			// Require the "API Error:" prefix so this only fires on the actual CLI
+			// error text, not on ordinary conversation that happens to mention the
+			// output token maximum (e.g. the user asking about this very feature).
+			return /API Error:.*output token maximum/i.test(content);
+		}
+
 		function enableYoloMode() {
 			sendStats('YOLO mode enabled');
 			
@@ -1451,6 +1472,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Update the warning banner
 				updateYoloWarning();
 			}
+		}
+
+		function openMaxOutputTokensSettings() {
+			sendStats('Output token limit settings opened');
+
+			vscode.postMessage({
+				type: 'openMaxOutputTokensSettings'
+			});
 		}
 
 		function hideMCPModal() {

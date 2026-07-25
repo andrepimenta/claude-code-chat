@@ -784,6 +784,11 @@ class ClaudeChatProvider {
 			case 'enableYoloMode':
 				this._enableYoloMode();
 				return;
+			case 'openMaxOutputTokensSettings':
+				// #42: deep-link into the native Settings UI, filtered on our setting.
+				// No value is set automatically - the user picks the limit themselves.
+				vscode.commands.executeCommand('workbench.action.openSettings', 'claudeCodeChat.advanced.maxOutputTokens');
+				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
 				return;
@@ -1096,6 +1101,7 @@ class ClaudeChatProvider {
 		const customExecutablePath = config.get<string>('executable.path', '');
 		const envsDisabled = config.get<boolean>('environment.disabled', false);
 		const customEnvVars = envsDisabled ? {} : config.get<Record<string, string>>('environment.variables', {});
+		const maxOutputTokens = config.get<number>('advanced.maxOutputTokens', 0);
 
 		// Check if using OpenCredits (base URL contains opencredits.ai)
 		const isOpenCredits = this._isOpenCredits();
@@ -1116,7 +1122,10 @@ class ClaudeChatProvider {
 			FORCE_COLOR: '0',
 			NO_COLOR: '1',
 			...customEnvVars,  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
-			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode'
+			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode',
+			// #42: raise the CLI's response size cap when configured, to work around
+			// "response exceeded the output token maximum" errors (upstream #150)
+			...(Math.floor(maxOutputTokens) > 0 ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxOutputTokens)) } : {})
 		};
 
 		// OpenCredits: clear Anthropic-specific vars so Claude CLI uses env vars directly
@@ -1150,6 +1159,9 @@ class ClaudeChatProvider {
 				wslEnvOverrides['DISABLE_COST_WARNINGS'] = 'true';
 			}
 			wslEnvOverrides['CLAUDE_CODE_ENTRYPOINT'] = 'claude-vscode';
+			if (Math.floor(maxOutputTokens) > 0) {
+				wslEnvOverrides['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = String(Math.floor(maxOutputTokens));
+			}
 			const envExports = Object.entries(wslEnvOverrides)
 				.map(([k, v]) => `export ${k}="${v.replace(/"/g, '\\"')}"`)
 				.join(' && ');
