@@ -1743,8 +1743,14 @@ class ClaudeChatProvider {
 						}
 					});
 
-					// #35: refresh session-usage / weekly-limit percentages alongside the
-					// existing totals update (throttled internally to 5 minutes).
+					// #35/#54: refresh session-usage / weekly-limit percentages alongside the
+					// existing totals update. The finished turn just consumed usage, so the
+					// 5-minute throttle would show stale percentages for exactly the update
+					// the user is watching — bypass it, with a 30s floor so rapid-fire turns
+					// don't hammer the undocumented endpoint.
+					if (Date.now() - this._usageLastFetchMs > 30000) {
+						this._usageLastFetchMs = 0;
+					}
 					void this._maybeSendUsageLimits();
 
 					// Refresh OpenCredits balance after each request if using OpenCredits
