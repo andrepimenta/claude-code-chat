@@ -3691,14 +3691,15 @@ class ClaudeChatProvider {
 			const data = await response.json() as any;
 
 			// Parses one usage window (five_hour / seven_day / seven_day_opus /
-			// seven_day_sonnet). Drops the window entirely unless it has a valid
-			// numeric percentage; resets_at may be a unix-seconds number or an ISO
-			// string, anything else is left out.
+			// seven_day_sonnet, or a limits[] entry, which uses `percent` instead of
+			// `utilization`/`used_percentage`). Drops the window entirely unless it
+			// has a valid numeric percentage; resets_at may be a unix-seconds number
+			// or an ISO string, anything else is left out.
 			const parseWindow = (win: any, isFiveHour: boolean): { pct: number; resetsAt?: number } | undefined => {
 				if (!win || typeof win !== 'object') {
 					return undefined;
 				}
-				const pct = win.utilization ?? win.used_percentage;
+				const pct = win.utilization ?? win.used_percentage ?? win.percent;
 				if (typeof pct !== 'number' || !isFinite(pct)) {
 					return undefined;
 				}
@@ -3736,6 +3737,28 @@ class ClaudeChatProvider {
 			const sevenDaySonnet = parseWindow(data?.seven_day_sonnet, false);
 			if (sevenDaySonnet) {
 				result.sevenDaySonnet = sevenDaySonnet;
+			}
+
+			// #35: newer accounts return the per-model weekly windows only as
+			// limits[] entries (kind "weekly_scoped" with a model scope) while the
+			// legacy seven_day_opus/seven_day_sonnet fields stay null. Top-level
+			// fields win when both are present.
+			if (Array.isArray(data?.limits)) {
+				// is_active entries first, so a stale scoped window cannot shadow
+				// the live one if several model-scoped entries are present.
+				const scoped = data.limits.filter((e: any) => e && e.kind === 'weekly_scoped');
+				scoped.sort((a: any, b: any) => (b?.is_active === true ? 1 : 0) - (a?.is_active === true ? 1 : 0));
+				for (const entry of scoped) {
+					const displayName = entry.scope?.model?.display_name;
+					if (typeof displayName !== 'string') { continue; }
+					const win = parseWindow(entry, false);
+					if (!win) { continue; }
+					if (/sonnet/i.test(displayName)) {
+						if (!result.sevenDaySonnet) { result.sevenDaySonnet = win; }
+					} else if (!result.sevenDayOpus) {
+						result.sevenDayOpus = win;
+					}
+				}
 			}
 
 			const hasData = !!(result.fiveHour || result.week || result.sevenDayOpus || result.sevenDaySonnet);
