@@ -3620,6 +3620,8 @@ class ClaudeChatProvider {
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
 			'diff.autoOpen': config.get<boolean>('diff.autoOpen', true),
+			'ui.fontFamily': config.get<string>('ui.fontFamily', ''),
+			'ui.fontSize': config.get<number>('ui.fontSize', 0),
 			'isOpenCredits': this._isOpenCredits()
 		};
 

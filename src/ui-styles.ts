@@ -945,8 +945,8 @@ const styles = `
         flex: 1;
         padding: 10px;
         overflow-y: auto;
-        font-family: var(--vscode-editor-font-family);
-        font-size: var(--vscode-editor-font-size);
+        font-family: var(--chat-font-family, var(--vscode-editor-font-family));
+        font-size: var(--chat-font-size, var(--vscode-editor-font-size));
         line-height: 1.4;
     }
 
@@ -960,7 +960,7 @@ const styles = `
         border: 1px solid rgba(64, 165, 255, 0.2);
         border-radius: 8px;
         color: var(--vscode-editor-foreground);
-        font-family: var(--vscode-editor-font-family);
+        font-family: var(--chat-font-family, var(--vscode-editor-font-family));
         position: relative;
         overflow: hidden;
     }
@@ -1039,7 +1039,7 @@ const styles = `
         border: 1px solid rgba(28, 192, 140, 0.2);
         border-radius: 8px;
         color: var(--vscode-editor-foreground);
-        font-family: var(--vscode-editor-font-family);
+        font-family: var(--chat-font-family, var(--vscode-editor-font-family));
         white-space: pre-wrap;
         position: relative;
         overflow: hidden;
@@ -1059,7 +1059,7 @@ const styles = `
         border: 1px solid rgba(186, 85, 211, 0.2);
         border-radius: 8px;
         color: var(--vscode-editor-foreground);
-        font-family: var(--vscode-editor-font-family);
+        font-family: var(--chat-font-family, var(--vscode-editor-font-family));
         font-style: italic;
         opacity: 0.9;
         position: relative;
@@ -1947,7 +1947,8 @@ const styles = `
         border: none;
         padding: 12px;
         outline: none;
-        font-family: var(--vscode-editor-font-family);
+        font-family: var(--chat-font-family, var(--vscode-editor-font-family));
+        font-size: var(--chat-font-size, inherit);
         min-height: 68px;
         line-height: 1.4;
         overflow-y: hidden;

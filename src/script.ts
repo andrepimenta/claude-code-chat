@@ -5228,6 +5228,26 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Update UI with current settings
 				// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 				document.getElementById('diff-auto-open').checked = message.data['diff.autoOpen'] !== false;
+				// Custom chat font (#44): applied via CSS custom properties only (never
+				// string-interpolated into CSS/HTML) so an arbitrary fontFamily value
+				// can't inject markup or styles. Empty/0 removes the property so the
+				// var() fallback in ui-styles.ts restores the editor default.
+				const chatFontFamily = message.data['ui.fontFamily'];
+				if (chatFontFamily && String(chatFontFamily).trim()) {
+					document.documentElement.style.setProperty('--chat-font-family', chatFontFamily);
+				} else {
+					document.documentElement.style.removeProperty('--chat-font-family');
+				}
+				const chatFontSize = Number(message.data['ui.fontSize']) || 0;
+				if (chatFontSize > 0) {
+					const clampedChatFontSize = Math.min(72, Math.max(6, chatFontSize));
+					document.documentElement.style.setProperty('--chat-font-size', clampedChatFontSize + 'px');
+				} else {
+					document.documentElement.style.removeProperty('--chat-font-size');
+				}
+				// Re-measure the input's inline height for the new font size, otherwise
+				// it keeps the old (possibly too small) height until the next keystroke.
+				adjustTextareaHeight();
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);

@@ -219,6 +219,18 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically open a VS Code diff view after Claude successfully edits or creates a file, comparing it against the checkpoint from before the current turn."
+        },
+        "claudeCodeChat.ui.fontFamily": {
+          "type": "string",
+          "default": "",
+          "description": "Custom font family for the chat message area and input field. Leave empty to use the editor's default font."
+        },
+        "claudeCodeChat.ui.fontSize": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 72,
+          "description": "Custom font size (px, 6-72) for the chat message area and input field. Leave at 0 to use the editor's default font size."
         }
       }
     }
