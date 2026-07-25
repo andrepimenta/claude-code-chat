@@ -83,6 +83,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
 
+		// #46 (upstream #98): raw text handed to parseSimpleMarkdown for each
+		// rendered claude/user message, keyed by that message's root div. The
+		// copy button (copyMessageContent) reads from here instead of the
+		// rendered DOM, so Markdown render artifacts — e.g. <ol>/<li> letting
+		// the browser regenerate list numbers, which can drop/duplicate the
+		// original "1. 2. 3." digits — never leak into the clipboard.
+		const messageRawText = new WeakMap();
+
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
 			if (lastPendingEditData) {
@@ -115,7 +123,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		}
 
-		function addMessage(content, type = 'claude') {
+		function addMessage(content, type = 'claude', rawText) {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
@@ -192,6 +200,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+
+			// #46: remember the raw source text for the copy button, when given.
+			if (rawText !== undefined) {
+				messageRawText.set(messageDiv, rawText);
+			}
 		}
 
 
@@ -3510,9 +3523,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyMessageContent(messageDiv) {
 			const contentDiv = messageDiv.querySelector('.message-content');
 			if (contentDiv) {
-				// Get text content, preserving line breaks
-				const text = contentDiv.innerText || contentDiv.textContent;
-				
+				// #46 (upstream #98): prefer the raw source text the message was
+				// rendered from over the rendered DOM. contentDiv.innerText re-derives
+				// list numbering etc. from the live <ol>/<li> markup, which can
+				// mismatch or duplicate the original Markdown digits. Falls back to
+				// the old DOM-text behavior when no raw text was recorded (e.g.
+				// system/tool/error messages, which never go through
+				// parseSimpleMarkdown in the first place).
+				const rawText = messageRawText.get(messageDiv);
+				const text = rawText !== undefined ? rawText : (contentDiv.innerText || contentDiv.textContent);
+
 				// Copy to clipboard
 				navigator.clipboard.writeText(text).then(() => {
 					// Show brief feedback
@@ -3602,14 +3622,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							displayData = displayData.replace(usageLimitMatch[0], \`Claude AI usage limit reached: \${readableDate}\`);
 						}
 						
-						addMessage(parseSimpleMarkdown(displayData), 'claude');
+						addMessage(parseSimpleMarkdown(displayData), 'claude', displayData);
 					}
 					updateStatusWithTotals();
 					break;
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						addMessage(parseSimpleMarkdown(message.data), 'user');
+						addMessage(parseSimpleMarkdown(message.data), 'user', message.data);
 					}
 					break;
 					
