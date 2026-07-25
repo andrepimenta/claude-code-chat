@@ -189,6 +189,10 @@ class ClaudeChatProvider {
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
+	// Last filename this provider loaded/saved to — used by loadConversation() to
+	// tell "reloading the same conversation" from "switching to a different one"
+	// (#41), so the #36 pin/checkpoints are only dropped on an actual switch.
+	private _lastSavedFilename: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
@@ -1045,8 +1049,13 @@ class ClaudeChatProvider {
 		// Add session resume if we have a current session. Skipped once right after a
 		// compact (#36): _forceFreshSession forces a session-less spawn so the CLI
 		// starts clean instead of resuming the (now summarized-away) old session.
-		if (this._currentSessionId && !this._forceFreshSession) {
-			args.push('--resume', this._currentSessionId);
+		// Snapshotted before being consumed below so the spawn log (#41) can report
+		// what this spawn actually did — _forceFreshSession is false again and
+		// _currentSessionId still holds the old id by the time the log line runs.
+		const forcedFresh = this._forceFreshSession;
+		const resumeSessionId = (this._currentSessionId && !forcedFresh) ? this._currentSessionId : undefined;
+		if (resumeSessionId) {
+			args.push('--resume', resumeSessionId);
 		}
 		if (this._forceFreshSession) {
 			this._forceFreshSession = false;
@@ -1157,7 +1166,7 @@ class ClaudeChatProvider {
 		// New process = new turn: no 'result' seen yet, so the deferred stdin
 		// close stays armed until this turn actually completes.
 		this._resultSeen = false;
-		this._permLog(`spawned claude pid=${claudeProcess.pid} session=${this._currentSessionId ?? '(new)'}`);
+		this._permLog(`spawned claude pid=${claudeProcess.pid} session=${resumeSessionId ?? '(new)'} forceFresh=${forcedFresh}`);
 
 		// stdin lifecycle tracing (#15): record every way the control channel can
 		// die, so a field "Stream closed" can be attributed to a concrete event.
@@ -1271,6 +1280,11 @@ class ClaudeChatProvider {
 
 		if (claudeProcess.stdout) {
 			claudeProcess.stdout.on('data', (data) => {
+				// Stale-guard (#41): a killed process's reference is cleared before its
+				// stdio actually tears down, so late data from a superseded process must
+				// not mutate state (e.g. _currentSessionId) for whichever process is
+				// current now.
+				if (claudeProcess !== this._currentClaudeProcess) { return; }
 				rawOutput += data.toString();
 
 				// Process JSON stream line by line
@@ -3760,6 +3774,46 @@ class ClaudeChatProvider {
 			this._totalCost = conversationData.totalCost || 0;
 			this._totalTokensInput = conversationData.totalTokens?.input || 0;
 			this._totalTokensOutput = conversationData.totalTokens?.output || 0;
+
+			// Resume this conversation's own CLI session instead of leaving _currentSessionId
+			// pointing at whatever conversation was active before this one was opened (#41) —
+			// otherwise the next turn resumes the wrong session, and the following save
+			// overwrites it with this conversation's messages. Only trusted if its transcript
+			// file still exists (case-insensitive slug dirs, same check _resumeCliSession uses
+			// above), so a stale/deleted session doesn't hard-fail --resume; left alone when
+			// unverifiable (e.g. WSL, where _getCliProjectsDirs() can't see the WSL filesystem).
+			let resumedSessionId: string | undefined = conversationData.sessionId || undefined;
+			if (resumedSessionId) {
+				const dirs = await this._getCliProjectsDirs();
+				if (dirs.length > 0) {
+					let stillExists = false;
+					for (const dir of dirs) {
+						const p = path.join(dir, resumedSessionId + '.jsonl');
+						const resolvedDir = path.resolve(dir) + path.sep;
+						if (!path.resolve(p).startsWith(resolvedDir)) { continue; }
+						try {
+							await fs.promises.stat(p);
+							stillExists = true;
+							break;
+						} catch {
+							continue;
+						}
+					}
+					if (!stillExists) { resumedSessionId = undefined; }
+				}
+			}
+			this._currentSessionId = resumedSessionId;
+			// A #36 pin only belongs to the conversation it was created for — drop it
+			// (and the checkpoint SHAs) when switching to a different saved conversation,
+			// keep it when re-loading the same one.
+			if (this._lastSavedFilename !== filename) {
+				this._pinnedConversationFilename = undefined;
+				// Same conditional: re-loading the open conversation keeps its checkpoint
+				// SHAs restorable; only switching conversations drops them (#41).
+				this._commits = [];
+			}
+			this._lastSavedFilename = filename;
+			this._requestCount = 0;
 
 			// Clear UI messages first, then send all messages to recreate the conversation
 			setTimeout(() => {
