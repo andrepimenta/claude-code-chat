@@ -177,8 +177,10 @@ class ClaudeChatProvider {
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	// Session-usage / weekly-limit snapshot from the undocumented oauth/usage endpoint
 	// (#35), shown next to the #27 context indicator. Account-wide, not session-scoped
-	// — deliberately not reset in _newSession()/sessionCleared.
-	private _usageLimits: { fiveHour?: { pct: number; resetsAt?: number }, week?: { pct: number; resetsAt?: number } } | undefined = undefined;
+	// — deliberately not reset in _newSession()/sessionCleared. sevenDayOpus/
+	// sevenDaySonnet are the per-model-tier weekly buckets (CLI schema names, not
+	// display labels — the opus-lineage bucket covers the Fable model shown to users).
+	private _usageLimits: { fiveHour?: { pct: number; resetsAt?: number }, week?: { pct: number; resetsAt?: number }, sevenDayOpus?: { pct: number; resetsAt?: number }, sevenDaySonnet?: { pct: number; resetsAt?: number } } | undefined = undefined;
 	private _usageLastFetchMs = 0;
 	// Fallback resetsAt for the five-hour window, learned from the CLI's own
 	// stream-json rate-limit events when the usage endpoint's resets_at is absent.
@@ -3688,9 +3690,10 @@ class ClaudeChatProvider {
 
 			const data = await response.json() as any;
 
-			// Parses one usage window (five_hour / seven_day). Drops the window
-			// entirely unless it has a valid numeric percentage; resets_at may be a
-			// unix-seconds number or an ISO string, anything else is left out.
+			// Parses one usage window (five_hour / seven_day / seven_day_opus /
+			// seven_day_sonnet). Drops the window entirely unless it has a valid
+			// numeric percentage; resets_at may be a unix-seconds number or an ISO
+			// string, anything else is left out.
 			const parseWindow = (win: any, isFiveHour: boolean): { pct: number; resetsAt?: number } | undefined => {
 				if (!win || typeof win !== 'object') {
 					return undefined;
@@ -3726,8 +3729,16 @@ class ClaudeChatProvider {
 			if (week) {
 				result.week = week;
 			}
+			const sevenDayOpus = parseWindow(data?.seven_day_opus, false);
+			if (sevenDayOpus) {
+				result.sevenDayOpus = sevenDayOpus;
+			}
+			const sevenDaySonnet = parseWindow(data?.seven_day_sonnet, false);
+			if (sevenDaySonnet) {
+				result.sevenDaySonnet = sevenDaySonnet;
+			}
 
-			const hasData = !!(result.fiveHour || result.week);
+			const hasData = !!(result.fiveHour || result.week || result.sevenDayOpus || result.sevenDaySonnet);
 			this._permLog(`usageLimits fetch status=${response.status} hasData=${hasData}`);
 
 			return hasData ? result : null;

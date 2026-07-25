@@ -1093,17 +1093,24 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
 		}
 
-		// Builds the "5h 42% · Wo 18%" status-bar fragment (#35), same structure/escaping
-		// as the #27 Ctx indicator above. Empty string when there's no usage data yet.
+		// Builds the "5h 42% · Wo 18% · Fable 30%" status-bar fragment (#35), same
+		// structure/escaping as the #27 Ctx indicator above. Fable/Sonnet are the
+		// per-model weekly buckets (seven_day_opus/seven_day_sonnet); each renders
+		// only when the account's usage data actually includes it. Empty string when
+		// there's no usage data yet.
 		function getUsageIndicatorHtml() {
 			if (!latestUsage) return '';
 			const fiveHour = latestUsage.fiveHour;
 			const week = latestUsage.week;
-			if (!fiveHour && !week) return '';
+			const sevenDayOpus = latestUsage.sevenDayOpus;
+			const sevenDaySonnet = latestUsage.sevenDaySonnet;
+			if (!fiveHour && !week && !sevenDayOpus && !sevenDaySonnet) return '';
 
 			const fiveHourPct = fiveHour ? Math.round(fiveHour.pct) : undefined;
 			const weekPct = week ? Math.round(week.pct) : undefined;
-			const maxPct = Math.max(fiveHourPct || 0, weekPct || 0);
+			const sevenDayOpusPct = sevenDayOpus ? Math.round(sevenDayOpus.pct) : undefined;
+			const sevenDaySonnetPct = sevenDaySonnet ? Math.round(sevenDaySonnet.pct) : undefined;
+			const maxPct = Math.max(fiveHourPct || 0, weekPct || 0, sevenDayOpusPct || 0, sevenDaySonnetPct || 0);
 			const usageClass = maxPct >= 95 ? ' class="ctx-crit"' : maxPct >= 80 ? ' class="ctx-warn"' : '';
 
 			const titleParts = [];
@@ -1113,11 +1120,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (week && week.resetsAt) {
 				titleParts.push(\`Week resets \${new Date(week.resetsAt * 1000).toLocaleString()}\`);
 			}
+			if (sevenDayOpus && sevenDayOpus.resetsAt) {
+				titleParts.push(\`Fable resets \${new Date(sevenDayOpus.resetsAt * 1000).toLocaleString()}\`);
+			}
+			if (sevenDaySonnet && sevenDaySonnet.resetsAt) {
+				titleParts.push(\`Sonnet resets \${new Date(sevenDaySonnet.resetsAt * 1000).toLocaleString()}\`);
+			}
 			const titleAttr = titleParts.length ? \` title="\${titleParts.join(' · ')}"\` : '';
 
 			const fiveHourStr = fiveHour ? \`5h \${fiveHourPct}%\` : '';
 			const weekStr = week ? \`Wo \${weekPct}%\` : '';
-			const text = fiveHour && week ? \`\${fiveHourStr} · \${weekStr}\` : (fiveHourStr || weekStr);
+			const sevenDayOpusStr = sevenDayOpus ? \`Fable \${sevenDayOpusPct}%\` : '';
+			const sevenDaySonnetStr = sevenDaySonnet ? \`Sonnet \${sevenDaySonnetPct}%\` : '';
+			const text = [fiveHourStr, weekStr, sevenDayOpusStr, sevenDaySonnetStr].filter(Boolean).join(' · ');
 
 			return \` • <span\${usageClass}\${titleAttr}>\${text}</span>\`;
 		}
