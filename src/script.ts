@@ -1,5 +1,6 @@
 import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
+import getMathScript from './math-script';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -81,6 +82,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
+		// #47 (upstream #171) Phase 4: claudeCodeChat.ui.renderMath toggle, default on.
+		// Guards the math extraction/restore steps in parseSimpleMarkdown below -- off
+		// makes messages fall through exactly as before #47 (raw "$"/"\\(" text).
+		let renderMathEnabled = true;
 		let attachedImages = []; // Array of { filePath, previewUri }
 
 		// Open diff using stored data (no file read needed)
@@ -4442,7 +4447,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				codeBlockPlaceholders.push(codeBlockHtml);
 				return placeholder;
 			});
-			
+
+			// #47 (upstream #171): extract $…$ / $$…$$ / \(…\) / \[…\] math segments
+			// before any further markdown processing -- the italic regex below would
+			// tear "x_1 … y_2" apart. Same placeholder approach as the code blocks
+			// above, with its own __CCCMATH_<nonce>_<i>__ prefix so the two extraction
+			// passes can't collide.
+			// Phase 4: guarded by claudeCodeChat.ui.renderMath (renderMathEnabled, default
+			// on) -- off skips extraction so the raw "$"/"\(" text falls through exactly
+			// like before #47, instead of being replaced with rendered/fallback HTML.
+			let mathExtraction = { text: processedMarkdown, placeholders: [] };
+			if (renderMathEnabled) {
+				mathExtraction = extractMathSegments(processedMarkdown);
+				processedMarkdown = mathExtraction.text;
+			}
+
 			// Handle inline code with single backticks
 			const inlineCodeRegex = new RegExp('\\\`([^\\\`]+)\\\`', 'g');
 			processedMarkdown = processedMarkdown.replace(inlineCodeRegex, '<code>$1</code>');
@@ -4525,6 +4544,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			if (inUnorderedList) html += '</ul>';
 			if (inOrderedList) html += '</ol>';
+
+			// Restore math placeholders before the code-block restore below (#47).
+			// Phase 4: guarded the same way as the extraction step above.
+			if (renderMathEnabled) {
+				html = restoreMathSegments(html, mathExtraction.placeholders);
+			}
 
 			// Restore code block placeholders
 			for (let i = 0; i < codeBlockPlaceholders.length; i++) {
@@ -4863,6 +4888,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			// #47 (upstream #171) Phase 4: math rendering toggle
+			const renderMath = document.getElementById('render-math').checked;
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +4929,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'ui.renderMath': renderMath
 				}
 			});
 		}
@@ -5159,6 +5187,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				// #47 (upstream #171) Phase 4: math rendering toggle, default on
+				renderMathEnabled = message.data['ui.renderMath'] !== false;
+				document.getElementById('render-math').checked = renderMathEnabled;
+
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
@@ -5352,6 +5384,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
+	${getMathScript()}
 	${getSkillsScript()}
 	${getPluginsScript()}
 	</script>`
