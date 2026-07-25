@@ -3975,6 +3975,23 @@ const styles = `
         margin-bottom: 4px;
     }
 
+    .conversation-export-btn {
+        flex-shrink: 0;
+        border: none;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1;
+    }
+
+    .conversation-export-btn:hover {
+        color: var(--vscode-foreground);
+        background-color: var(--vscode-list-hoverBackground);
+    }
+
     .conversation-meta {
         font-size: 12px;
         color: var(--vscode-descriptionForeground);

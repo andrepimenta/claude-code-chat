@@ -510,6 +510,9 @@ class ClaudeChatProvider {
 			case 'resumeCliSession':
 				this._resumeCliSession(message.sessionId);
 				return;
+			case 'exportConversation':
+				this._exportConversation(message.filename);
+				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
 				return;
@@ -3522,6 +3525,45 @@ class ClaudeChatProvider {
 			type: 'cliResumeInfo',
 			data: '📎 Continuing a CLI session — the messages above are a preview; from your next message on, this conversation is saved normally.'
 		});
+	}
+
+	// Downloads if it exists, otherwise the current workspace folder, otherwise home.
+	private async _getExportDefaultDir(): Promise<string> {
+		const downloadsDir = path.join(os.homedir(), 'Downloads');
+		try {
+			const stat = await vscode.workspace.fs.stat(vscode.Uri.file(downloadsDir));
+			if ((stat.type & vscode.FileType.Directory) !== 0) {
+				return downloadsDir;
+			}
+		} catch {
+			// Downloads directory doesn't exist, fall through to workspace/home
+		}
+		return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.homedir();
+	}
+
+	private async _exportConversation(filename: string): Promise<void> {
+		if (path.basename(filename) !== filename || !this._conversationIndex.some(entry => entry.filename === filename)) {
+			return;
+		}
+		if (!this._conversationsPath) { return; }
+
+		try {
+			const filePath = path.join(this._conversationsPath, filename);
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+
+			const defaultDir = await this._getExportDefaultDir();
+			const saveUri = await vscode.window.showSaveDialog({
+				defaultUri: vscode.Uri.file(path.join(defaultDir, filename)),
+				filters: { 'JSON': ['json'] }
+			});
+			if (!saveUri) { return; }
+
+			await vscode.workspace.fs.writeFile(saveUri, content);
+			vscode.window.showInformationMessage(`Conversation exported to ${saveUri.fsPath}`);
+		} catch (error: any) {
+			console.error('Failed to export conversation:', error.message);
+			vscode.window.showErrorMessage(`Failed to export conversation: ${error.message}`);
+		}
 	}
 
 	private async _sendWorkspaceFiles(searchTerm?: string): Promise<void> {

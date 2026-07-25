@@ -4624,6 +4624,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			toggleConversationHistory();
 		}
 
+		function exportConversation(filename) {
+			vscode.postMessage({
+				type: 'exportConversation',
+				filename: filename
+			});
+		}
 
 		// File picker functions
 		function showFilePicker() {
@@ -4814,6 +4820,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				item.innerHTML = \`
 					<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+					<button class="conversation-export-btn" title="Export conversation as JSON" data-filename="\${escapeHtml(conv.filename)}" onclick="event.stopPropagation(); exportConversation(this.dataset.filename)">⬇</button>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
 					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
 				\`;
