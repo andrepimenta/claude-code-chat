@@ -3,11 +3,13 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
+import { mapWslPathToWindows, toWorkspaceRelativePath, isBinaryContent, buildTurnDiffUriParts, parseTurnDiffUriParts, turnDiffCacheKey } from './diff-utils';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -24,17 +26,84 @@ const USAGE_USER_AGENT = 'claude-code/2.1.218';
 const KNOWN_ENDPOINT_MARKERS = ['opencredits.ai', 'localhost:8787'];
 
 const exec = util.promisify(cp.exec);
+// Used only for the #38 turn-diff `git show` call: relPath is derived from a tool's
+// file_path (Claude-controlled), so it goes through execFile's argv array instead of
+// exec's shell string -- no shell means embedded quotes/metacharacters in a path can't
+// break out into a second command, unlike the pre-existing exec() checkpoint calls
+// below (untouched, out of scope here) which only ever see either a fixed argv, a sha
+// git already produced itself, or this._backupRepoPath/workspacePath.
+const execFile = util.promisify(cp.execFile);
 
-// Storage for diff content (used by DiffContentProvider)
+// File target for [perm] diagnostics (#15): console.error of an installed
+// extension is only visible in the DevTools console, which makes field
+// debugging of the stdio permission channel impossible — mirror it to a file.
+const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
+
+// Storage for diff content (used by DiffContentProvider). Keyed by turnDiffCacheKey()
+// (path+query) so two turns diffing the same relPath under different checkpoint SHAs
+// don't collide on the same entry. Bounded (opus review FIX 3): entries used to be
+// removed by an onDidCloseTextDocument listener, which neither fired for every tab
+// lifecycle (e.g. vscode.diff throwing after the entry was already stored) nor could
+// ever help resolve a cache miss -- a tab restored via "Reopen Closed Editor" or a VS
+// Code restart starts with an empty store no listener could have populated. Since
+// DiffContentProvider now resolves misses itself instead (see below), there's nothing
+// left that needs a close-time delete; FIFO eviction here just caps how much stale
+// baseline text can pile up from an unlucky sequence of turns.
+const TURN_DIFF_CACHE_MAX_ENTRIES = 32;
 const diffContentStore = new Map<string, string>();
 
-// Custom TextDocumentContentProvider for read-only diff views
+function cacheTurnDiffContent(key: string, content: string): void {
+	if (diffContentStore.size >= TURN_DIFF_CACHE_MAX_ENTRIES) {
+		const oldestKey = diffContentStore.keys().next().value;
+		if (oldestKey !== undefined) {
+			diffContentStore.delete(oldestKey);
+		}
+	}
+	diffContentStore.set(key, content);
+}
+
+// Custom TextDocumentContentProvider for read-only diff views (#38 turn diff: serves
+// the pre-turn checkpoint content as the left/baseline side of vscode.diff). Content
+// is normally already cached (written by _openTurnDiff right before vscode.diff is
+// invoked), but a cache miss -- e.g. a claude-diff tab restored via "Reopen Closed
+// Editor" or after a VS Code restart, see opus review FIX 3 -- is resolved on demand
+// through the injected resolver, using only the (sha, relPath) already baked into the
+// URI itself (see parseTurnDiffUriParts), so the provider needs no other state.
 class DiffContentProvider implements vscode.TextDocumentContentProvider {
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		const content = diffContentStore.get(uri.path);
-		return content || '';
+	constructor(private readonly _resolveBaseline: (sha: string, relPath: string) => Promise<string>) { }
+
+	async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+		const key = turnDiffCacheKey({ path: uri.path, query: uri.query });
+		const cached = diffContentStore.get(key);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		const parts = parseTurnDiffUriParts({ path: uri.path, query: uri.query });
+		if (!parts) {
+			throw new Error('Claude turn baseline unavailable for this tab');
+		}
+		try {
+			const content = await this._resolveBaseline(parts.sha, parts.relPath);
+			cacheTurnDiffContent(key, content);
+			return content;
+		} catch {
+			// Reason (git error, guard, no workspace/checkpoint repo) is intentionally
+			// not surfaced here -- VS Code just needs an honest "this tab has no
+			// content" error instead of a silent empty page; _openTurnDiff's own
+			// fallback path (manual toast / auto permLog) is what actually explains
+			// failures for the live open-diff flow.
+			throw new Error('Claude turn baseline unavailable for this tab');
+		}
 	}
 }
+
+// #38 turn diff guards: `git show` is capped at a generous hard limit so a huge
+// checkpointed file can't hang/OOM the exec call, but anything still over the much
+// smaller display limit (or binary) falls back to opening the file directly instead
+// of stuffing megabytes of text into a virtual document.
+const TURN_DIFF_MAX_DISPLAY_BYTES = 2 * 1024 * 1024;
+const TURN_DIFF_MAX_EXEC_BYTES = 16 * 1024 * 1024;
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -57,8 +126,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
-	// Register custom content provider for read-only diff views
-	const diffProvider = new DiffContentProvider();
+	// Register custom content provider for read-only diff views. Wired to the primary
+	// provider's baseline resolver (opus review FIX 3) -- extra panels from "New Claude
+	// Chat (Separate)" (#24) share the same extension context, so they resolve to the
+	// same backup repo anyway; a claude-diff tab has no panel of its own to route to.
+	const diffProvider = new DiffContentProvider((sha, relPath) => provider.resolveTurnDiffBaselineForProvider(sha, relPath));
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
 
 	// Listen for configuration changes
@@ -190,6 +262,10 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
+	// #38 turn diff auto-open: files already auto-diffed in the current turn, so
+	// repeated edits to the same file don't keep reopening/refocusing the tab. Reset
+	// at the start of every turn in _sendMessageToClaude.
+	private _autoOpenedDiffFilesThisTurn: Set<string> = new Set();
 	private _conversationsPath: string | undefined;
 	// Pending permission requests from stdio control_request messages
 	private _pendingPermissionRequests: Map<string, {
@@ -240,6 +316,21 @@ class ClaudeChatProvider {
 		// Resume session from latest conversation
 		const latestConversation = this._getLatestConversation();
 		this._currentSessionId = latestConversation?.sessionId;
+	}
+
+	/**
+	 * [perm] diagnostics (#15): mirror to console AND a temp file, because the
+	 * console of an installed extension host is not persisted anywhere readable.
+	 * Logging must never break the extension — swallow all fs errors.
+	 */
+	private _permLog(msg: string): void {
+		const line = `${new Date().toISOString()} [perm] ${msg}`;
+		console.error(line);
+		try {
+			fs.appendFileSync(PERM_LOG_FILE, line + '\n');
+		} catch {
+			// ignore — diagnostics only
+		}
 	}
 
 	public show(column: vscode.ViewColumn | vscode.Uri = vscode.ViewColumn.Two) {
@@ -617,11 +708,8 @@ class ClaudeChatProvider {
 			case 'openFile':
 				this._openFileInEditor(message.filePath);
 				return;
-			case 'openDiff':
-				this._openDiffEditor(message.oldContent, message.newContent, message.filePath);
-				return;
-			case 'openDiffByIndex':
-				this._openDiffByMessageIndex(message.messageIndex);
+			case 'openTurnDiff':
+				this._openTurnDiff(message.filePath, message.messageIndex, 'manual');
 				return;
 			case 'createImageFile':
 				this._createImageFile(message.imageData, message.imageType);
@@ -914,6 +1002,9 @@ class ClaudeChatProvider {
 		}
 
 		this._isProcessing = true;
+
+		// #38 turn diff auto-open: fresh per-turn dedup set for this new turn.
+		this._autoOpenedDiffFilesThisTurn = new Set<string>();
 
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
@@ -1514,7 +1605,8 @@ class ClaudeChatProvider {
 							const isError = content.is_error || false;
 
 							// Find the last tool use to get the tool name, input, and computed startLine
-							const lastToolUse = this._currentConversation[this._currentConversation.length - 1]
+							const toolUseMessageIndex = this._currentConversation.length - 1;
+							const lastToolUse = this._currentConversation[toolUseMessageIndex];
 
 							const toolName = lastToolUse?.data?.toolName;
 							const rawInput = lastToolUse?.data?.rawInput;
@@ -1562,6 +1654,23 @@ class ClaudeChatProvider {
 										startLines: startLines
 									}
 								});
+							}
+
+							// #38: auto-open a turn diff after a successful Edit/MultiEdit/Write,
+							// once per file per turn (see _autoOpenedDiffFilesThisTurn reset in
+							// _sendMessageToClaude). Manual "Open Diff" clicks go through the same
+							// _openTurnDiff but aren't gated by the setting or this dedup set.
+							// trigger: 'auto' (opus review FIX 1) -- Claude sessions routinely edit
+							// files outside the workspace (scratchpad, ~/.claude memory, etc.), so
+							// _openTurnDiff failing here is the ordinary case, not something to
+							// interrupt the user with a toast/focus-stealing showTextDocument for.
+							if ((toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write') && !isError && rawInput?.file_path) {
+								const autoOpenDiff = vscode.workspace.getConfiguration('claudeCodeChat').get<boolean>('diff.autoOpen', true);
+								const dedupeKey = process.platform === 'win32' ? rawInput.file_path.toLowerCase() : rawInput.file_path;
+								if (autoOpenDiff && !this._autoOpenedDiffFilesThisTurn.has(dedupeKey)) {
+									this._autoOpenedDiffFilesThisTurn.add(dedupeKey);
+									void this._openTurnDiff(rawInput.file_path, toolUseMessageIndex, 'auto');
+								}
 							}
 						}
 					}
@@ -3438,6 +3547,7 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'diff.autoOpen': config.get<boolean>('diff.autoOpen', true),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
@@ -4064,106 +4174,189 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _openDiffByMessageIndex(messageIndex: number) {
+	// #38 turn diff: walks _currentConversation backwards from messageIndex (inclusive)
+	// to the nearest showRestoreOption entry, which is the checkpoint commit made right
+	// before this turn's user message (_createBackupCommit runs before every turn). Works
+	// both live and after a history reload -- unlike _commits (#50), _currentConversation
+	// is exactly what gets persisted/reloaded, so the index lines up either way.
+	private _findTurnBaselineSha(messageIndex: number): string | undefined {
+		const start = Math.min(messageIndex, this._currentConversation.length - 1);
+		for (let i = start; i >= 0; i--) {
+			const entry = this._currentConversation[i];
+			if (entry?.messageType === 'showRestoreOption' && entry.data?.sha) {
+				return entry.data.sha;
+			}
+		}
+		return undefined;
+	}
+
+	// Shared failure path for every way _openTurnDiff can come up short (no checkpoint,
+	// git error, file outside the workspace/not WSL-mappable, too large/binary baseline):
+	// never fail silently for a real user click -- tell them why there's no diff and
+	// open the real file instead so a click is never a dead end. `trigger` (opus
+	// review FIX 1) tells 'manual' (webview "Open Diff" button, a deliberate user
+	// action -- toast + focus is fine) apart from 'auto' (post tool_result auto-open,
+	// see the Edit/MultiEdit/Write handler above): Claude sessions routinely edit files
+	// outside the workspace (scratchpad, ~/.claude memory, etc.), so failing here is
+	// the ordinary case for auto-open, not something worth a toast/focus-stealing
+	// showTextDocument for -- it only gets a permLog line for field diagnostics.
+	private async _openTurnDiffFallback(filePath: string, trigger: 'manual' | 'auto', reason: string): Promise<void> {
+		if (trigger === 'auto') {
+			// First line only: git error messages can be multi-line and would break the
+			// one-line-per-entry perm-log format.
+			this._permLog(`[turndiff] auto skip reason=${reason.split('\n')[0]} file=${filePath}`);
+			return;
+		}
+		vscode.window.showInformationMessage(`Claude Code Chat: ${reason}; showing the file instead.`);
 		try {
-			const message = this._currentConversation[messageIndex];
-			if (!message) {
-				console.error('Message not found at index:', messageIndex);
-				return;
-			}
-
-			const data = message.data;
-			const toolName = data.toolName;
-			const rawInput = data.rawInput;
-			let filePath = rawInput?.file_path || '';
-			let oldContent = '';
-			let newContent = '';
-
-			if (!filePath) {
-				console.error('No file path found for message at index:', messageIndex);
-				return;
-			}
-
-			// Read current file from disk - this is the "before" state since edit hasn't been applied yet
-			try {
-				const fileUri = vscode.Uri.file(filePath);
-				const fileData = await vscode.workspace.fs.readFile(fileUri);
-				oldContent = Buffer.from(fileData).toString('utf8');
-			} catch {
-				// File might not exist yet (for Write creating new file)
-				oldContent = '';
-			}
-
-			// Compute "after" state by applying the edit to current file
-			if (toolName === 'Edit' && rawInput?.old_string && rawInput?.new_string) {
-				newContent = oldContent.replace(rawInput.old_string, rawInput.new_string);
-			} else if (toolName === 'MultiEdit' && rawInput?.edits) {
-				newContent = oldContent;
-				for (const edit of rawInput.edits) {
-					if (edit.old_string && edit.new_string) {
-						newContent = newContent.replace(edit.old_string, edit.new_string);
-					}
-				}
-			} else if (toolName === 'Write' && rawInput?.content) {
-				newContent = rawInput.content;
-			}
-
-			if (oldContent !== newContent) {
-				await this._openDiffEditor(oldContent, newContent, filePath);
-			} else {
-				vscode.window.showInformationMessage('No changes to show - the edit may have already been applied.');
-			}
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath));
 		} catch (error) {
-			console.error('Error opening diff by message index:', error);
+			console.error('Failed to open fallback file for turn diff:', error);
 		}
 	}
 
-	private async _openDiffEditor(oldContent: string, newContent: string, filePath: string) {
+	// opus review FIX 2: distinguishes a genuinely new file (nothing existed at the
+	// checkpoint yet) from a file that's simply gitignored in the shadow backup repo
+	// (_createBackupCommit's `add -A` silently skips ignored paths) -- both produce the
+	// identical `does not exist in <tree>` from `git show`, but only the first should
+	// get an empty "new file" baseline. --git-dir/--work-tree matches the existing
+	// checkpoint calls (_initializeBackupRepo/_createBackupCommit above). `check-ignore
+	// -q` exits 0 when the path IS ignored; per git's own docs it exits 1 (an execFile
+	// rejection, not a bug) when it's NOT ignored, which is the common case.
+	private async _isPathIgnoredInBackupRepo(backupRepoPath: string, workTreePath: string, relPath: string): Promise<boolean> {
 		try {
-			// oldContent and newContent are now full file contents passed from the webview
-			const baseName = path.basename(filePath);
-			const timestamp = Date.now();
-
-			// Create unique paths for the virtual documents
-			const oldPath = `/${timestamp}/old/${baseName}`;
-			const newPath = `/${timestamp}/new/${baseName}`;
-
-			// Store content in the global store for the content provider
-			diffContentStore.set(oldPath, oldContent);
-			diffContentStore.set(newPath, newContent);
-
-			// Create URIs with our custom scheme
-			const oldUri = vscode.Uri.parse(`claude-diff:${oldPath}`);
-			const newUri = vscode.Uri.parse(`claude-diff:${newPath}`);
-
-			// Ensure side-by-side diff mode is enabled
-			const diffConfig = vscode.workspace.getConfiguration('diffEditor');
-			const wasInlineMode = diffConfig.get('renderSideBySide') === false;
-			if (wasInlineMode) {
-				await diffConfig.update('renderSideBySide', true, vscode.ConfigurationTarget.Global);
+			// cwd pinned to the work tree: git resolves the relative path against the
+			// process cwd's prefix inside the work tree, so an unpinned cwd would make
+			// anchored .gitignore entries (like /out/) match or miss depending on where
+			// the extension host happens to run (opus delta-review).
+			await execFile('git', ['--git-dir', backupRepoPath, '--work-tree', workTreePath, 'check-ignore', '-q', '--', relPath], { cwd: workTreePath });
+			return true;
+		} catch (error: any) {
+			if (error?.code === 1) {
+				return false;
 			}
+			// Anything else (git missing, fatal error, ...): can't confirm either way,
+			// so let the caller fail closed instead of risking a wrong empty baseline.
+			throw error;
+		}
+	}
 
-			// Open diff editor
-			await vscode.commands.executeCommand('vscode.diff', oldUri, newUri, `${baseName} (Changes)`);
+	// Reads the checkpointed blob for relPath at sha from the shadow backup repo and
+	// returns it as a UTF-8 string, or throws when there's nothing sane to show. Shared
+	// by _openTurnDiff (manual/auto "open diff", already knows workspaceFolder/sha from
+	// the live call) and resolveTurnDiffBaselineForProvider (a DiffContentProvider
+	// cache miss, opus review FIX 3) so both go through the identical git-show +
+	// classification + guards, and BOM-stripping only has to happen in one place
+	// (opus review FIX 5). Never returns a silently-wrong baseline -- callers each
+	// decide what "failure" means for their UI (fallback toast/permLog vs. a generic
+	// VS Code tab error).
+	private async _resolveTurnDiffBaseline(backupRepoPath: string, workTreePath: string, sha: string, relPath: string): Promise<string> {
+		let content: Buffer;
+		try {
+			const { stdout } = await execFile(
+				'git',
+				['--git-dir', backupRepoPath, 'show', `${sha}:${relPath}`],
+				{ encoding: 'buffer', maxBuffer: TURN_DIFF_MAX_EXEC_BYTES }
+			);
+			content = stdout;
+		} catch (error: any) {
+			const stderrText = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr || error?.message || '');
+			// opus review FIX 2: `exists on disk, but not in <tree>` is deliberately NOT
+			// treated as "new file" below. Best effort only: whether git emits that
+			// message (vs. plain `does not exist in`) depends on the process cwd seeing
+			// the on-disk file, so e.g. a case-only mismatch (Src/ vs src/) is not
+			// reliably caught -- but when the message does appear, an empty baseline
+			// would silently lie, so it must go down the failure path.
+			if (/does not exist in/i.test(stderrText)) {
+				let ignored: boolean;
+				try {
+					ignored = await this._isPathIgnoredInBackupRepo(backupRepoPath, workTreePath, relPath);
+				} catch (ignoreError: any) {
+					throw new Error(`failed to read the checkpoint (${ignoreError.message})`);
+				}
+				if (ignored) {
+					throw new Error('file is not tracked by checkpoints (excluded via .gitignore)');
+				}
+				// Genuinely new file: nothing existed at the checkpoint, so the
+				// baseline is empty and the whole file shows as added.
+				content = Buffer.alloc(0);
+			} else {
+				throw new Error(`failed to read the checkpoint (${error.message})`);
+			}
+		}
 
-			// Clean up stored content when documents are closed
-			const closeListener = vscode.workspace.onDidCloseTextDocument((doc) => {
-				if (doc.uri.toString() === oldUri.toString()) {
-					diffContentStore.delete(oldPath);
-				}
-				if (doc.uri.toString() === newUri.toString()) {
-					diffContentStore.delete(newPath);
-				}
-				// Dispose listener when both are cleaned up
-				if (!diffContentStore.has(oldPath) && !diffContentStore.has(newPath)) {
-					closeListener.dispose();
-				}
-			});
+		if (content.length > TURN_DIFF_MAX_DISPLAY_BYTES || isBinaryContent(content)) {
+			throw new Error('file is too large or binary to diff');
+		}
 
-			this._disposables.push(closeListener);
-		} catch (error) {
-			vscode.window.showErrorMessage(`Failed to open diff editor: ${error}`);
-			console.error('Error opening diff editor:', error);
+		// VS Code strips the BOM from the real file's text model, keep both sides
+		// consistent (opus review FIX 5).
+		return content.toString('utf8').replace(/^\uFEFF/, '');
+	}
+
+	// Public seam for DiffContentProvider's injected resolver (opus review FIX 3,
+	// wired up in activate()) -- reuses the same backup-repo baseline lookup
+	// _openTurnDiff uses, keyed only by the (sha, relPath) already encoded in a
+	// claude-diff tab's own URI, so a tab restored via "Reopen Closed Editor" or a VS
+	// Code restart can resolve itself without any per-turn state. Errors are left for
+	// the caller (DiffContentProvider) to fold into its single generic tab error.
+	public async resolveTurnDiffBaselineForProvider(sha: string, relPath: string): Promise<string> {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder || !this._backupRepoPath) {
+			throw new Error('no workspace or checkpoint repository available');
+		}
+		return this._resolveTurnDiffBaseline(this._backupRepoPath, workspaceFolder.uri.fsPath, sha, relPath);
+	}
+
+	// #38: opens a real VS Code diff -- the checkpoint from right before this turn
+	// (left, read-only virtual document served from the shadow backup repo via
+	// DiffContentProvider) against the actual file on disk (right, live/editable, so
+	// later edits in the same turn keep showing up in the same tab). Shared by the
+	// manual "Open Diff" button and the auto-open after a successful tool_result;
+	// `trigger` picks which of the two _openTurnDiffFallback behaves as (opus review
+	// FIX 1).
+	private async _openTurnDiff(filePath: string, messageIndex: number, trigger: 'manual' | 'auto'): Promise<void> {
+		const resolvedPath = mapWslPathToWindows(filePath);
+
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder || !this._backupRepoPath) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'no workspace or checkpoint repository available');
+			return;
+		}
+
+		const sha = this._findTurnBaselineSha(messageIndex);
+		if (!sha) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'no checkpoint found for this turn');
+			return;
+		}
+
+		// toWorkspaceRelativePath also returns undefined when resolvedPath IS the
+		// workspace root itself (opus review FIX 4) -- a directory has no checkpointed
+		// blob to diff against, so it's handled the same as "outside the workspace".
+		const relPath = toWorkspaceRelativePath(resolvedPath, workspaceFolder.uri.fsPath);
+		if (relPath === undefined) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'file is outside the workspace');
+			return;
+		}
+
+		let content: string;
+		try {
+			content = await this._resolveTurnDiffBaseline(this._backupRepoPath, workspaceFolder.uri.fsPath, sha, relPath);
+		} catch (error: any) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, error.message);
+			return;
+		}
+
+		try {
+			const uriParts = buildTurnDiffUriParts(sha, relPath);
+			const baselineUri = vscode.Uri.from(uriParts);
+			cacheTurnDiffContent(turnDiffCacheKey(uriParts), content);
+
+			const rightUri = vscode.Uri.file(resolvedPath);
+			const title = `${path.basename(resolvedPath)} (Turn Diff)`;
+			await vscode.commands.executeCommand('vscode.diff', baselineUri, rightUri, title, { preserveFocus: true });
+		} catch (error: any) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, `failed to open the diff view (${error.message})`);
 		}
 	}
 

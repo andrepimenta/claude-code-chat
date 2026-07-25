@@ -208,6 +208,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.diff.autoOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically open a VS Code diff view after Claude successfully edits or creates a file, comparing it against the checkpoint from before the current turn."
         }
       }
     }
@@ -221,7 +226,8 @@
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
-    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
+    "test:diff-utils": "npm run compile && mocha --ui tdd out/test/diff-utils.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

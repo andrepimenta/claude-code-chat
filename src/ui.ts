@@ -414,6 +414,14 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					</p>
 				</div>
 
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Diff View</h3>
+				<div class="settings-group">
+					<div class="tool-item">
+						<input type="checkbox" id="diff-auto-open" onchange="updateSettings()">
+						<label for="diff-auto-open">Automatically open a diff after Claude edits a file</label>
+					</div>
+				</div>
+
 			</div>
 		</div>
 	</div>
