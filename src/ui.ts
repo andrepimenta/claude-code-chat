@@ -388,6 +388,14 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 						</p>
 					</div>
 
+					<div style="margin-bottom: 16px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Max Output Tokens</label>
+						<input type="number" id="max-output-tokens" class="file-search-input" style="width: 140px;" min="0" step="1" placeholder="0" onchange="updateSettings()">
+						<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+							Maximum number of tokens Claude may generate in a single response (sets <code style="background: var(--vscode-textCodeBlock-background); padding: 2px 4px; border-radius: 3px;">CLAUDE_CODE_MAX_OUTPUT_TOKENS</code>). Increase this if you hit a "response exceeded the output token maximum" error. 0 = use the CLI default.
+						</p>
+					</div>
+
 					<div>
 						<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
 							<label id="envsLabel" style="font-size: 12px; color: var(--vscode-descriptionForeground);">Environment Variables</label>
@@ -419,6 +427,24 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<div class="tool-item">
 						<input type="checkbox" id="diff-auto-open" onchange="updateSettings()">
 						<label for="diff-auto-open">Automatically open a diff after Claude edits a file</label>
+					</div>
+				</div>
+
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Appearance</h3>
+				<div class="settings-group">
+					<div>
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Chat Font Family</label>
+						<input type="text" id="chat-font-family" class="file-search-input" style="width: 100%;" placeholder="Editor default" onchange="updateSettings()">
+						<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+							Custom font family for the chat message area and input field. Leave empty to use the editor's default font.
+						</p>
+					</div>
+					<div style="margin-top: 16px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Chat Font Size (px)</label>
+						<input type="number" id="chat-font-size" class="file-search-input" style="width: 100px;" min="0" max="72" step="1" placeholder="0" onchange="updateSettings()">
+						<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+							Custom font size (px, 6-72) for the chat message area and input field. Leave at 0 to use the editor's default font size.
+						</p>
 					</div>
 				</div>
 

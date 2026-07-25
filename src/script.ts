@@ -4926,9 +4926,24 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const wslClaudePath = document.getElementById('wsl-claude-path').value;
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
+			// #42/#44 settings modal follow-up: keep in sync with the manifest bounds
+			// (advanced.maxOutputTokens >= 0, ui.fontSize 0 or 6-72).
+			let maxOutputTokens = parseInt(document.getElementById('max-output-tokens').value, 10);
+			if (!Number.isFinite(maxOutputTokens) || maxOutputTokens < 0) {
+				maxOutputTokens = 0;
+			}
 			const useRouter = document.getElementById('use-router')?.checked || false;
 			// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 			const diffAutoOpen = document.getElementById('diff-auto-open').checked;
+			const chatFontFamily = document.getElementById('chat-font-family').value;
+			let chatFontSize = parseInt(document.getElementById('chat-font-size').value, 10);
+			if (!Number.isFinite(chatFontSize) || chatFontSize < 0) {
+				chatFontSize = 0;
+			} else if (chatFontSize > 0 && chatFontSize < 6) {
+				chatFontSize = 6;
+			} else if (chatFontSize > 72) {
+				chatFontSize = 72;
+			}
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4967,9 +4982,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude',
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
+					'advanced.maxOutputTokens': maxOutputTokens,
 					'environment.variables': envVariables,
 					'router.enabled': useRouter,
-					'diff.autoOpen': diffAutoOpen
+					'diff.autoOpen': diffAutoOpen,
+					'ui.fontFamily': chatFontFamily,
+					'ui.fontSize': chatFontSize
 				}
 			});
 		}
@@ -5239,12 +5257,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					document.documentElement.style.removeProperty('--chat-font-family');
 				}
 				const chatFontSize = Number(message.data['ui.fontSize']) || 0;
-				if (chatFontSize > 0) {
-					const clampedChatFontSize = Math.min(72, Math.max(6, chatFontSize));
+				const clampedChatFontSize = chatFontSize > 0 ? Math.min(72, Math.max(6, chatFontSize)) : 0;
+				if (clampedChatFontSize > 0) {
 					document.documentElement.style.setProperty('--chat-font-size', clampedChatFontSize + 'px');
 				} else {
 					document.documentElement.style.removeProperty('--chat-font-size');
 				}
+				// #44 settings modal: reflect the persisted values in the Appearance fields
+				// (clamped, so the field always shows the size that is actually applied)
+				document.getElementById('chat-font-family').value = chatFontFamily || '';
+				document.getElementById('chat-font-size').value = clampedChatFontSize;
 				// Re-measure the input's inline height for the new font size, otherwise
 				// it keeps the old (possibly too small) height until the next keystroke.
 				adjustTextareaHeight();
@@ -5282,6 +5304,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				// Update Customize Claude Command settings
 				document.getElementById('executable-path').value = message.data['executable.path'] || '';
+
+				document.getElementById('max-output-tokens').value = message.data['advanced.maxOutputTokens'] || 0;
 				renderEnvVariables(message.data['environment.variables'] || {});
 
 				// Detect OpenCredits and envs disabled state

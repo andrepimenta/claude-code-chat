@@ -3617,6 +3617,7 @@ class ClaudeChatProvider {
 			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
 			'router.enabled': config.get<boolean>('router.enabled', false),
 			'executable.path': config.get<string>('executable.path', ''),
+			'advanced.maxOutputTokens': config.get<number>('advanced.maxOutputTokens', 0),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
 			'diff.autoOpen': config.get<boolean>('diff.autoOpen', true),
