@@ -1,5 +1,6 @@
 import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
+import getCollapseScript from './collapse-script';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -81,6 +82,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
+		// #48 (upstream #151): claudeCodeChat.ui.collapseLongCodeBlocks / .collapseCodeBlockLines.
+		// Muss hier oben stehen (let ist nicht gehoisted), obwohl der Rest der Logik
+		// unten per \${getCollapseScript()} eingehaengt wird.
+		let collapseLongCodeBlocks = true;
+		let collapseCodeBlockLines = 20;
 		let attachedImages = []; // Array of { filePath, previewUri }
 
 		// Open diff using stored data (no file read needed)
@@ -159,6 +165,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				headerDiv.appendChild(iconDiv);
 				headerDiv.appendChild(labelDiv);
 				headerDiv.appendChild(copyBtn);
+
+				// #48 (upstream #151): manuelles Klappen einer ganzen Nachricht.
+				// Bewusst NACH dem Copy-Button eingehaengt, weil .copy-btn per
+				// margin-left:auto beide nach rechts schiebt (ui-styles.ts:1152).
+				const collapseBtn = document.createElement('button');
+				collapseBtn.className = 'message-collapse-btn';
+				collapseBtn.title = 'Collapse message';
+				collapseBtn.textContent = '▾';
+				collapseBtn.setAttribute('aria-expanded', 'true');
+				collapseBtn.onclick = () => toggleMessageCollapsed(messageDiv, collapseBtn);
+				headerDiv.appendChild(collapseBtn);
+
 				messageDiv.appendChild(headerDiv);
 			}
 			
@@ -4435,7 +4453,24 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
 				const escapedCode = escapeHtml(code);
 				
-				const codeBlockHtml = '<div class="code-block-container"><div class="code-block-header"><span class="code-block-language">' + language + '</span><button class="code-copy-btn" onclick="copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button></div><pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre></div>';
+				// #48 (upstream #151): Bloecke ueber dem Schwellwert werden zu <details>;
+				// kuerzere bleiben Zeichen fuer Zeichen wie vorher.
+				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
+				const copyGuard = collapseInfo.collapse ? 'event.preventDefault();event.stopPropagation();' : '';
+				const copyBtnHtml = '<button class="code-copy-btn" onclick="' + copyGuard + 'copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>';
+				const codeBodyHtml = '<pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre>';
+				let codeBlockHtml;
+				if (collapseInfo.collapse) {
+					codeBlockHtml = '<details class="code-block-container code-block-collapsible" data-lines="' + collapseInfo.lineCount + '"' + (collapseLongCodeBlocks ? '' : ' open') + '>' +
+						'<summary class="code-block-header" onclick="markCodeBlockToggled(this)">' +
+						'<span class="code-collapse-caret">▸</span>' +
+						'<span class="code-block-language">' + language + '</span>' +
+						'<span class="code-collapse-hint">' + collapseInfo.lineCount + ' lines</span>' +
+						copyBtnHtml + '</summary>' + codeBodyHtml + '</details>';
+				} else {
+					codeBlockHtml = '<div class="code-block-container"><div class="code-block-header">' +
+						'<span class="code-block-language">' + language + '</span>' + copyBtnHtml + '</div>' + codeBodyHtml + '</div>';
+				}
 				
 				// Store the code block and return a placeholder
 				const placeholder = '__CODEBLOCK_' + codeBlockPlaceholders.length + '__';
@@ -4873,6 +4908,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			const collapseLongCode = document.getElementById('collapse-long-code').checked;
+			const collapseCodeLines = normalizeCollapseThreshold(parseInt(document.getElementById('collapse-code-lines').value, 10));
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4912,7 +4949,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'ui.collapseLongCodeBlocks': collapseLongCode,
+					'ui.collapseCodeBlockLines': collapseCodeLines
 				}
 			});
 		}
@@ -5169,6 +5208,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				// #48 (upstream #151): Defaults nachziehen. settingsData trifft NACH dem
+				// History-Replay ein (extension.ts _loadConversationHistory -> _sendReadyMessage),
+				// deshalb wird der Default hier rueckwirkend auf alle noch nicht vom Nutzer
+				// angefassten Bloecke angewandt.
+				collapseLongCodeBlocks = message.data['ui.collapseLongCodeBlocks'] !== false;
+				collapseCodeBlockLines = normalizeCollapseThreshold(message.data['ui.collapseCodeBlockLines']);
+				document.getElementById('collapse-long-code').checked = collapseLongCodeBlocks;
+				document.getElementById('collapse-code-lines').value = collapseCodeBlockLines;
+				applyCodeBlockCollapseDefaults();
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
@@ -5362,6 +5410,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
+	${getCollapseScript()}
 	${getSkillsScript()}
 	${getPluginsScript()}
 	</script>`

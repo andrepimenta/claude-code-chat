@@ -1141,6 +1141,28 @@ const styles = `
         background-color: var(--vscode-list-hoverBackground);
     }
 
+    /* Manual per-message collapse (#48, upstream #151) */
+    .message-collapse-btn {
+        background: transparent;
+        border: none;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-size: 10px;
+        line-height: 1;
+        opacity: 0.35;
+        transition: opacity 0.2s ease;
+    }
+    .message:hover .message-collapse-btn { opacity: 0.8; }
+    .message-collapse-btn:hover { opacity: 1; background-color: var(--vscode-list-hoverBackground); }
+    /* Eingeklappt bleibt der Griff dauerhaft sichtbar, sonst findet ihn niemand wieder. */
+    .message.collapsed .message-collapse-btn { opacity: 0.9; }
+    /* Alles ausser dem Header verbergen -- deckt .message-content UND Zusatzbloecke
+       wie .yolo-suggestion mit ab. */
+    .message.collapsed > *:not(.message-header) { display: none; }
+    .message.collapsed .message-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+
     .message-icon {
         width: 18px;
         height: 18px;
@@ -1260,6 +1282,31 @@ const styles = `
         border: none;
         border-radius: 0;
         background: none;
+    }
+
+    /* Collapsible long code blocks (#48, upstream #151). Die <summary> behaelt die
+       Klasse .code-block-header, damit alle Bestands- und Compact-Mode-Regeln
+       unveraendert greifen; nur Marker/Cursor/Flow kommen dazu. */
+    details.code-block-container > summary.code-block-header {
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
+        justify-content: flex-start;
+        gap: 6px;
+    }
+    details.code-block-container > summary.code-block-header::-webkit-details-marker { display: none; }
+    details.code-block-container > summary.code-block-header .code-copy-btn { margin-left: auto; }
+    .code-collapse-caret {
+        display: inline-block;
+        color: var(--vscode-descriptionForeground);
+        font-size: 9px;
+        transition: transform 0.15s ease;
+    }
+    details.code-block-container[open] > summary.code-block-header .code-collapse-caret { transform: rotate(90deg); }
+    .code-collapse-hint {
+        color: var(--vscode-descriptionForeground);
+        font-size: 10px;
+        opacity: 0.85;
     }
 
     /* Inline code */

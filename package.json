@@ -208,6 +208,18 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.ui.collapseLongCodeBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collapse code blocks longer than the line threshold by default. They stay foldable via their header either way."
+        },
+        "claudeCodeChat.ui.collapseCodeBlockLines": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 500,
+          "description": "Number of lines a code block must exceed before it gets a collapsible header (5-500)."
         }
       }
     }
@@ -221,7 +233,8 @@
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
-    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
+    "test:collapse-rules": "npm run compile && mocha --ui tdd out/test/collapse-rules.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
