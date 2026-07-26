@@ -5060,10 +5060,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					html += \`
 						<div class="permission-item">
 							<div class="permission-info">
-								<span class="permission-tool">\${toolName}</span>
+								<span class="permission-tool">\${escapeHtml(toolName)}</span>
 								<span class="permission-desc">All</span>
 							</div>
-							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">Remove</button>
+							<button class="permission-remove-btn" data-tool="\${escapeAttr(toolName)}" onclick="removePermission(this.dataset.tool, null)">Remove</button>
 						</div>
 					\`;
 				} else if (Array.isArray(permission)) {
@@ -5073,10 +5073,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						html += \`
 							<div class="permission-item">
 								<div class="permission-info">
-									<span class="permission-tool">\${toolName}</span>
-									<span class="permission-command"><code>\${displayCommand}</code></span>
+									<span class="permission-tool">\${escapeHtml(toolName)}</span>
+									<span class="permission-command"><code>\${escapeHtml(displayCommand)}</code></span>
 								</div>
-								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">Remove</button>
+								<button class="permission-remove-btn" data-tool="\${escapeAttr(toolName)}" data-command="\${escapeAttr(command)}" onclick="removePermission(this.dataset.tool, this.dataset.command)">Remove</button>
 							</div>
 						\`;
 					}
