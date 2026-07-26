@@ -234,7 +234,8 @@
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
     "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
-    "test:collapse-rules": "npm run compile && mocha --ui tdd out/test/collapse-rules.test.js --reporter spec"
+    "test:collapse-rules": "npm run compile && mocha --ui tdd out/test/collapse-rules.test.js --reporter spec",
+    "test:html-escape": "npm run compile && mocha --ui tdd out/test/html-escape.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

@@ -1,6 +1,7 @@
 import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
 import getCollapseScript from './collapse-script';
+import { escapeAttr } from './html-escape';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -257,7 +258,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							todo.status === 'in_progress' ? '🔄' : '⏳';
 						todoHtml += '\\n' + status + ' ' + todo.content;
 					}
-					contentDiv.innerHTML = todoHtml;
+					// #49: reiner Text, kein Markup -- .tool-input hat white-space: pre-line
+					contentDiv.textContent = todoHtml;
 				} else {
 					// Format raw input with expandable content for long values
 					// Use diff format for Edit, MultiEdit, and Write tools, regular format for others
@@ -529,7 +531,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						   '<button class="diff-expand-btn" onclick="toggleResultExpansion(\\\'' + inputId + '\\\')">Show more</button>' +
 						   '</div>';
 				}
-				return str;
+				return escapeHtml(str);
 			}
 
 			// Special handling for Read tool with file_path
@@ -552,10 +554,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
 				} else if (valueStr.length > 100) {
 					const truncated = valueStr.substring(0, 97) + '...';
-					const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-					result += '<span class="expandable-item"><strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + escapedValue + '" onclick="toggleExpand(this)">expand</span></span>';
+					result += '<span class="expandable-item"><strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(truncated) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(valueStr) + '" onclick="toggleExpand(this)">expand</span></span>';
 				} else {
-					result += '<strong>' + key + ':</strong> ' + valueStr;
+					result += '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr);
 				}
 			}
 			return result;
@@ -858,6 +859,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return div.innerHTML;
 		}
 
+		// #49: Attribut-Escaping -- escapeHtml() laesst " und ' stehen. Build-Zeit-Splice
+		// (Muster math-script/collapse-script), damit npm run test:html-escape die Funktion
+		// unter Node pruefen kann. ACHTUNG: hier steht bewusst "\${", nicht "\\\${".
+		${escapeAttr.toString()}
+
 		function openFileInEditor(filePath) {
 			vscode.postMessage({
 				type: 'openFile',
@@ -911,9 +917,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		function toggleExpand(button) {
-			const key = button.getAttribute('data-key');
-			const value = button.getAttribute('data-value');
-			
+			const key = button.getAttribute('data-key') || '';
+			// #49: getAttribute() liefert bereits dekodierte Werte -- die frueher hier
+			// stehende manuelle &quot;/&#39;-Ruecknahme war eine ZWEITE Dekodierung.
+			const value = button.getAttribute('data-value') || '';
+
 			// Find the container that holds just this key-value pair
 			let container = button.parentNode;
 			while (container && !container.classList.contains('expandable-item')) {
@@ -940,13 +948,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			
 			if (button.textContent === 'expand') {
 				// Show full content
-				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">collapse</span>';
+				container.innerHTML = '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(value) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(value) + '" onclick="toggleExpand(this)">collapse</span>';
 			} else {
 				// Show truncated content
-				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				const truncated = decodedValue.substring(0, 97) + '...';
-				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">expand</span>';
+				const truncated = value.substring(0, 97) + '...';
+				container.innerHTML = '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(truncated) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(value) + '" onclick="toggleExpand(this)">expand</span>';
 			}
 		}
 
@@ -3311,11 +3317,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				snippetElement.innerHTML = \`
 					<div class="slash-command-icon">📝</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/\${snippet.name}</div>
-						<div class="slash-command-description">\${snippet.prompt}</div>
+						<div class="slash-command-title">/\${escapeHtml(snippet.name)}</div>
+						<div class="slash-command-description">\${escapeHtml(snippet.prompt)}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">🗑️</button>
+						<button class="snippet-delete-btn" data-snippet-id="\${escapeAttr(snippet.id)}" onclick="event.stopPropagation(); deleteCustomSnippet(this.dataset.snippetId)" title="Delete snippet">🗑️</button>
 					</div>
 				\`;
 				
@@ -3966,15 +3972,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const status = data.status || 'pending';
 
 			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
+			let alwaysAllowText = \`Always allow \${escapeHtml(toolName)}\`;
 			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
 				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+				alwaysAllowText = \`Always allow <code>\${escapeHtml(truncatedPattern)}</code>\`;
+				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${escapeAttr(displayPattern)}"\` : '';
 			}
 
 			// Show different content based on status
@@ -3998,7 +4004,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						</div>
 					</div>
 					<div class="permission-content">
-						<p>\${data.tool === 'ExitPlanMode' ? 'Approve the plan above?' : 'Allow <strong>' + toolName + '</strong> to execute the tool call above?'}</p>
+						<p>\${data.tool === 'ExitPlanMode' ? 'Approve the plan above?' : 'Allow <strong>' + escapeHtml(toolName) + '</strong> to execute the tool call above?'}</p>
 						<div class="permission-buttons">
 							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
 							\${data.tool === 'ExitPlanMode' ? '' : '<button class="btn always-allow" onclick="respondToPermission(\\'' + data.id + '\\', true, true)" ' + alwaysAllowTooltip + '>' + alwaysAllowText + '</button>'}
@@ -4013,7 +4019,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision allowed">✅ You allowed this</div>
 					</div>
 				\`;
@@ -4025,7 +4031,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision denied">❌ You denied this</div>
 					</div>
 				\`;
@@ -4037,7 +4043,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision expired">⏱️ This request expired</div>
 					</div>
 				\`;
@@ -4665,8 +4671,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				fileItem.innerHTML = \`
 					<span class="file-icon">\${getFileIcon(file.name)}</span>
 					<div class="file-info">
-						<div class="file-name">\${file.name}</div>
-						<div class="file-path">\${file.path}</div>
+						<div class="file-name">\${escapeHtml(file.name)}</div>
+						<div class="file-path">\${escapeHtml(file.path)}</div>
 					</div>
 				\`;
 				
