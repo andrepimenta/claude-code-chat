@@ -859,3 +859,159 @@ suite('webview attribute escaping: addEnvVariableRow (#61 Part C PoC)', () => {
 		assert.strictEqual(value && value.value, 'sk-abc123');
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// #62 Part A PoC: copyCodeBlock() read data-raw-code via getAttribute() -- which the browser
+// already entity-decodes during HTML parsing, since data-raw-code is built via escapeAttr(code)
+// in parseSimpleMarkdown's codeBodyHtml assembly -- and then ran a SECOND, manual decode pass
+// (.replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')) on
+// top of the already-decoded value. That second pass is a no-op for ordinary special characters
+// (a lone decoded '&'/'<'/'>'/'"'/''' doesn't spell out an entity reference), but corrupts any
+// code block whose content literally contains one of the four entity texts (&quot; / &amp; /
+// &lt; / &gt;) -- e.g. a snippet that itself demonstrates HTML-entity syntax. Fix: drop the
+// second decode; getAttribute()'s result is already the exact original code.
+//
+// This suite calls the REAL, extracted parseSimpleMarkdown (not a hand-copied reconstruction of
+// its codeBodyHtml assembly) to produce the data-raw-code attribute, reads it back through
+// parse5 (which entity-decodes attribute values exactly like a real browser's getAttribute()
+// would), and then runs the REAL, extracted copyCodeBlock against that value, asserting on what
+// it hands to navigator.clipboard.writeText(...). What these tests establish is that the
+// clipboard text is always exactly what getAttribute('data-raw-code') returns -- copyCodeBlock
+// no longer transforms it at all. getAttribute()'s own value is not always byte-identical to the
+// markdown input: the HTML parser normalises CR/CRLF to LF and NUL to U+FFFD while parsing the
+// attribute (pre-existing browser/parse5 behaviour, unrelated to this fix, not exercised by the
+// inputs below since none contain CR or NUL), and the fence regex in parseSimpleMarkdown
+// captures the newline immediately before the closing ``` fence (see collapse-rules.ts's own
+// comment on this) -- so for the plain inputs used here, getAttribute() returns `input + '\n'`.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface CodeBlockSandbox {
+	parseSimpleMarkdown(markdown: string): string;
+}
+
+// renderMathEnabled: false -- these PoCs never need KaTeX (no "$"/"\(" in the test inputs), and
+// skipping math extraction entirely (rather than stubbing extractMathSegments/restoreMathSegments
+// and their katex dependency) keeps the sandbox to exactly the functions the data-raw-code path
+// actually needs: escapeHtml, escapeAttr, normalizeCollapseThreshold, evaluateCodeBlockCollapse,
+// restoreCodeBlockPlaceholders, parseSimpleMarkdown.
+function loadCodeBlockSandbox(): CodeBlockSandbox {
+	const body = getEmittedScriptBody();
+	const src = ['escapeHtml', 'escapeAttr', 'normalizeCollapseThreshold', 'evaluateCodeBlockCollapse', 'restoreCodeBlockPlaceholders', 'parseSimpleMarkdown']
+		.map(name => extractFunction(body, name))
+		.join('\n');
+	const sandbox: Record<string, unknown> = {
+		renderMathEnabled: false,
+		collapseLongCodeBlocks: true,
+		collapseCodeBlockLines: 20,
+		document: {
+			createElement(tag: string) {
+				if (tag !== 'div') { throw new Error('unexpected document.createElement(' + tag + ')'); }
+				return new FakeDiv();
+			}
+		}
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return sandbox as unknown as CodeBlockSandbox;
+}
+
+// Renders a single fenced ```text code block and returns the data-raw-code value parse5 reads
+// off the <code class="language-text" ...> element -- the getAttribute('data-raw-code')
+// equivalent (parse5 entity-decodes attribute values during parsing, exactly like a real
+// browser). findAttrOn (element-scoped), not findAttr: the language-fixed "language-text" class
+// pins this to the actual <code> element that carries data-raw-code, not any other element.
+function renderCodeBlockRawAttr(code: string): string {
+	const sandbox = loadCodeBlockSandbox();
+	const markdown = '```text\n' + code + '\n```';
+	const html = sandbox.parseSimpleMarkdown(markdown);
+	const attr = findAttrOn(html, 'language-text', 'data-raw-code');
+	if (!attr) { throw new Error('expected a data-raw-code attribute on the language-text code element; got: ' + html); }
+	return attr.value;
+}
+
+// Extracts and runs the REAL copyCodeBlock() against a getAttribute('data-raw-code')-equivalent
+// value, capturing what it hands to navigator.clipboard.writeText(...).
+function runCopyCodeBlock(dataRawCode: string): string {
+	const body = getEmittedScriptBody();
+	// #64 (known infra gap, not fixed here): extractFunction can drag in trailing functions when
+	// it misreads a regex literal as an unbalanced quote (see the renderDropdown suite's own #64
+	// comment above). copyCodeBlock's decode chain has four /pattern/g regex literals, none of
+	// which contain a brace or a "//"/quote that could desync the brace-matcher -- checked here
+	// via length/start/end instead of assuming that's safe.
+	const src = extractFunction(body, 'copyCodeBlock');
+	assert.ok(src.startsWith('function copyCodeBlock(codeId) {'), 'extractFunction(copyCodeBlock) did not start where expected; got: ' + src.slice(0, 80));
+	assert.ok(src.trimEnd().endsWith('}'), 'extractFunction(copyCodeBlock) did not end at a closing brace; got: ' + src.slice(-80));
+	assert.ok(!/\n\s*function\s+\w+\s*\(/.test(src.slice('function copyCodeBlock(codeId) {'.length)), 'extractFunction(copyCodeBlock) appears to have dragged in a trailing function declaration (#64); got: ' + src);
+	let clipboardText: string | undefined;
+	const sandbox: Record<string, unknown> = {
+		document: {
+			getElementById(_id: string) {
+				return {
+					getAttribute(name: string) { return name === 'data-raw-code' ? dataRawCode : null; },
+					closest() { return { querySelector() { return null; } }; }
+				};
+			}
+		},
+		navigator: {
+			clipboard: {
+				writeText(text: string) {
+					clipboardText = text;
+					return { then(cb: () => void) { cb(); return { catch() { /* noop */ } }; } };
+				}
+			}
+		},
+		console
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src + '\ncopyCodeBlock("x");').runInContext(sandbox);
+	if (clipboardText === undefined) { throw new Error('copyCodeBlock never called navigator.clipboard.writeText'); }
+	return clipboardText;
+}
+
+suite('webview attribute escaping: copyCodeBlock double-decode (#62 Part A PoC)', () => {
+
+	test('a code block literally containing "&quot;" -- the clipboard text matches getAttribute() exactly, no longer double-decoded (the corruption case)', () => {
+		const code = 'literal &quot; entity';
+		const dataRawCode = renderCodeBlockRawAttr(code);
+		assert.strictEqual(dataRawCode, code + '\n', 'getAttribute() equivalent must already be the exact original code');
+		const clipboardText = runCopyCodeBlock(dataRawCode);
+		assert.strictEqual(clipboardText, code + '\n');
+	});
+
+	test('a code block literally containing "&amp;" -- the clipboard text matches getAttribute() exactly (the <script>&amp;alert(1)</script> case)', () => {
+		const code = '<script>&amp;alert(1)</script>';
+		const dataRawCode = renderCodeBlockRawAttr(code);
+		assert.strictEqual(dataRawCode, code + '\n');
+		const clipboardText = runCopyCodeBlock(dataRawCode);
+		assert.strictEqual(clipboardText, code + '\n');
+	});
+
+	test('a code block literally containing "&lt;" and "&gt;" -- the clipboard text matches getAttribute() exactly', () => {
+		const code = 'a &lt;div&gt; tag as text';
+		const dataRawCode = renderCodeBlockRawAttr(code);
+		assert.strictEqual(dataRawCode, code + '\n');
+		const clipboardText = runCopyCodeBlock(dataRawCode);
+		assert.strictEqual(clipboardText, code + '\n');
+	});
+
+	test('ordinary special characters (&, <, >, ", \') that do not spell out an entity -- the clipboard text matches getAttribute() exactly (no functional regression)', () => {
+		const code = 'const s = "a" + \'b\' & <c> && d;';
+		const dataRawCode = renderCodeBlockRawAttr(code);
+		assert.strictEqual(dataRawCode, code + '\n');
+		const clipboardText = runCopyCodeBlock(dataRawCode);
+		assert.strictEqual(clipboardText, code + '\n');
+	});
+
+	test('a multi-line code block mixing real special characters and literal entity text -- the clipboard text matches getAttribute() exactly', () => {
+		const code = [
+			'function f(a, b) {',
+			'  // literal example: &quot;quoted&quot; and &amp;amp;',
+			'  return a < b && b > a ? "yes" : \'no\';',
+			'}'
+		].join('\n');
+		const dataRawCode = renderCodeBlockRawAttr(code);
+		assert.strictEqual(dataRawCode, code + '\n');
+		const clipboardText = runCopyCodeBlock(dataRawCode);
+		assert.strictEqual(clipboardText, code + '\n');
+	});
+});

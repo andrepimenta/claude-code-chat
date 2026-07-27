@@ -348,31 +348,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
-		function createExpandableInput(toolInput, rawInput) {
-			try {
-				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">expand</span>');
-				
-				// Store raw input data for expansion
-				if (rawInput && typeof rawInput === 'object') {
-					let btnIndex = 0;
-					html = html.replace(/<span class="expand-btn"[^>]*>expand<\\/span>/g, (match) => {
-						const keys = Object.keys(rawInput);
-						const key = keys[btnIndex] || '';
-						const value = rawInput[key] || '';
-						const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-						btnIndex++;
-						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">expand</span>\`;
-					});
-				}
-				
-				return html;
-			} catch (error) {
-				console.error('Error creating expandable input:', error);
-				return toolInput;
-			}
-		}
-
+		// #62: the dead expandable-input helper (the same "[expand]" placeholder +
+		// data-key/data-value expand-btn pattern) removed as dead code -- unreachable (grep
+		// across src/ + out/ found only its own declaration, no call site, no window[...]/
+		// onclick-string dynamic invocation anywhere) and superseded by formatToolInputUI's own
+		// escapeAttr()'d expand-btn rendering (the currently used path). Not spelling out the
+		// old identifier here on purpose, since this comment is itself part of the emitted
+		// <script> text.
 
 		function addToolResultMessage(data) {
 			const messagesDiv = document.getElementById('messages');
@@ -3589,11 +3571,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyCodeBlock(codeId) {
 			const codeElement = document.getElementById(codeId);
 			if (codeElement) {
+				// #62: getAttribute() already returns the entity-decoded value (the browser
+				// decodes data-raw-code's escapeAttr()-produced entities during HTML parsing --
+				// see the escapedCode assembly in parseSimpleMarkdown) -- there used to be a
+				// second, manual decode pass here that mangled code literally containing the
+				// entity text itself (e.g. "literal &quot; entity" became "literal " entity").
 				const rawCode = codeElement.getAttribute('data-raw-code');
 				if (rawCode) {
-					// Decode HTML entities
-					const decodedCode = rawCode.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-					navigator.clipboard.writeText(decodedCode).then(() => {
+					navigator.clipboard.writeText(rawCode).then(() => {
 						// Show temporary feedback
 						const copyBtn = codeElement.closest('.code-block-container').querySelector('.code-copy-btn');
 						if (copyBtn) {
