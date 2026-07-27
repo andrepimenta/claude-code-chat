@@ -1628,8 +1628,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		let editingServerName = null;
+		// #60: configs keyed by server name -- editMCPServer used to receive the whole config
+		// object JSON.stringify()'d straight into an onclick(...) attribute (a second,
+		// un-escapeAttr-able sink alongside the name itself). The object now stays in JS-land;
+		// only the (escapeAttr'd) name crosses into the attribute. Reset on every
+		// displayMCPServers() render.
+		let mcpServerConfigsByName = {};
 
-		function editMCPServer(name, config) {
+		function editMCPServer(name) {
+			const config = mcpServerConfigsByName[name];
+			if (!config) {
+				return;
+			}
 			editingServerName = name;
 			
 			// Hide add button and popular servers
@@ -2071,6 +2081,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function displayMCPServers(servers) {
 			const serversList = document.getElementById('mcpServersList');
 			serversList.innerHTML = '';
+			// #60: reset per render so editMCPServer can never resolve a stale/removed server's
+			// config through a name that no longer has a corresponding button.
+			mcpServerConfigsByName = {};
 
 			if (Object.keys(servers).length === 0) {
 				serversList.innerHTML = '<div class="no-servers">' +
@@ -2107,16 +2120,24 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 
 				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : 'Extension';
+				// #60: name/config moved out of the inline onclick -- a name containing a single
+				// quote used to break straight out of editMCPServer('...') into the attribute,
+				// and JSON.stringify(config) was a second, un-escapeAttr-able sink. The config
+				// now lives only in mcpServerConfigsByName; editMCPServer looks it up by name,
+				// which itself travels through data-server-name (escapeAttr) + this.dataset,
+				// same pattern as #57/#58.
+				mcpServerConfigsByName[name] = config;
+				const serverActionsHtml = \`<button class="btn outlined server-edit-btn" data-server-name="\${escapeAttr(name)}" onclick="editMCPServer(this.dataset.serverName)">Edit</button>
+						<button class="btn outlined server-delete-btn" data-server-name="\${escapeAttr(name)}" data-server-scope="\${escapeAttr(serverScope)}" onclick="deleteMCPServer(this.dataset.serverName, this.dataset.serverScope)">Delete</button>\`;
 
 				serverItem.innerHTML = \`
 					<div class="server-info">
-						<div class="server-name">\${name} <span style="font-size:10px;opacity:0.5;font-weight:normal;">\${scopeLabel}</span></div>
-						<div class="server-type">\${serverType.toUpperCase()}</div>
+						<div class="server-name">\${escapeHtml(name)} <span style="font-size:10px;opacity:0.5;font-weight:normal;">\${scopeLabel}</span></div>
+						<div class="server-type">\${escapeHtml(serverType.toUpperCase())}</div>
 						<div class="server-config">\${configDisplay}</div>
 					</div>
 					<div class="server-actions">
-						<button class="btn outlined server-edit-btn" onclick="editMCPServer('\${name}', \${JSON.stringify(config).replace(/"/g, '&quot;')})">Edit</button>
-						<button class="btn outlined server-delete-btn" onclick="deleteMCPServer('\${name}', '\${serverScope}')">Delete</button>
+						\${serverActionsHtml}
 					</div>
 				\`;
 				
