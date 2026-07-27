@@ -303,6 +303,10 @@ class FakeElement {
 	set innerHTML(v: string) { this._innerHTML = v; }
 	appendChild(child: FakeElement): FakeElement { this.children.push(child); return child; }
 	insertAdjacentHTML(): void { /* cosmetic only */ }
+	// #61: renderAllModels()/renderDropdown() wire click handlers via
+	// listContainer.querySelectorAll(...).forEach(...) -- an empty array is enough here since
+	// none of these PoCs need the click wiring itself, only the innerHTML the sinks produce.
+	querySelectorAll(): FakeElement[] { return []; }
 }
 
 class FakeDocument {
@@ -446,5 +450,412 @@ suite('webview attribute escaping: displayMCPServers / editMCPServer (#60 PoC)',
 		const editName = findAttrOn(html, 'server-edit-btn', 'data-server-name');
 		assert.strictEqual(editName && editName.value, 'my-server');
 		assert.strictEqual((sandbox.__testState().configsByName['my-server'] as { command: string }).command, 'node');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #61 Part A PoC: renderDropdown() (the model combo box built by initModelCombo()) and
+// renderAllModels() (the "all models" modal) wrote model.id/model.name/model.owned_by
+// straight into data-id=/data-model-id= attributes and innerHTML text -- with NO escaping at
+// all (not even the #57-era escapeHtml()-in-attribute-context mistake). The models come from
+// fetch(OPENCREDITS_API_URL + '/v1/models'), a third-party HTTP endpoint outside our control.
+// Fix: escapeAttr() for the data-id/data-model-id attribute values, escapeHtml() for the
+// name/id/owned_by text nodes -- same split as #57's fix.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface DropdownSandbox {
+	renderDropdown(query: string): void;
+}
+
+function loadDropdownSandbox(models: unknown[]): { sandbox: DropdownSandbox; dropdown: FakeElement } {
+	const body = getEmittedScriptBody();
+	const dropdown = new FakeElement();
+	// #64 (known infra gap, not fixed here): extractFunction('escapeAttr') also drags in
+	// safeHttpUrl/openFileInEditor/formatFilePath/toggleDiffExpansion/toggleResultExpansion --
+	// escapeAttr's own /'/g regex literal desyncs the brace-matcher's naive quote tracking (see
+	// extractFunction's own comment above). Checked via a standalone extraction dump before
+	// relying on it here: harmless, those extra functions are only declared, never called.
+	const src = [
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'renderDropdown'),
+	].join('\n');
+	// renderDropdown is a nested function (closure over initModelCombo's dropdown/input/combo
+	// locals) -- allModelsCache and dropdown are set directly as sandbox globals instead of
+	// being declared inside the vm script, which resolves the same way a free variable would.
+	// dropdown.querySelectorAll(...) returning [] means the mousedown-listener closure (which
+	// references input/combo) is created but never invoked, so those two stay undefined-but-
+	// unused without throwing. document.createElement('div') is escapeHtml()'s own stub (FakeDiv).
+	const sandbox: Record<string, unknown> = {
+		allModelsCache: models,
+		dropdown,
+		document: {
+			createElement(tag: string) {
+				if (tag !== 'div') { throw new Error('unexpected document.createElement(' + tag + ')'); }
+				return new FakeDiv();
+			}
+		}
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as DropdownSandbox, dropdown };
+}
+
+suite('webview attribute escaping: renderDropdown model combo box (#61 Part A PoC)', () => {
+
+	test('an attribute-breakout model id stays contained -- no onmouseover attribute survives, and data-id round-trips the exact raw payload', () => {
+		const payload = 'x" onmouseover="alert(1)" y="';
+		const { sandbox, dropdown } = loadDropdownSandbox([{ id: payload, name: 'Model' }]);
+		sandbox.renderDropdown('');
+		assert.ok(!findAttr(dropdown.innerHTML, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + dropdown.innerHTML);
+		const dataId = findAttrOn(dropdown.innerHTML, 'model-combo-option', 'data-id');
+		assert.strictEqual(dataId && dataId.value, payload);
+	});
+
+	test('an <img onerror> payload in the model name renders as inert text, not a live element', () => {
+		const payload = '<img src=x onerror=alert(1)>';
+		const { sandbox, dropdown } = loadDropdownSandbox([{ id: 'm1', name: payload }]);
+		sandbox.renderDropdown('');
+		assert.ok(!findAttr(dropdown.innerHTML, 'onerror'), 'must not contain an onerror attribute; got: ' + dropdown.innerHTML);
+		assert.strictEqual(textOn(dropdown.innerHTML, 'model-combo-option-name'), payload);
+	});
+
+	test('an attribute-breakout search query also stays contained in the "use as custom model" row', () => {
+		const payload = 'x" onmouseover="alert(1)" y="';
+		const { sandbox, dropdown } = loadDropdownSandbox([]);
+		sandbox.renderDropdown(payload);
+		assert.ok(!findAttr(dropdown.innerHTML, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + dropdown.innerHTML);
+		const dataId = findAttrOn(dropdown.innerHTML, 'model-combo-custom', 'data-id');
+		assert.strictEqual(dataId && dataId.value, payload);
+	});
+
+	test('a plain model with no special characters still renders visibly (no functional regression)', () => {
+		const { sandbox, dropdown } = loadDropdownSandbox([{ id: 'gpt-4', name: 'GPT-4' }]);
+		sandbox.renderDropdown('');
+		assert.ok(dropdown.innerHTML.includes('GPT-4'), 'expected the model name to appear; got: ' + dropdown.innerHTML);
+		const dataId = findAttrOn(dropdown.innerHTML, 'model-combo-option', 'data-id');
+		assert.strictEqual(dataId && dataId.value, 'gpt-4');
+	});
+});
+
+interface AllModelsSandbox {
+	renderAllModels(models: unknown[]): void;
+}
+
+function loadAllModelsSandbox(): { sandbox: AllModelsSandbox; document: FakeDocument } {
+	const body = getEmittedScriptBody();
+	const document = new FakeDocument();
+	const src = [
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'renderAllModels'),
+	].join('\n');
+	const sandbox: Record<string, unknown> = { document, currentModel: 'opus' };
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as AllModelsSandbox, document };
+}
+
+suite('webview attribute escaping: renderAllModels "all models" modal (#61 Part A PoC)', () => {
+
+	test('an attribute-breakout model id stays contained -- no onmouseover attribute survives, and data-model-id round-trips the exact raw payload', () => {
+		const payload = 'x" onmouseover="alert(1)" y="';
+		const { sandbox, document } = loadAllModelsSandbox();
+		sandbox.renderAllModels([{ id: payload, name: 'Model' }]);
+		const html = document.getElementById('allModelsList').innerHTML;
+		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
+		const dataModelId = findAttrOn(html, 'all-models-item', 'data-model-id');
+		assert.strictEqual(dataModelId && dataModelId.value, payload);
+	});
+
+	test('an <img onerror> payload in the model name renders as inert text', () => {
+		const payload = '<img src=x onerror=alert(1)>';
+		const { sandbox, document } = loadAllModelsSandbox();
+		sandbox.renderAllModels([{ id: 'm1', name: payload }]);
+		const html = document.getElementById('allModelsList').innerHTML;
+		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
+		assert.strictEqual(textOn(html, 'all-models-item-name'), payload);
+	});
+
+	test('an <img onerror> payload in owned_by renders as inert text', () => {
+		const payload = '<img src=x onerror=alert(1)>';
+		const { sandbox, document } = loadAllModelsSandbox();
+		sandbox.renderAllModels([{ id: 'm1', name: 'Model', owned_by: payload }]);
+		const html = document.getElementById('allModelsList').innerHTML;
+		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
+		assert.strictEqual(textOn(html, 'all-models-item-provider'), payload);
+	});
+
+	test('a plain model with no special characters still renders visibly (no functional regression)', () => {
+		const { sandbox, document } = loadAllModelsSandbox();
+		sandbox.renderAllModels([{ id: 'gpt-4', name: 'GPT-4', owned_by: 'openai' }]);
+		const html = document.getElementById('allModelsList').innerHTML;
+		assert.ok(html.includes('GPT-4'), 'expected the model name to appear; got: ' + html);
+		const dataModelId = findAttrOn(html, 'all-models-item', 'data-model-id');
+		assert.strictEqual(dataModelId && dataModelId.value, 'gpt-4');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #61 Part A follow-up (opus-Review): openCreditsModels is overwritten wholesale by
+// resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models') -- the SAME
+// third-party endpoint as renderDropdown/renderAllModels above, just reached indirectly via
+// extension.ts's 'updateRecommendedModels' postMessage -- and renderOpenCreditsModelCards()
+// (the model-card grid shown by default whenever OpenCredits is enabled) runs unconditionally
+// on that update, with no user interaction gating it. It wrote model.id/model.provider/
+// model.name straight into data-model-id=/data-provider=/innerHTML with NO escaping.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface ModelCardsSandbox {
+	renderOpenCreditsModelCards(): void;
+}
+
+function loadModelCardsSandbox(openCreditsModels: unknown[]): { sandbox: ModelCardsSandbox; document: FakeDocument } {
+	const body = getEmittedScriptBody();
+	const document = new FakeDocument();
+	const src = [
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'isModelMatch'),
+		extractFunction(body, 'getCreditsPricing'),
+		extractFunction(body, 'renderOpenCreditsModelCards'),
+	].join('\n');
+	const sandbox: Record<string, unknown> = {
+		document,
+		openCreditsModels,
+		currentModel: 'opus',
+		pendingModelSelection: null,
+		hasOpenCreditsKey: false,
+		creditsPricingData: null,
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as ModelCardsSandbox, document };
+}
+
+suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (#61 Part A follow-up PoC)', () => {
+
+	test('an <img onerror> payload in model.name renders as inert text, not a live element (the opus-Review finding)', () => {
+		const payload = '<img src=x onerror="alert(document.domain)">';
+		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-9.9', name: payload, provider: 'openai' }]);
+		sandbox.renderOpenCreditsModelCards();
+		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		assert.ok(!findAttr(html, 'onerror'), 'must not contain a live onerror attribute; got: ' + html);
+		assert.strictEqual(textOn(html, 'model-card-name'), payload);
+	});
+
+	test('an attribute-breakout model id/provider stays contained -- no onmouseover attribute survives, and data-model-id/data-provider round-trip the exact raw payloads', () => {
+		const idPayload = 'x" onmouseover="alert(1)" y="';
+		const providerPayload = 'z" onmouseover="alert(2)" w="';
+		const { sandbox, document } = loadModelCardsSandbox([{ id: idPayload, name: 'Model', provider: providerPayload }]);
+		sandbox.renderOpenCreditsModelCards();
+		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
+		const dataModelId = findAttrOn(html, 'model-card', 'data-model-id');
+		const dataProvider = findAttrOn(html, 'model-card', 'data-provider');
+		assert.strictEqual(dataModelId && dataModelId.value, idPayload);
+		assert.strictEqual(dataProvider && dataProvider.value, providerPayload);
+	});
+
+	test('an <img onerror> payload in model.provider renders as inert text in .model-card-provider', () => {
+		const payload = '<img src=x onerror=alert(1)>';
+		const { sandbox, document } = loadModelCardsSandbox([{ id: 'm1', name: 'Model', provider: payload }]);
+		sandbox.renderOpenCreditsModelCards();
+		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
+		assert.strictEqual(textOn(html, 'model-card-provider'), payload);
+	});
+
+	test('a plain model with no special characters still renders visibly (no functional regression)', () => {
+		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-4', name: 'GPT-4', provider: 'openai' }]);
+		sandbox.renderOpenCreditsModelCards();
+		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		assert.ok(html.includes('GPT-4'), 'expected the model name to appear; got: ' + html);
+		const dataModelId = findAttrOn(html, 'model-card', 'data-model-id');
+		assert.strictEqual(dataModelId && dataModelId.value, 'openai/gpt-4');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #61 Part B PoC: renderMarketplace() and showMarketplaceDetail() already ran the MCP
+// registry's icon/url values through escapeAttr() (post-#57), making src=/href= itself
+// ausbruchsicher -- but neither ever checked the URL SCHEME, so a "javascript:" (or oddly-cased
+// / whitespace-obfuscated) src=/href= still rendered and would execute on click/load. The data
+// comes from registry.modelcontextprotocol.io / mcp.agent-tooling.dev, publishable by anyone.
+// Fix: safeHttpUrl() only lets http:/https: through; the caller then omits the attribute/link
+// entirely (icon placeholder / no GitHub link) instead of rendering a dead attribute.
+// ─────────────────────────────────────────────────────────────────────────
+
+function tagExists(html: string, tagName: string): boolean {
+	const frag = parse5.parseFragment(html);
+	let found = false;
+	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
+		if (found) { return; }
+		const el = node as parse5.DefaultTreeAdapterMap['element'];
+		if (el.tagName === tagName) { found = true; return; }
+		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
+		if (parent.childNodes) { parent.childNodes.forEach(walk); }
+	})(frag);
+	return found;
+}
+
+function classExists(html: string, cssClass: string): boolean {
+	const frag = parse5.parseFragment(html);
+	let found = false;
+	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
+		if (found) { return; }
+		const el = node as parse5.DefaultTreeAdapterMap['element'];
+		if (el.attrs) {
+			const classAttr = el.attrs.find(x => x.name === 'class');
+			if (classAttr && classAttr.value.split(/\s+/).includes(cssClass)) { found = true; return; }
+		}
+		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
+		if (parent.childNodes) { parent.childNodes.forEach(walk); }
+	})(frag);
+	return found;
+}
+
+interface MarketplaceSandbox {
+	renderMarketplace(servers: unknown[], isLoading?: boolean): void;
+	showMarketplaceDetail(serverId: string): void;
+}
+
+// marketplaceDisplayed/marketplaceCache/lastSearchQuery are plain "var" module-level state in
+// script.ts, read as free variables by renderMarketplace/showMarketplaceDetail -- passed in as
+// sandbox globals here (never declared inside the vm script itself), same technique as
+// allModelsCache/currentModel/dropdown above.
+function loadMarketplaceSandbox(marketplaceDisplayed: unknown[]): { sandbox: MarketplaceSandbox; document: FakeDocument } {
+	const body = getEmittedScriptBody();
+	const document = new FakeDocument();
+	const src = [
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'safeHttpUrl'),
+		extractFunction(body, 'renderMarketplace'),
+		extractFunction(body, 'showMarketplaceDetail'),
+	].join('\n');
+	const sandbox: Record<string, unknown> = {
+		document,
+		marketplaceDisplayed,
+		marketplaceCache: null,
+		lastSearchQuery: ''
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as MarketplaceSandbox, document };
+}
+
+suite('webview attribute escaping: MCP marketplace icon/link schema guard (#61 Part B PoC)', () => {
+
+	test('renderMarketplace: a "javascript:" icon URL is dropped -- no <img> element, placeholder rendered instead', () => {
+		const { sandbox, document } = loadMarketplaceSandbox([]);
+		sandbox.renderMarketplace([{ id: 's1', name: 'Srv', icon: 'javascript:alert(1)' }]);
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		assert.ok(!tagExists(html, 'img'), 'must not render an <img> element for a javascript: icon URL; got: ' + html);
+		assert.ok(classExists(html, 'marketplace-item-icon-placeholder'), 'expected the placeholder fallback instead; got: ' + html);
+	});
+
+	test('renderMarketplace: a plain https icon URL still renders normally (no functional regression)', () => {
+		const { sandbox, document } = loadMarketplaceSandbox([]);
+		sandbox.renderMarketplace([{ id: 's1', name: 'Srv', icon: 'https://example.com/icon.png' }]);
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const src = findAttrOn(html, 'marketplace-item-icon', 'src');
+		assert.strictEqual(src && src.value, 'https://example.com/icon.png');
+	});
+
+	test('showMarketplaceDetail: a "javascript:" icon URL is dropped -- no <img> element, placeholder rendered instead', () => {
+		const server = { id: 's1', name: 'Srv', icon: 'javascript:alert(1)', description: 'desc' };
+		const { sandbox, document } = loadMarketplaceSandbox([server]);
+		sandbox.showMarketplaceDetail('s1');
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		assert.ok(!tagExists(html, 'img'), 'must not render an <img> element for a javascript: icon URL; got: ' + html);
+		assert.ok(classExists(html, 'marketplace-item-icon-placeholder'), 'expected the placeholder fallback instead; got: ' + html);
+	});
+
+	test('showMarketplaceDetail: a "javascript:" repository URL produces no GitHub link at all', () => {
+		const server = { id: 's1', name: 'Srv', url: 'javascript:alert(1)', description: 'desc' };
+		const { sandbox, document } = loadMarketplaceSandbox([server]);
+		sandbox.showMarketplaceDetail('s1');
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		assert.ok(!classExists(html, 'marketplace-detail-link'), 'must not render a GitHub link for a javascript: url; got: ' + html);
+		assert.ok(!findAttr(html, 'href'), 'must not contain an href attribute anywhere; got: ' + html);
+	});
+
+	test('showMarketplaceDetail: a mixed-case/whitespace-obfuscated "javascript:" repository URL is also blocked', () => {
+		const server = { id: 's1', name: 'Srv', url: 'Java\tScRiPt:alert(1)', description: 'desc' };
+		const { sandbox, document } = loadMarketplaceSandbox([server]);
+		sandbox.showMarketplaceDetail('s1');
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		assert.ok(!classExists(html, 'marketplace-detail-link'), 'must not render a GitHub link for an obfuscated javascript: url; got: ' + html);
+		assert.ok(!findAttr(html, 'href'), 'must not contain an href attribute anywhere; got: ' + html);
+	});
+
+	test('showMarketplaceDetail: a plain https repository URL still renders the GitHub link normally (no functional regression)', () => {
+		const server = { id: 's1', name: 'Srv', url: 'https://github.com/foo/bar', description: 'desc' };
+		const { sandbox, document } = loadMarketplaceSandbox([server]);
+		sandbox.showMarketplaceDetail('s1');
+		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const href = findAttrOn(html, 'marketplace-detail-link', 'href');
+		assert.strictEqual(href && href.value, 'https://github.com/foo/bar');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #61 Part C PoC: addEnvVariableRow() wrote key/value straight into value="..." with NO
+// escaping at all. Self-XSS only (the values come from the user's own extension settings), but
+// a '"' in a saved value truncates the rendered field instead of round-tripping. Fix:
+// escapeAttr(), same pattern as the other #57-era value="..." sinks.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface EnvRowSandbox {
+	addEnvVariableRow(key: string, value: string): void;
+}
+
+function loadEnvRowSandbox(): { sandbox: EnvRowSandbox; document: FakeDocument } {
+	const body = getEmittedScriptBody();
+	const document = new FakeDocument();
+	const src = [
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'addEnvVariableRow'),
+	].join('\n');
+	const sandbox: Record<string, unknown> = { document };
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as EnvRowSandbox, document };
+}
+
+suite('webview attribute escaping: addEnvVariableRow (#61 Part C PoC)', () => {
+
+	test('an attribute-breakout key stays contained -- no onmouseover attribute survives, and value="..." round-trips the exact raw payload', () => {
+		const payload = 'x" onmouseover="alert(1)" y="';
+		const { sandbox, document } = loadEnvRowSandbox();
+		sandbox.addEnvVariableRow(payload, 'plain');
+		const container = document.getElementById('env-variables-list');
+		const html = container.children[0].innerHTML;
+		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
+		const keyValue = findAttrOn(html, 'env-key', 'value');
+		assert.strictEqual(keyValue && keyValue.value, payload);
+	});
+
+	test('a value containing a double quote no longer truncates the rendered field -- value="..." round-trips it exactly', () => {
+		const payload = 'sk-abc"123';
+		const { sandbox, document } = loadEnvRowSandbox();
+		sandbox.addEnvVariableRow('API_KEY', payload);
+		const container = document.getElementById('env-variables-list');
+		const html = container.children[0].innerHTML;
+		const value = findAttrOn(html, 'env-value', 'value');
+		assert.strictEqual(value && value.value, payload);
+	});
+
+	test('a plain key/value with no special characters still renders visibly (no functional regression)', () => {
+		const { sandbox, document } = loadEnvRowSandbox();
+		sandbox.addEnvVariableRow('API_KEY', 'sk-abc123');
+		const container = document.getElementById('env-variables-list');
+		const html = container.children[0].innerHTML;
+		const keyValue = findAttrOn(html, 'env-key', 'value');
+		const value = findAttrOn(html, 'env-value', 'value');
+		assert.strictEqual(keyValue && keyValue.value, 'API_KEY');
+		assert.strictEqual(value && value.value, 'sk-abc123');
 	});
 });

@@ -1,7 +1,7 @@
 import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
 import getCollapseScript from './collapse-script';
-import { escapeAttr } from './html-escape';
+import { escapeAttr, safeHttpUrl } from './html-escape';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -876,6 +876,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// (Muster math-script/collapse-script), damit npm run test:html-escape die Funktion
 		// unter Node pruefen kann. ACHTUNG: hier steht bewusst "\${", nicht "\\\${".
 		${escapeAttr.toString()}
+
+		// #61: Schema-Guard fuer href=/src= -- escapeAttr() allein laesst javascript:-Links
+		// unangetastet durch. Gleicher Build-Zeit-Splice wie escapeAttr direkt darueber.
+		${safeHttpUrl.toString()}
 
 		function openFileInEditor(filePath) {
 			vscode.postMessage({
@@ -1923,10 +1927,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			(servers || []).forEach(function(server) {
 				var name = server.name || 'Unknown';
 				var desc = escapeHtml(server.description || 'No description');
-				var icon = server.icon || '';
+				// #61: no schema guard on the icon URL let a "javascript:" src (or similar)
+				// through unescaped-but-well-formed -- safeHttpUrl() restricts src= to
+				// http:/https:, falling back to the placeholder instead of a dead src=""
+				var safeIcon = safeHttpUrl(server.icon || '');
 				var stars = server.stars || 0;
 				var installType = server.installType || '';
-				var iconHtml = icon ? '<img src="' + escapeAttr(icon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+				var iconHtml = safeIcon ? '<img src="' + escapeAttr(safeIcon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 				var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 				var typeHtml = installType ? '<span class="marketplace-item-type">' + escapeHtml(installType) + '</span>' : '';
@@ -1979,12 +1986,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			var name = server.name || 'Unknown';
 			var desc = server.description || 'No description available.';
-			var icon = server.icon || '';
+			// #61: no schema guard on icon/url let "javascript:" through unescaped-but-
+			// well-formed -- safeHttpUrl() restricts src=/href= to http:/https:, falling
+			// back to the placeholder / omitting the link instead of a dead attribute.
+			var safeIcon = safeHttpUrl(server.icon || '');
 			var stars = server.stars || 0;
-			var url = server.url || '';
+			var safeUrl = safeHttpUrl(server.url || '');
 			var cfg = server.installConfig;
 
-			var iconHtml = icon ? '<img src="' + escapeAttr(icon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+			var iconHtml = safeIcon ? '<img src="' + escapeAttr(safeIcon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 			var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 
@@ -2023,7 +2033,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				'<div class="marketplace-detail-name">' + escapeHtml(name) + '</div>' +
 				'<div class="marketplace-detail-header-meta">' +
 				starsHtml +
-				(url ? '<a href="' + escapeAttr(url) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
+				(safeUrl ? '<a href="' + escapeAttr(safeUrl) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
 				'</div>' +
 				'</div>' +
 				(cfg ? '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;"><select id="mcpInstallScope" style="padding:4px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:4px;font-size:11px;"><option value="project">Project (.mcp.json)</option><option value="global">Global (~/.claude.json)</option></select><button class="btn marketplace-install-btn" data-server="' + safeId + '" onclick="installMarketplaceServer(this.dataset.server)">Install</button></div>' : '') +
@@ -2223,6 +2233,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (moreBtn) moreBtn.style.display = '';
 			if (modelDropdown) modelDropdown.style.display = 'none';
 
+			// #61 follow-up (opus-Review): openCreditsModels is the same third-party-sourced
+			// data as renderOpenCreditsModelCards()'s model-card sink below -- this function is
+			// safe not because of the data source but because it never builds an HTML string:
+			// setAttribute()/textContent/a real function assigned to .onclick all treat their
+			// argument as inert data, never markup. If this ever gets rewritten to build an
+			// innerHTML string (the pattern used two functions down), re-add escapeAttr/
+			// escapeHtml at that point.
 			openCreditsModels.forEach(function(model) {
 				const btn = document.createElement('button');
 				btn.className = 'model-quick-btn' + (isModelMatch(currentModel, model.id) ? ' selected' : '');
@@ -2287,10 +2304,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					}
 				}
 
-				return '<div class="model-card' + (isSelected ? ' selected' : '') + (isPending ? ' pending' : '') + '" data-model-id="' + model.id + '" data-provider="' + model.provider + '">' +
+				// #61 follow-up (opus-Review): openCreditsModels is overwritten wholesale by
+				// resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models')
+				// -- the same third-party endpoint as renderDropdown/renderAllModels -- and
+				// renderOpenCreditsModelCards() runs unconditionally on that update, with no
+				// user interaction gating it. data-model-id/data-provider are attribute values
+				// (escapeAttr), name/provider text goes into innerHTML (escapeHtml).
+				return '<div class="model-card' + (isSelected ? ' selected' : '') + (isPending ? ' pending' : '') + '" data-model-id="' + escapeAttr(model.id) + '" data-provider="' + escapeAttr(model.provider) + '">' +
 					badgeHtml +
-					'<div class="model-card-provider">' + model.provider + '</div>' +
-					'<div class="model-card-name">' + model.name + '</div>' +
+					'<div class="model-card-provider">' + escapeHtml(model.provider) + '</div>' +
+					'<div class="model-card-name">' + escapeHtml(model.name) + '</div>' +
 				'</div>';
 			}).join('');
 
@@ -2543,16 +2566,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}) : models;
 
 				var html = filtered.slice(0, 50).map(function(m) {
-					return '<div class="model-combo-option" data-id="' + m.id + '">' +
-						'<div class="model-combo-option-name">' + (m.name || m.id) + '</div>' +
-						'<div class="model-combo-option-id">' + m.id + '</div>' +
+					// #61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+					// third-party HTTP endpoint -- data-id is an attribute value (escapeAttr),
+					// the name/id text goes into innerHTML (escapeHtml).
+					return '<div class="model-combo-option" data-id="' + escapeAttr(m.id) + '">' +
+						'<div class="model-combo-option-name">' + escapeHtml(m.name || m.id) + '</div>' +
+						'<div class="model-combo-option-id">' + escapeHtml(m.id) + '</div>' +
 					'</div>';
 				}).join('');
 
 				if (q && filtered.length === 0) {
-					html = '<div class="model-combo-custom" data-id="' + q + '">Use "' + q + '" as custom model</div>';
+					html = '<div class="model-combo-custom" data-id="' + escapeAttr(q) + '">Use "' + escapeHtml(q) + '" as custom model</div>';
 				} else if (q && !filtered.find(function(m) { return m.id === q; })) {
-					html += '<div class="model-combo-custom" data-id="' + q + '">Use "' + q + '" as custom model</div>';
+					html += '<div class="model-combo-custom" data-id="' + escapeAttr(q) + '">Use "' + escapeHtml(q) + '" as custom model</div>';
 				}
 
 				dropdown.innerHTML = html;
@@ -2688,10 +2714,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				const isSelected = currentModel === model.id;
 				const contextLength = model.context_length ? Math.round(model.context_length / 1000) + 'K' : '';
 
-				return '<div class="all-models-item' + (isSelected ? ' selected' : '') + '" data-model-id="' + model.id + '">' +
+				// #61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+				// third-party HTTP endpoint -- data-model-id is an attribute value
+				// (escapeAttr), the name/id/owned_by text goes into innerHTML (escapeHtml).
+				return '<div class="all-models-item' + (isSelected ? ' selected' : '') + '" data-model-id="' + escapeAttr(model.id) + '">' +
 					'<div class="all-models-item-main">' +
-						'<div class="all-models-item-name">' + (model.name || model.id) + '</div>' +
-						'<div class="all-models-item-provider">' + (model.owned_by || '') + '</div>' +
+						'<div class="all-models-item-name">' + escapeHtml(model.name || model.id) + '</div>' +
+						'<div class="all-models-item-provider">' + escapeHtml(model.owned_by || '') + '</div>' +
 					'</div>' +
 					(contextLength ? '<div class="all-models-item-details"><span class="all-models-item-context">' + contextLength + '</span></div>' : '') +
 				'</div>';
@@ -5100,8 +5129,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const container = document.getElementById('env-variables-list');
 			const row = document.createElement('div');
 			row.className = 'env-variable-row';
-			row.innerHTML = '<input type="text" class="env-key" placeholder="KEY" value="' + (key || '') + '" onchange="updateSettings()">' +
-				'<input type="text" class="env-value" placeholder="value" value="' + (value || '') + '" onchange="updateSettings()">' +
+			row.innerHTML = '<input type="text" class="env-key" placeholder="KEY" value="' + escapeAttr(key || '') + '" onchange="updateSettings()">' +
+				'<input type="text" class="env-value" placeholder="value" value="' + escapeAttr(value || '') + '" onchange="updateSettings()">' +
 				'<button class="env-variable-remove" onclick="removeEnvVariable(this)" title="Remove">✕</button>';
 			container.appendChild(row);
 		}
