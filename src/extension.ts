@@ -8,6 +8,7 @@ import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
+import { updateWithWorkspaceThenGlobalFallback } from './settings-batch';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -3411,21 +3412,52 @@ class ClaudeChatProvider {
 		});
 	}
 
+	// #59: workspace-then-global fallback (same pattern _updateSettings already used for
+	// this key, via updateWithWorkspaceThenGlobalFallback). Before #59 this only tried
+	// Workspace and swallowed the error into the console -- in a window with no
+	// workspace folder open that meant YOLO mode was never actually persisted, while the
+	// webview's "YOLO Mode enabled!" chat message (script.ts's enableYoloMode()) fired
+	// unconditionally client-side, independent of any response from here. That message
+	// is now gated on the 'yoloModeEnabled' reply below, sent only after a successful
+	// write; a double failure gets a 'yoloModeEnableFailed' reply plus a native error
+	// notification instead, and never a success confirmation.
+	//
+	// opus-review follow-up: the outer try/catch below exists because this method is
+	// called fire-and-forget (extension.ts's message handler does
+	// `this._enableYoloMode();`, no `await`/`.catch`, see the switch above). Before this
+	// review pass, only the two config.update() calls inside
+	// updateWithWorkspaceThenGlobalFallback could reject; now that this method's own
+	// logic (e.g. a settings-batch.ts that's out of sync with extension.ts after a
+	// partial deploy, so updateWithWorkspaceThenGlobalFallback itself is undefined) can
+	// also throw, an uncaught rejection here would silently swallow the click with none
+	// of #59's reporting -- exactly the failure class #59 exists to close.
 	private async _enableYoloMode(): Promise<void> {
 		try {
-			// Update VS Code configuration to enable YOLO mode
 			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const result = await updateWithWorkspaceThenGlobalFallback(
+				async () => { await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace); },
+				async () => { await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Global); }
+			);
 
-			// Clear any global setting and set workspace setting
-			await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace);
-
-
-			// Send updated settings to UI
-			this._sendCurrentSettings();
-
-		} catch (error) {
-			console.error('Error enabling YOLO mode:', error);
+			if (result.succeeded) {
+				// Send updated settings to UI
+				this._sendCurrentSettings();
+				this._postMessage({ type: 'yoloModeEnabled' });
+			} else {
+				this._reportYoloModeEnableFailure(result.globalError || result.workspaceError || 'Unknown error');
+			}
+		} catch (error: any) {
+			this._reportYoloModeEnableFailure(error?.message || String(error));
 		}
+	}
+
+	// Shared by _enableYoloMode's double-failure path and its outer catch: same
+	// treatment either way -- a caller must never see a silent no-op where the chat
+	// already claimed success.
+	private _reportYoloModeEnableFailure(message: string): void {
+		console.error('Error enabling YOLO mode:', message);
+		vscode.window.showErrorMessage(`Failed to enable YOLO mode: ${message}`);
+		this._postMessage({ type: 'yoloModeEnableFailed', error: message });
 	}
 
 	private _saveInputText(text: string): void {
@@ -3438,11 +3470,17 @@ class ClaudeChatProvider {
 		try {
 			for (const [key, value] of Object.entries(settings)) {
 				if (key === 'permissions.yoloMode') {
-					// YOLO mode: try workspace first, fall back to global
-					try {
-						await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-					} catch {
-						await config.update(key, value, vscode.ConfigurationTarget.Global);
+					// #59: YOLO mode: try workspace first, fall back to global (same
+					// helper _enableYoloMode uses). A double failure throws here, same as
+					// before, so applySettingsBatch's own per-key try/catch still records
+					// it as a failure -- no behavior change, just one shared
+					// implementation instead of two copies of this fallback.
+					const yoloResult = await updateWithWorkspaceThenGlobalFallback(
+						async () => { await config.update(key, value, vscode.ConfigurationTarget.Workspace); },
+						async () => { await config.update(key, value, vscode.ConfigurationTarget.Global); }
+					);
+					if (!yoloResult.succeeded) {
+						throw new Error(yoloResult.globalError || yoloResult.workspaceError || 'Unknown error');
 					}
 				} else {
 					// Other settings are global (user-wide)

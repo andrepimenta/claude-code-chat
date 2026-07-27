@@ -89,6 +89,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let collapseLongCodeBlocks = true;
 		let collapseCodeBlockLines = 20;
 		let attachedImages = []; // Array of { filePath, previewUri }
+		// #59: text for the next 'yoloModeEnabled' response's chat message, set by
+		// enableYoloMode() right before it posts 'enableYoloMode' to the extension host.
+		// The two call sites (inline permission-menu item vs. the standalone chat
+		// button) use different wording, so this can't be a hardcoded string in the
+		// 'yoloModeEnabled' case itself; only one enable request is ever in flight at a
+		// time, so a single module-level slot is enough (same pragmatic pattern as
+		// sendOnEnter/renderMathEnabled above).
+		let pendingYoloEnableMessage = null;
 
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
@@ -3656,6 +3664,32 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					updateStatusWithTotals();
 					break;
 					
+				case 'yoloModeEnabled':
+					// #59: confirmation only arrives here after the extension host
+					// actually persisted permissions.yoloMode (workspace, or global as
+					// fallback) -- the chat message moved here (out of enableYoloMode())
+					// so it can no longer fire before/regardless of that write.
+					addMessage(pendingYoloEnableMessage || '✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
+					pendingYoloEnableMessage = null;
+					break;
+
+				case 'yoloModeEnableFailed':
+					// #59: both the workspace and global config.update() attempts threw
+					// -- surface it in-chat too, not just via the extension host's native
+					// error notification, and never show the "enabled" message. The raw
+					// host error (message.error) deliberately does NOT go into this
+					// 'error'-typed content: a real-world double failure (e.g. settings.json
+					// not writable) throws "EACCES: permission denied, open '...'", which
+					// isPermissionError() would match, attaching a circular "Enable Yolo
+					// Mode" suggestion button to the very message reporting that enabling
+					// it just failed. The full text is still in the console (logged below)
+					// and in the native showErrorMessage notification the extension host
+					// already sent.
+					console.error('Failed to enable YOLO mode:', message.error);
+					addMessage('❌ Failed to enable YOLO mode. See the notification for details.', 'error');
+					pendingYoloEnableMessage = null;
+					break;
+
 				case 'toolUse':
 					if (typeof message.data === 'object') {
 						addToolUseMessage(message.data);
@@ -4150,37 +4184,45 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// inline button. The extension host's _enableYoloMode() persists
 		// permissions.yoloMode and replies with settingsData, whose handler
 		// (~6147/~6150) sets the checkbox and calls updateYoloWarning().
+		//
+		// #59: the "enabled" chat message used to fire right here, unconditionally,
+		// the moment the button was clicked -- independent of whether
+		// _enableYoloMode() on the extension host actually managed to persist
+		// anything (it had no global fallback, so with no workspace folder open the
+		// setting silently never got saved while the chat still said "enabled").
+		// That confirmation now only happens in the 'yoloModeEnabled' case above,
+		// once the extension host reports success; pendingYoloEnableMessage carries
+		// the wording across that round trip. A 'yoloModeEnableFailed' reply shows
+		// an in-chat error instead and never the "enabled" text.
 		function enableYoloMode(permissionId) {
 			sendStats('YOLO mode enabled');
-			
+
 			if (permissionId) {
 				// Hide the menu
 				const menu = document.getElementById(\`permissionMenu-\${permissionId}\`);
 				if (menu) {
 					menu.style.display = 'none';
 				}
-				
+
+				pendingYoloEnableMessage = '⚡ YOLO Mode enabled! All future permissions will be automatically allowed.';
+
 				// Send message to enable YOLO mode
 				vscode.postMessage({
 					type: 'enableYoloMode'
 				});
-				
+
 				// Auto-approve this permission
 				respondToPermission(permissionId, true);
-				
-				// Show notification
-				addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
 				return;
 			}
-			
+
+			pendingYoloEnableMessage = '✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.';
+
 			// Send message to enable YOLO mode (settingsData round trip updates
 			// the checkbox + yolo warning banner, see comment above)
 			vscode.postMessage({
 				type: 'enableYoloMode'
 			});
-			
-			// Show confirmation message
-			addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
 		}
 
 		// Close permission menus when clicking outside
