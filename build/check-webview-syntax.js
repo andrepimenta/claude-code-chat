@@ -62,5 +62,25 @@ if (!html.includes('katex.min.js')) {
 	fail('getHtml(...) output does not reference katex.min.js');
 }
 
-console.log('PASS: getScript() <script> content parses (' + scriptBlocks.length + ' block(s), ' + scriptHtml.length + ' chars) and getHtml() references katex.min.css + katex.min.js');
+// -- 3) #55: die Codeblock-Restore-Schleife in parseSimpleMarkdown muss ueber die
+// gespleisste restoreCodeBlockPlaceholders(html, codeBlockPlaceholders) laufen, nie mehr
+// ueber ein direktes html.replace(placeholder, str) -- String.replace interpretiert
+// "$&"/"$`"/"$'"/"$$" im Ersatzstring als Substitutionsmuster und zerlegt dadurch jeden
+// Code-Block, der eine dieser Sequenzen enthaelt --
+if (!scriptHtml.includes('function restoreCodeBlockPlaceholders')) {
+	fail('getScript(...) output does not contain the spliced restoreCodeBlockPlaceholders (markdown-restore.ts, #55)');
+}
+// Diskriminierende Nadel: "restoreCodeBlockPlaceholders(html, codeBlockPlaceholders)" allein
+// waere eine Tautologie -- der String steckt schon im gespleissten Funktionskopf
+// ("function restoreCodeBlockPlaceholders(html, codeBlockPlaceholders) {") und wuerde damit
+// auch dann PASSen, wenn die Aufrufstelle in parseSimpleMarkdown entfernt wird. "html = " davor
+// kommt im Emit nur an der echten Aufrufstelle vor.
+if (!scriptHtml.includes('html = restoreCodeBlockPlaceholders(')) {
+	fail('getScript(...) output does not call restoreCodeBlockPlaceholders(...) from the code-block restore loop (#55)');
+}
+if (/html\.replace\(placeholder,\s*codeBlockPlaceholders\[i\]\)/.test(scriptHtml)) {
+	fail('getScript(...) output still contains the unsafe html.replace(placeholder, codeBlockPlaceholders[i]) string-replacement (#55 regression)');
+}
+
+console.log('PASS: getScript() <script> content parses (' + scriptBlocks.length + ' block(s), ' + scriptHtml.length + ' chars), getHtml() references katex.min.css + katex.min.js, and the #55 restoreCodeBlockPlaceholders splice is present and the code-block restore loop is safe');
 process.exit(0);

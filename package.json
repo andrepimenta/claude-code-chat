@@ -228,6 +228,7 @@
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
     "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
     "test:math-segments": "npm run compile && mocha --ui tdd out/test/math-segments.test.js --reporter spec",
+    "test:markdown-restore": "npm run compile && mocha --ui tdd out/test/markdown-restore.test.js --reporter spec",
     "test:webview-syntax": "npm run compile && node build/check-webview-syntax.js"
   },
   "devDependencies": {
