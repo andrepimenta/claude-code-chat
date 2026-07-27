@@ -1431,25 +1431,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				content.toLowerCase().includes(pattern.toLowerCase())
 			);
 		}
-		
-		function enableYoloMode() {
-			sendStats('YOLO mode enabled');
-			
-			// Update the checkbox
-			const yoloModeCheckbox = document.getElementById('yolo-mode');
-			if (yoloModeCheckbox) {
-				yoloModeCheckbox.checked = true;
-				
-				// Trigger the settings update
-				updateSettings();
-				
-				// Show confirmation message
-				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
-				
-				// Update the warning banner
-				updateYoloWarning();
-			}
-		}
 
 		function hideMCPModal() {
 			document.getElementById('mcpModal').style.display = 'none';
@@ -4148,22 +4129,51 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			menu.style.display = isVisible ? 'none' : 'block';
 		}
 
+		// #52: consolidated enableYoloMode - there used to be two separate
+		// enableYoloMode function declarations in this scope; the later one
+		// silently won, so the argument-less inline chat button call hit
+		// getElementById('permissionMenu-undefined') and threw. With a
+		// permissionId (permission-menu item, ~4604) this keeps the old late-
+		// variant behaviour: close that menu, notify the extension host,
+		// auto-approve. With no permissionId (inline "Enable Yolo Mode" chat
+		// button, ~254/~639) it mirrors that message round trip instead of the
+		// old early variant's updateSettings() call: updateSettings() writes
+		// 22 settings keys to the GLOBAL (user) scope, not just yoloMode, so
+		// it could clobber workspace overrides / HTML-default values via the
+		// inline button. The extension host's _enableYoloMode() persists
+		// permissions.yoloMode and replies with settingsData, whose handler
+		// (~6147/~6150) sets the checkbox and calls updateYoloWarning().
 		function enableYoloMode(permissionId) {
 			sendStats('YOLO mode enabled');
 			
-			// Hide the menu
-			document.getElementById(\`permissionMenu-\${permissionId}\`).style.display = 'none';
+			if (permissionId) {
+				// Hide the menu
+				const menu = document.getElementById(\`permissionMenu-\${permissionId}\`);
+				if (menu) {
+					menu.style.display = 'none';
+				}
+				
+				// Send message to enable YOLO mode
+				vscode.postMessage({
+					type: 'enableYoloMode'
+				});
+				
+				// Auto-approve this permission
+				respondToPermission(permissionId, true);
+				
+				// Show notification
+				addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
+				return;
+			}
 			
-			// Send message to enable YOLO mode
+			// Send message to enable YOLO mode (settingsData round trip updates
+			// the checkbox + yolo warning banner, see comment above)
 			vscode.postMessage({
 				type: 'enableYoloMode'
 			});
 			
-			// Auto-approve this permission
-			respondToPermission(permissionId, true);
-			
-			// Show notification
-			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
+			// Show confirmation message
+			addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
 		}
 
 		// Close permission menus when clicking outside
