@@ -11,6 +11,7 @@ import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 import { mapWslPathToWindows, toWorkspaceRelativePath, isBinaryContent, buildTurnDiffUriParts, parseTurnDiffUriParts, turnDiffCacheKey } from './diff-utils';
 import { isValidCommitSha, findRehydratedCommitInfo } from './restore-commit-utils';
+import { applySettingsBatch } from './settings-batch';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -3657,7 +3658,11 @@ class ClaudeChatProvider {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 
 		try {
-			for (const [key, value] of Object.entries(settings)) {
+			// #56: each key gets its own try/catch (inside applySettingsBatch) so one
+			// rejected config.update() -- e.g. a setting not yet registered right after
+			// a version bump -- no longer silently drops every key that comes after it
+			// in the same batch.
+			const result = await applySettingsBatch(settings, async (key, value) => {
 				if (key === 'permissions.yoloMode') {
 					// YOLO mode: try workspace first, fall back to global
 					try {
@@ -3669,8 +3674,9 @@ class ClaudeChatProvider {
 					// Other settings are global (user-wide)
 					await config.update(key, value, vscode.ConfigurationTarget.Global);
 				}
-			}
+			});
 
+			// #56: must run even when some keys above failed, not just on full success.
 			// Re-send settings so webview gets updated isOpenCredits flag, etc.
 			this._sendCurrentSettings();
 
@@ -3683,6 +3689,17 @@ class ClaudeChatProvider {
 					type: 'opencreditsBalance',
 					balance: null
 				});
+			}
+
+			if (result.failures.length > 0) {
+				// One error: name it with its own message. Several: list every failed
+				// key, but still show the first error's message -- the "why" (e.g. a
+				// VS Code "not a registered configuration" message) is the actionable
+				// part, not just which keys failed.
+				const failedKeys = result.failures.map(f => f.key).join(', ');
+				const summary = `${failedKeys}: ${result.failures[0].message}`;
+				console.error('Failed to update settings:', result.failures);
+				vscode.window.showErrorMessage(`Failed to update settings: ${summary}`);
 			}
 		} catch (error: any) {
 			console.error('Failed to update settings:', error?.message || error);
