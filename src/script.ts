@@ -502,8 +502,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				html += '<div class="plan-actions-label">Suggested actions:</div>';
 				input.allowedPrompts.forEach(function(p) {
 					var label = p.prompt || (p.tool + ' command');
-					var escapedPrompt = escapeHtml(label).replace(/'/g, '&#39;');
-					html += '<button class="plan-action-btn" onclick="sendPlanAction(&#39;' + escapedPrompt + '&#39;)" title="' + escapeHtml(p.tool) + '">' + escapeHtml(label) + '</button>';
+					// #57: value moved into data-prompt (escapeAttr) instead of an HTML-entity-
+					// escaped JS string literal inside onclick -- the old escapeHtml()+manual
+					// &#39; replace still left " unescaped, breaking out of the attribute.
+					html += '<button class="plan-action-btn" data-prompt="' + escapeAttr(label) + '" onclick="sendPlanAction(this.dataset.prompt)" title="' + escapeAttr(p.tool) + '">' + escapeHtml(label) + '</button>';
 				});
 				html += '</div>';
 			}
@@ -537,7 +539,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Special handling for Read tool with file_path
 			if (input.file_path && Object.keys(input).length === 1) {
 				const formattedPath = formatFilePath(input.file_path);
-				return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+				// #57: path moved into data-file-path (escapeAttr) + this.dataset.filePath --
+				// the old escapeHtml() + hand-escaped \' JS-string embed broke on both " (attribute
+				// breakout) and ' (premature end of the JS string argument).
+				return '<div class="diff-file-path" data-file-path="' + escapeAttr(input.file_path) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			}
 
 			let result = '';
@@ -551,7 +556,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Special formatting for file_path in Read tool context
 				if (key === 'file_path') {
 					const formattedPath = formatFilePath(valueStr);
-					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
+					result += '<div class="diff-file-path" data-file-path="' + escapeAttr(valueStr) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 				} else if (valueStr.length > 100) {
 					const truncated = valueStr.substring(0, 97) + '...';
 					result += '<span class="expandable-item"><strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(truncated) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(valueStr) + '" onclick="toggleExpand(this)">expand</span></span>';
@@ -638,7 +643,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			// Header with file path
 			html += '<div class="diff-file-header">';
-			html += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(filePath) + '\\\')">' + formattedPath + '</div>';
+			html += '<div class="diff-file-path" data-file-path="' + escapeAttr(filePath) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			html += '</div>\\n';
 
 			// Calculate line range
@@ -775,7 +780,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Show full diffs for each edit
 			const formattedPath = formatFilePath(input.file_path);
 			let html = '<div class="diff-file-header">';
-			html += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+			html += '<div class="diff-file-path" data-file-path="' + escapeAttr(input.file_path) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			html += '</div>\\n';
 
 			input.edits.forEach((edit, index) => {
@@ -878,7 +883,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const parts = filePath.split('/');
 			const fileName = parts[parts.length - 1];
 			
-			return '<span class="file-path-truncated" title="' + escapeHtml(filePath) + '" data-file-path="' + escapeHtml(filePath) + '">' + 
+			return '<span class="file-path-truncated" title="' + escapeAttr(filePath) + '" data-file-path="' + escapeAttr(filePath) + '">' +
 				   '<span class="file-icon">📄</span>' + escapeHtml(fileName) + '</span>';
 		}
 
@@ -1903,12 +1908,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				var icon = server.icon || '';
 				var stars = server.stars || 0;
 				var installType = server.installType || '';
-				var iconHtml = icon ? '<img src="' + escapeHtml(icon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+				var iconHtml = icon ? '<img src="' + escapeAttr(icon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 				var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 				var typeHtml = installType ? '<span class="marketplace-item-type">' + escapeHtml(installType) + '</span>' : '';
 
-				var safeId = escapeHtml(server.id || name).replace(/'/g, '&#39;');
+				// #57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// " unescaped and able to break out of the data-server attribute below.
+				var safeId = escapeAttr(server.id || name);
 				html += '<div class="marketplace-item" data-server="' + safeId + '" onclick="showMarketplaceDetail(this.dataset.server)">' +
 					'<div class="marketplace-item-header">' +
 					iconHtml +
@@ -1959,7 +1966,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var url = server.url || '';
 			var cfg = server.installConfig;
 
-			var iconHtml = icon ? '<img src="' + escapeHtml(icon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+			var iconHtml = icon ? '<img src="' + escapeAttr(icon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 			var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 
@@ -1984,7 +1991,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			var safeId = escapeHtml(serverId).replace(/'/g, '&#39;');
+			var safeId = escapeAttr(serverId);
 
 			var grid = document.getElementById('marketplaceGrid');
 			var loadMoreBtn = document.getElementById('marketplaceLoadMore');
@@ -1998,7 +2005,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				'<div class="marketplace-detail-name">' + escapeHtml(name) + '</div>' +
 				'<div class="marketplace-detail-header-meta">' +
 				starsHtml +
-				(url ? '<a href="' + escapeHtml(url) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
+				(url ? '<a href="' + escapeAttr(url) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
 				'</div>' +
 				'</div>' +
 				(cfg ? '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;"><select id="mcpInstallScope" style="padding:4px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:4px;font-size:11px;"><option value="project">Project (.mcp.json)</option><option value="global">Global (~/.claude.json)</option></select><button class="btn marketplace-install-btn" data-server="' + safeId + '" onclick="installMarketplaceServer(this.dataset.server)">Install</button></div>' : '') +
@@ -4215,7 +4222,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						var optId = 'opt-' + data.id + '-' + idx + '-' + optIdx;
 						var disabled = isResolved ? ' disabled' : '';
 						optionsHtml += '<label class="question-option" for="' + optId + '">' +
-							'<input type="' + inputType + '" id="' + optId + '" name="' + inputName + '" value="' + escapeHtml(opt.label) + '"' + disabled + ' />' +
+							'<input type="' + inputType + '" id="' + optId + '" name="' + inputName + '" value="' + escapeAttr(opt.label) + '"' + disabled + ' />' +
 							'<div class="option-content">' +
 							'<span class="option-label">' + escapeHtml(opt.label) + '</span>' +
 							(opt.description ? '<span class="option-description">' + escapeHtml(opt.description) + '</span>' : '') +
@@ -4228,7 +4235,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'<input type="text" class="question-freetext-input" data-question-idx="' + idx + '" placeholder="Type your answer..."' + (isResolved ? ' disabled' : '') + ' />' +
 					'</div>';
 
-				questionsHtml += '<div class="question-block" data-question-idx="' + idx + '" data-question="' + escapeHtml(q.question) + '">' +
+				questionsHtml += '<div class="question-block" data-question-idx="' + idx + '" data-question="' + escapeAttr(q.question) + '">' +
 					header + questionText + optionsHtml + freeTextHtml + '</div>';
 			});
 
@@ -4467,14 +4474,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				
 				// Create unique ID for this code block
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
-				const escapedCode = escapeHtml(code);
+				// #57: escapeAttr (was escapeHtml() + a manual "\"" -> "&quot;" patch that left
+				// "'" unescaped) for the data-raw-code attribute below.
+				const escapedCode = escapeAttr(code);
 				
 				// #48 (upstream #151): Bloecke ueber dem Schwellwert werden zu <details>;
 				// kuerzere bleiben Zeichen fuer Zeichen wie vorher.
 				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
 				const copyGuard = collapseInfo.collapse ? 'event.preventDefault();event.stopPropagation();' : '';
 				const copyBtnHtml = '<button class="code-copy-btn" onclick="' + copyGuard + 'copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>';
-				const codeBodyHtml = '<pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre>';
+				const codeBodyHtml = '<pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode + '">' + codeHtml + '</code></pre>';
 				let codeBlockHtml;
 				if (collapseInfo.collapse) {
 					codeBlockHtml = '<details class="code-block-container code-block-collapsible" data-lines="' + collapseInfo.lineCount + '"' + (collapseLongCodeBlocks ? '' : ' open') + '>' +

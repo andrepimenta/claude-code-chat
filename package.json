@@ -235,7 +235,8 @@
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
     "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
     "test:collapse-rules": "npm run compile && mocha --ui tdd out/test/collapse-rules.test.js --reporter spec",
-    "test:html-escape": "npm run compile && mocha --ui tdd out/test/html-escape.test.js --reporter spec"
+    "test:html-escape": "npm run compile && mocha --ui tdd out/test/html-escape.test.js --reporter spec",
+    "test:webview-attr-escape": "npm run compile && mocha --ui tdd out/test/webview-attr-escape.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -247,6 +248,7 @@
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.5.0",
     "eslint": "^9.25.1",
+    "parse5": "^7.3.0",
     "typescript": "^5.8.3"
   }
 }
