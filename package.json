@@ -227,7 +227,8 @@
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
     "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
-    "test:diff-utils": "npm run compile && mocha --ui tdd out/test/diff-utils.test.js --reporter spec"
+    "test:diff-utils": "npm run compile && mocha --ui tdd out/test/diff-utils.test.js --reporter spec",
+    "test:restore-commit-utils": "npm run compile && mocha --ui tdd out/test/restore-commit-utils.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

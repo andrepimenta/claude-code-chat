@@ -10,6 +10,7 @@ import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 import { mapWslPathToWindows, toWorkspaceRelativePath, isBinaryContent, buildTurnDiffUriParts, parseTurnDiffUriParts, turnDiffCacheKey } from './diff-utils';
+import { isValidCommitSha, findRehydratedCommitInfo } from './restore-commit-utils';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -1965,7 +1966,44 @@ class ClaudeChatProvider {
 
 	private async _restoreToCommit(commitSha: string): Promise<void> {
 		try {
-			const commit = this._commits.find(c => c.sha === commitSha);
+			// #50: commitSha can arrive rehydrated from a loaded conversation's
+			// persisted JSON, not only from same-session git output -- validate
+			// before it can reach any git command below.
+			if (!isValidCommitSha(commitSha)) {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Commit not found'
+				});
+				return;
+			}
+
+			let commit = this._commits.find(c => c.sha === commitSha);
+
+			// #50: a history load that switches conversations clears _commits but
+			// still replays this commit's showRestoreOption message, so its Restore
+			// button outlives this lookup. Confirm the sha against the shadow backup
+			// repo instead and rehydrate the display info from the replayed entry.
+			if (!commit && this._backupRepoPath) {
+				try {
+					// argv/no-shell (unlike the exec() calls below): commitSha can come
+					// from persisted JSON. `^{commit}` rejects a tree/blob sha that
+					// happens to pass the hex check -- still a single argv element.
+					await execFile('git', ['--git-dir', this._backupRepoPath, 'cat-file', '-e', `${commitSha}^{commit}`]);
+					commit = findRehydratedCommitInfo(this._currentConversation, commitSha);
+				} catch (error: any) {
+					// With the ^{commit} peel, git reports both "sha missing" and "sha
+					// not a commit" as exit 128 + "fatal: Not a valid object name" (not
+					// exit 1 like _isPathIgnoredInBackupRepo's plain cat-file), so
+					// classify on stderr like _resolveTurnDiffBaseline does: that text
+					// is the silent, expected miss; anything else (ENOENT, broken
+					// backup repo) is real infrastructure failure worth a log line.
+					const stderrText = String(error?.stderr || '');
+					if (!/Not a valid object name/i.test(stderrText)) {
+						console.error('Failed to check commit existence in backup repo:', error.message);
+					}
+				}
+			}
+
 			if (!commit) {
 				this._postMessage({
 					type: 'restoreError',
