@@ -194,6 +194,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const contentDiv = document.createElement('div');
 			contentDiv.className = 'message-content';
 			
+			// #63: user messages are pre-rendered by renderUserMessageContent (raw text,
+			// only fenced code blocks turned into real markup) before reaching here, so
+			// they go through the same contentDiv.innerHTML path as Claude's/thinking's
+			// parseSimpleMarkdown output.
 			if(type == 'user' || type === 'claude' || type === 'thinking'){
 				contentDiv.innerHTML = content;
 			} else {
@@ -3650,7 +3654,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						addMessage(parseSimpleMarkdown(message.data), 'user');
+						// #63: raw text except fenced code blocks -- see
+						// renderUserMessageContent (near parseSimpleMarkdown).
+						addMessage(renderUserMessageContent(message.data), 'user');
 					}
 					break;
 					
@@ -4535,33 +4541,39 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// in den Webview-Script-String.
 		${restoreCodeBlockPlaceholders.toString()}
 
-		function parseSimpleMarkdown(markdown) {
-			// First, handle code blocks before line-by-line processing
-			let processedMarkdown = markdown;
-			
+		// Extracts fenced triple-backtick code blocks from markdown text, replacing each with a
+		// __CODEBLOCK_N__ placeholder and returning the already-rendered code-block HTML
+		// (collapse wrapper, language label, copy button, data-raw-code) for each -- shared by
+		// parseSimpleMarkdown (Claude/thinking messages, full markdown) and
+		// renderUserMessageContent (#63, revised: user messages stay raw text except fenced code
+		// blocks, which keep the #48 collapse/copy-button/language-label treatment). Pure
+		// extraction out of parseSimpleMarkdown -- same regex, same per-block HTML as before, so
+		// #62's getAttribute('data-raw-code')-via-escapeAttr guarantee still holds for both
+		// callers, each restoring its own __CODEBLOCK_N__ placeholders afterwards.
+		function extractCodeBlocks(markdown) {
 			// Store code blocks temporarily to protect them from further processing
 			const codeBlockPlaceholders = [];
-			
+
 			// Handle multi-line code blocks with triple backticks
 			// Using RegExp constructor to avoid backtick conflicts in template literal
 			const codeBlockRegex = new RegExp('\\\`\\\`\\\`(\\\\w*)\\n([\\\\s\\\\S]*?)\\\`\\\`\\\`', 'g');
-			processedMarkdown = processedMarkdown.replace(codeBlockRegex, function(match, lang, code) {
+			const text = markdown.replace(codeBlockRegex, function(match, lang, code) {
 				const language = lang || 'plaintext';
 				// Process code line by line to preserve formatting like diff implementation
 				const codeLines = code.split('\\n');
 				let codeHtml = '';
-				
+
 				for (const line of codeLines) {
 					const escapedLine = escapeHtml(line);
 					codeHtml += '<div class="code-line">' + escapedLine + '</div>';
 				}
-				
+
 				// Create unique ID for this code block
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
 				// #57: escapeAttr (was escapeHtml() + a manual "\"" -> "&quot;" patch that left
 				// "'" unescaped) for the data-raw-code attribute below.
 				const escapedCode = escapeAttr(code);
-				
+
 				// #48 (upstream #151): Bloecke ueber dem Schwellwert werden zu <details>;
 				// kuerzere bleiben Zeichen fuer Zeichen wie vorher.
 				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
@@ -4580,12 +4592,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					codeBlockHtml = '<div class="code-block-container"><div class="code-block-header">' +
 						'<span class="code-block-language">' + language + '</span>' + copyBtnHtml + '</div>' + codeBodyHtml + '</div>';
 				}
-				
+
 				// Store the code block and return a placeholder
 				const placeholder = '__CODEBLOCK_' + codeBlockPlaceholders.length + '__';
 				codeBlockPlaceholders.push(codeBlockHtml);
 				return placeholder;
 			});
+			return { text: text, placeholders: codeBlockPlaceholders };
+		}
+
+		function parseSimpleMarkdown(markdown) {
+			// First, handle code blocks before line-by-line processing
+			const codeBlockExtraction = extractCodeBlocks(markdown);
+			let processedMarkdown = codeBlockExtraction.text;
+			const codeBlockPlaceholders = codeBlockExtraction.placeholders;
 
 			// #40 (upstream #63): escape raw HTML in the remaining prose before any
 			// further markdown processing. contentDiv.innerHTML = content (addMessage)
@@ -4687,6 +4707,28 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			html = restoreCodeBlockPlaceholders(html, codeBlockPlaceholders);
 
 			return html;
+		}
+
+		// #63 (revised per opus-Review): user messages stay raw text -- "**", "_", "#" lines,
+		// single backticks, paths like src/_test_.ts must show up exactly as typed -- EXCEPT
+		// fenced triple-backtick code blocks, which keep the #48 collapse/copy-button/
+		// language-label treatment (the plain textContent-only approach also flattened those,
+		// which Roman didn't want). Reuses extractCodeBlocks() -- the exact same function
+		// parseSimpleMarkdown calls above -- so the code-block HTML (incl. #62's
+		// data-raw-code via escapeAttr) is only ever built in one place. The remaining
+		// prose is only escapeHtml()'d, never markdown-parsed, so it's set via
+		// contentDiv.innerHTML same as Claude's messages, but nothing outside a fenced block can
+		// ever be interpreted as markup. Newlines are left untouched (escapeHtml doesn't touch
+		// them) -- CSS (.message.user .message-content, white-space: pre-wrap) renders them as
+		// line breaks.
+		// Placeholder restore reuses restoreCodeBlockPlaceholders() (#55, spliced above), the
+		// same function-replacement parseSimpleMarkdown calls above -- a direct
+		// html.replace(placeholder, str) here would have the same "$&"/"$\`"/"$'"/"$$"
+		// tear-the-HTML-apart bug #55 fixed, just newly duplicated in this function instead.
+		function renderUserMessageContent(text) {
+			const codeBlockExtraction = extractCodeBlocks(text);
+			const escapedProse = escapeHtml(codeBlockExtraction.text);
+			return restoreCodeBlockPlaceholders(escapedProse, codeBlockExtraction.placeholders);
 		}
 
 		// Conversation history functions

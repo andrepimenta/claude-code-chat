@@ -8,7 +8,7 @@
 //
 // formatFilePath/formatToolInputUI only exist inline inside script.ts's giant getScript()
 // template literal -- never as an importable module, unlike escapeAttr/
-// evaluateCodeBlockCollapse/restoreCodeBlockPlaceholders -- so this suite extracts their exact
+// evaluateCodeBlockCollapse -- so this suite extracts their exact
 // source text from the ACTUAL getScript() output (out/script.js, i.e. the real emitted webview
 // code, not a hand-copied version of the TS source) via brace-matching, runs it in a vm
 // sandbox with the one stub escapeHtml() needs (document.createElement), and parses the
@@ -893,10 +893,13 @@ interface CodeBlockSandbox {
 // skipping math extraction entirely (rather than stubbing extractMathSegments/restoreMathSegments
 // and their katex dependency) keeps the sandbox to exactly the functions the data-raw-code path
 // actually needs: escapeHtml, escapeAttr, normalizeCollapseThreshold, evaluateCodeBlockCollapse,
-// restoreCodeBlockPlaceholders, parseSimpleMarkdown.
+// extractCodeBlocks, parseSimpleMarkdown. extractCodeBlocks (#63): parseSimpleMarkdown's
+// fenced-code-block extraction moved into its own shared function (also used by
+// renderUserMessageContent, see user-message-rawtext.test.ts) -- parseSimpleMarkdown now
+// calls it instead of building the placeholder/collapse/copy-button HTML inline.
 function loadCodeBlockSandbox(): CodeBlockSandbox {
 	const body = getEmittedScriptBody();
-	const src = ['escapeHtml', 'escapeAttr', 'normalizeCollapseThreshold', 'evaluateCodeBlockCollapse', 'restoreCodeBlockPlaceholders', 'parseSimpleMarkdown']
+	const src = ['escapeHtml', 'escapeAttr', 'normalizeCollapseThreshold', 'evaluateCodeBlockCollapse', 'extractCodeBlocks', 'parseSimpleMarkdown']
 		.map(name => extractFunction(body, name))
 		.join('\n');
 	const sandbox: Record<string, unknown> = {
