@@ -2,6 +2,7 @@ import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
 import getCollapseScript from './collapse-script';
 import { escapeAttr, safeHttpUrl } from './html-escape';
+import { restoreCodeBlockPlaceholders } from './markdown-restore';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -4526,7 +4527,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		updateStatus('Initializing...', 'disconnected');
-		
+
+		// #55: restoreCodeBlockPlaceholders (der Aufruf steht weiter unten in
+		// parseSimpleMarkdown) -- Build-Zeit-Splice (Muster math-script/collapse-script/
+		// html-escape), damit npm run test:markdown-restore die Funktion unter Node pruefen
+		// kann. Die naechste Zeile spleisst den kompilierten Funktions-Source per toString()
+		// in den Webview-Script-String.
+		${restoreCodeBlockPlaceholders.toString()}
 
 		function parseSimpleMarkdown(markdown) {
 			// First, handle code blocks before line-by-line processing
@@ -4673,11 +4680,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (inUnorderedList) html += '</ul>';
 			if (inOrderedList) html += '</ol>';
 
-			// Restore code block placeholders
-			for (let i = 0; i < codeBlockPlaceholders.length; i++) {
-				const placeholder = '__CODEBLOCK_' + i + '__';
-				html = html.replace(placeholder, codeBlockPlaceholders[i]);
-			}
+			// Restore code block placeholders. #55: restoreCodeBlockPlaceholders (spliced
+			// above) uses function-replacement, not html.replace(placeholder, str) --
+			// otherwise "$&"/"$\`"/"$'"/"$$" inside a code block would be interpreted as
+			// String.replace substitution patterns and tear the surrounding HTML apart.
+			html = restoreCodeBlockPlaceholders(html, codeBlockPlaceholders);
 
 			return html;
 		}
