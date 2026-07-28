@@ -4978,8 +4978,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
 			const compactMode = document.getElementById('compact-mode').checked;
-			const completionPopup = document.getElementById('completion-popup').checked;
-			const completionSound = document.getElementById('completion-sound').checked;
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -5020,9 +5018,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
 					'router.enabled': useRouter,
-					'ui.compactMode': compactMode,
-					'notifications.completionPopup': completionPopup,
-					'notifications.completionSound': completionSound
+					'ui.compactMode': compactMode
 				}
 			});
 		}
@@ -5281,8 +5277,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Update UI with current settings
 				document.body.classList.toggle('compact-mode', !!message.data['ui.compactMode']);
 				document.getElementById('compact-mode').checked = !!message.data['ui.compactMode'];
-				document.getElementById('completion-popup').checked = message.data['notifications.completionPopup'] !== false;
-				document.getElementById('completion-sound').checked = !!message.data['notifications.completionSound'];
 
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];

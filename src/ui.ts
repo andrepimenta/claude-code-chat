@@ -466,18 +466,6 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					</p>
 				</div>
 
-				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Notifications</h3>
-				<div class="settings-group">
-					<div class="tool-item">
-						<input type="checkbox" id="completion-popup" onchange="updateSettings()">
-						<label for="completion-popup">Completion notification (popup when window is unfocused)</label>
-					</div>
-					<div class="tool-item" style="margin-top: 12px;">
-						<input type="checkbox" id="completion-sound" onchange="updateSettings()">
-						<label for="completion-sound">Completion sound</label>
-					</div>
-				</div>
-
 				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Appearance</h3>
 				<div class="settings-group">
 					<div class="tool-item">

@@ -3968,8 +3968,6 @@ class ClaudeChatProvider {
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
 			'ui.compactMode': config.get<boolean>('ui.compactMode', false),
-			'notifications.completionPopup': config.get<boolean>('notifications.completionPopup', true),
-			'notifications.completionSound': config.get<boolean>('notifications.completionSound', false),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
