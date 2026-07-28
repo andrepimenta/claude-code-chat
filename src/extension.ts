@@ -252,7 +252,7 @@ class ClaudeChatProvider {
 	// (#35), shown next to the #27 context indicator. Account-wide, not session-scoped
 	// — deliberately not reset in _newSession()/sessionCleared. sevenDayOpus/
 	// sevenDaySonnet are the per-model-tier weekly buckets (CLI schema names, not
-	// display labels — the opus-lineage bucket covers the Fable model shown to users).
+	// display labels).
 	private _usageLimits: { fiveHour?: { pct: number; resetsAt?: number }, week?: { pct: number; resetsAt?: number }, sevenDayOpus?: { pct: number; resetsAt?: number }, sevenDaySonnet?: { pct: number; resetsAt?: number } } | undefined = undefined;
 	private _usageLastFetchMs = 0;
 	// Fallback resetsAt for the five-hour window, learned from the CLI's own
@@ -1769,6 +1769,7 @@ class ClaudeChatProvider {
 				if (!rateLimitType || rateLimitType === 'five_hour') {
 					this._lastRateLimitResetsAt = jsonData.rate_limit_info?.resetsAt;
 				}
+
 				void this._maybeSendUsageLimits();
 				break;
 			}

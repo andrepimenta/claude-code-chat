@@ -1049,8 +1049,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
 		}
 
-		// Builds the "5h 42% · Wo 18% · Fable 30%" status-bar fragment (#35), same
-		// structure/escaping as the #27 Ctx indicator above. Fable/Sonnet are the
+		// Builds the "5h 42% · Week 18% · Opus 30%" status-bar fragment (#35), same
+		// structure/escaping as the #27 Ctx indicator above. Opus/Sonnet are the
 		// per-model weekly buckets (seven_day_opus/seven_day_sonnet); each renders
 		// only when the account's usage data actually includes it. Empty string when
 		// there's no usage data yet.
@@ -1077,7 +1077,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				titleParts.push(\`Week resets \${new Date(week.resetsAt * 1000).toLocaleString()}\`);
 			}
 			if (sevenDayOpus && sevenDayOpus.resetsAt) {
-				titleParts.push(\`Fable resets \${new Date(sevenDayOpus.resetsAt * 1000).toLocaleString()}\`);
+				titleParts.push(\`Opus resets \${new Date(sevenDayOpus.resetsAt * 1000).toLocaleString()}\`);
 			}
 			if (sevenDaySonnet && sevenDaySonnet.resetsAt) {
 				titleParts.push(\`Sonnet resets \${new Date(sevenDaySonnet.resetsAt * 1000).toLocaleString()}\`);
@@ -1085,8 +1085,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const titleAttr = titleParts.length ? \` title="\${titleParts.join(' · ')}"\` : '';
 
 			const fiveHourStr = fiveHour ? \`5h \${fiveHourPct}%\` : '';
-			const weekStr = week ? \`Wo \${weekPct}%\` : '';
-			const sevenDayOpusStr = sevenDayOpus ? \`Fable \${sevenDayOpusPct}%\` : '';
+			const weekStr = week ? \`Week \${weekPct}%\` : '';
+			const sevenDayOpusStr = sevenDayOpus ? \`Opus \${sevenDayOpusPct}%\` : '';
 			const sevenDaySonnetStr = sevenDaySonnet ? \`Sonnet \${sevenDaySonnetPct}%\` : '';
 			const text = [fiveHourStr, weekStr, sevenDayOpusStr, sevenDaySonnetStr].filter(Boolean).join(' · ');
 
@@ -5231,6 +5231,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				// Update Customize Claude Command settings
 				document.getElementById('executable-path').value = message.data['executable.path'] || '';
+
 				renderEnvVariables(message.data['environment.variables'] || {});
 
 				// Detect OpenCredits and envs disabled state
