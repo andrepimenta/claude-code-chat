@@ -1478,6 +1478,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Clear form
 			document.getElementById('serverName').value = '';
 			document.getElementById('serverName').disabled = false;
+			// fork-issue-65: undo editMCPServer's scope lock (see there) so a fresh "Add manually" gets a
+			// free choice again.
+			document.getElementById('serverScope').disabled = false;
+			document.getElementById('serverScope').title = '';
 			document.getElementById('serverCommand').value = '';
 			document.getElementById('serverUrl').value = '';
 			document.getElementById('serverArgs').value = '';
@@ -1624,7 +1628,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// un-escapeAttr-able sink alongside the name itself). The object now stays in JS-land;
 		// only the (escapeAttr'd) name crosses into the attribute. Reset on every
 		// displayMCPServers() render.
-		let mcpServerConfigsByName = {};
+		// fork-issue-65: Object.create(null), not {} -- a {} lookup for a server named "toString" or
+		// "constructor" falls through to Object.prototype and returns a function (truthy),
+		// which slips past the "if (!config) return;" guard below and fills the edit form with
+		// nonsense instead of being rejected.
+		let mcpServerConfigsByName = Object.create(null);
 
 		function editMCPServer(name) {
 			const config = mcpServerConfigsByName[name];
@@ -1632,9 +1640,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				return;
 			}
 			editingServerName = name;
-			
+
 			// Hide add button and popular servers
-			document.getElementById('addServerBtn').style.display = 'none';
+			// fork-issue-65 (review): 'addServerBtn' has no matching id="..." anywhere in the emitted
+			// HTML (pre-existing, predates fork-issue-65 -- the "+ Add manually" buttons carry no id at all).
+			// Without this guard, the TypeError on the next line aborted editMCPServer() before it
+			// ever reached the scope lock further down, making Part A's fix a no-op in practice.
+			const addServerBtnEl = document.getElementById('addServerBtn');
+			if (addServerBtnEl) {
+				addServerBtnEl.style.display = 'none';
+			}
 			document.getElementById('popularServers').style.display = 'none';
 			
 			// Show form
@@ -1657,7 +1672,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Populate form with existing values
 			document.getElementById('serverName').value = name;
 			document.getElementById('serverName').disabled = true; // Don't allow name changes when editing
-			
+
+			// fork-issue-65: the scope determines which config file gets written (project .mcp.json vs.
+			// global ~/.claude.json). Changing it while editing doesn't move the server -- it's
+			// nowhere implemented -- it just writes a second copy into the newly selected scope's
+			// file, leaving the original behind as a duplicate. Lock the field to the server's
+			// actual scope while editing, same as the name field above.
+			const formScope = document.getElementById('serverScope');
+			if (formScope) {
+				formScope.value = config._scope || 'project';
+				formScope.disabled = true;
+				formScope.title = 'Scope cannot be changed here. Delete the server and re-add it in the new scope instead.';
+			}
+
 			document.getElementById('serverType').value = config.type || 'stdio';
 			
 			if (config.command) {
@@ -2046,7 +2073,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Pre-fill the manual add form with the config
 			showAddServerForm();
 			var formScope = document.getElementById('serverScope');
-			if (formScope) formScope.value = selectedScope;
+			if (formScope) {
+				formScope.value = selectedScope;
+				// fork-issue-65: undo editMCPServer's scope lock in case the user was mid-edit before
+				// picking a marketplace server to install as new -- same reset as
+				// hideAddServerForm(), and the same reason #serverName gets reset right below.
+				formScope.disabled = false;
+				formScope.title = '';
+			}
 			document.getElementById('serverName').value = displayName;
 			document.getElementById('serverName').disabled = false;
 
@@ -2080,7 +2114,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			serversList.innerHTML = '';
 			// fork-issue-60: reset per render so editMCPServer can never resolve a stale/removed server's
 			// config through a name that no longer has a corresponding button.
-			mcpServerConfigsByName = {};
+			// fork-issue-65: Object.create(null) -- see the declaration above for why.
+			mcpServerConfigsByName = Object.create(null);
 
 			if (Object.keys(servers).length === 0) {
 				serversList.innerHTML = '<div class="no-servers">' +
@@ -2135,7 +2170,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				serverItem.innerHTML = \`
 					<div class="server-info">
 						<div class="server-name">\${escapeHtml(name)} <span style="font-size:10px;opacity:0.5;font-weight:normal;">\${scopeLabel}</span></div>
-						<div class="server-type">\${escapeHtml(serverType.toUpperCase())}</div>
+						<div class="server-type">\${escapeHtml(String(serverType).toUpperCase())}</div>
 						<div class="server-config">\${configDisplay}</div>
 					</div>
 					<div class="server-actions">

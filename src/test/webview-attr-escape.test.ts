@@ -20,6 +20,7 @@ import * as assert from 'assert';
 import * as vm from 'vm';
 import * as parse5 from 'parse5';
 import getScript from '../script';
+import getHtml from '../ui';
 import { extractFunction, findAttr, findAttrOn, textOn, tagExists } from './webview-dom-helpers';
 
 function getEmittedScriptBody(): string {
@@ -175,15 +176,40 @@ class FakeElement {
 	set innerHTML(v: string) { this._innerHTML = v; }
 	appendChild(child: FakeElement): FakeElement { this.children.push(child); return child; }
 	insertAdjacentHTML(): void { /* cosmetic only */ }
+	// fork-issue-65: hideAddServerForm()'s formTitle.remove() call (removing the "Edit MCP Server" <h5> on
+	// reset) -- cosmetic only, same as insertAdjacentHTML above.
+	remove(): void { /* cosmetic only */ }
 	// fork-issue-61: renderAllModels()/renderDropdown() wire click handlers via
 	// listContainer.querySelectorAll(...).forEach(...) -- an empty array is enough here since
 	// none of these PoCs need the click wiring itself, only the innerHTML the sinks produce.
 	querySelectorAll(): FakeElement[] { return []; }
 }
 
+// fork-issue-65 (review): getElementById() used to auto-vivify an element for ANY id, including ids
+// that don't exist anywhere in the real webview -- which made a null-deref (document.
+// getElementById('addServerBtn').style.display = 'none', 'addServerBtn' having no matching
+// id="..." in the emitted HTML at all) structurally invisible to this harness: it could never go
+// red here, no matter what the real code did. realHtmlIds is parsed from the ACTUAL getHtml(...)
+// output (not hand-maintained) so getElementById below can return null for anything a real
+// browser would too, same as the id="..." set check-webview-syntax.js's own PASS proof runs
+// getHtml(...) with.
+const realHtmlIds: Set<string> = (() => {
+	const html = getHtml(false, undefined, undefined, undefined, 'webview-attr-escape.test', '0.0.0');
+	const ids = new Set<string>();
+	const idAttrRe = /\bid="([^"]+)"/g;
+	let m: RegExpExecArray | null;
+	while ((m = idAttrRe.exec(html)) !== null) {
+		ids.add(m[1]);
+	}
+	return ids;
+})();
+
 class FakeDocument {
 	elementsById = new Map<string, FakeElement>();
-	getElementById(id: string): FakeElement {
+	getElementById(id: string): FakeElement | null {
+		if (!realHtmlIds.has(id)) {
+			return null;
+		}
 		let el = this.elementsById.get(id);
 		if (!el) { el = new FakeElement(); this.elementsById.set(id, el); }
 		return el;
@@ -200,6 +226,10 @@ class FakeDocument {
 interface McpSandbox {
 	displayMCPServers(servers: Record<string, unknown>): void;
 	editMCPServer(name: string): void;
+	// fork-issue-65: hideAddServerForm is the single reset point for both "Cancel" and a successful save
+	// (see saveMCPServer's own hideAddServerForm() call) -- it's what has to undo editMCPServer's
+	// #serverScope lock again for a subsequent "Add manually".
+	hideAddServerForm(): void;
 	// Test-only inspection shim -- top-level "let" bindings (editingServerName,
 	// mcpServerConfigsByName) live in the vm Script's lexical scope, not as properties on the
 	// sandbox/global object, so they aren't readable from outside via plain property access
@@ -220,9 +250,14 @@ function loadMcpSandbox(): { sandbox: McpSandbox; document: FakeDocument } {
 		extractFunction(body, 'updateServerForm'),
 		extractFunction(body, 'displayMCPServers'),
 		extractFunction(body, 'editMCPServer'),
+		extractFunction(body, 'hideAddServerForm'),
 		'function __testState() { return { editingServerName: editingServerName, configsByName: mcpServerConfigsByName }; }',
 	].join('\n');
-	const sandbox: Record<string, unknown> = { document };
+	// hideAddServerForm() (used only by the fork-issue-65 reset tests below) calls the real loadMCPServers(),
+	// which posts a message to the (non-existent, in this sandbox) vscode API -- stubbed out here,
+	// same technique as the free-variable globals (dropdown/allModelsCache/etc.) elsewhere in this
+	// file, since re-fetching the server list isn't part of what these tests check.
+	const sandbox: Record<string, unknown> = { document, loadMCPServers: () => { /* noop */ } };
 	vm.createContext(sandbox);
 	new vm.Script(src).runInContext(sandbox);
 	return { sandbox: sandbox as unknown as McpSandbox, document };
@@ -234,7 +269,7 @@ function loadMcpSandbox(): { sandbox: McpSandbox; document: FakeDocument } {
 function renderServerItem(servers: Record<string, unknown>, name: string): { html: string; sandbox: McpSandbox; document: FakeDocument } {
 	const { sandbox, document } = loadMcpSandbox();
 	sandbox.displayMCPServers(servers);
-	const serversList = document.getElementById('mcpServersList');
+	const serversList = document.getElementById('mcpServersList')!;
 	const index = Object.keys(servers).indexOf(name);
 	const item = serversList.children[index];
 	if (!item) {
@@ -304,8 +339,8 @@ suite('webview attribute escaping: displayMCPServers / editMCPServer (fork-issue
 		assert.strictEqual(editName && editName.value, payload);
 		assert.doesNotThrow(() => sandbox.editMCPServer(editName!.value));
 		assert.strictEqual(sandbox.__testState().editingServerName, payload);
-		assert.strictEqual(document.getElementById('serverType').value, 'http');
-		assert.strictEqual(document.getElementById('serverUrl').value, 'https://example.com/mcp');
+		assert.strictEqual(document.getElementById('serverType')!.value, 'http');
+		assert.strictEqual(document.getElementById('serverUrl')!.value, 'https://example.com/mcp');
 	});
 
 	test('a malicious config.type (<img src=x onerror=alert(1)>) renders as inert text in .server-type, not a live element', () => {
@@ -434,7 +469,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (fork-issu
 		const payload = 'x" onmouseover="alert(1)" y="';
 		const { sandbox, document } = loadAllModelsSandbox();
 		sandbox.renderAllModels([{ id: payload, name: 'Model' }]);
-		const html = document.getElementById('allModelsList').innerHTML;
+		const html = document.getElementById('allModelsList')!.innerHTML;
 		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
 		const dataModelId = findAttrOn(html, 'all-models-item', 'data-model-id');
 		assert.strictEqual(dataModelId && dataModelId.value, payload);
@@ -444,7 +479,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (fork-issu
 		const payload = '<img src=x onerror=alert(1)>';
 		const { sandbox, document } = loadAllModelsSandbox();
 		sandbox.renderAllModels([{ id: 'm1', name: payload }]);
-		const html = document.getElementById('allModelsList').innerHTML;
+		const html = document.getElementById('allModelsList')!.innerHTML;
 		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
 		assert.strictEqual(textOn(html, 'all-models-item-name'), payload);
 	});
@@ -453,7 +488,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (fork-issu
 		const payload = '<img src=x onerror=alert(1)>';
 		const { sandbox, document } = loadAllModelsSandbox();
 		sandbox.renderAllModels([{ id: 'm1', name: 'Model', owned_by: payload }]);
-		const html = document.getElementById('allModelsList').innerHTML;
+		const html = document.getElementById('allModelsList')!.innerHTML;
 		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
 		assert.strictEqual(textOn(html, 'all-models-item-provider'), payload);
 	});
@@ -461,7 +496,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (fork-issu
 	test('a plain model with no special characters still renders visibly (no functional regression)', () => {
 		const { sandbox, document } = loadAllModelsSandbox();
 		sandbox.renderAllModels([{ id: 'gpt-4', name: 'GPT-4', owned_by: 'openai' }]);
-		const html = document.getElementById('allModelsList').innerHTML;
+		const html = document.getElementById('allModelsList')!.innerHTML;
 		assert.ok(html.includes('GPT-4'), 'expected the model name to appear; got: ' + html);
 		const dataModelId = findAttrOn(html, 'all-models-item', 'data-model-id');
 		assert.strictEqual(dataModelId && dataModelId.value, 'gpt-4');
@@ -511,7 +546,7 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 		const payload = '<img src=x onerror="alert(document.domain)">';
 		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-9.9', name: payload, provider: 'openai' }]);
 		sandbox.renderOpenCreditsModelCards();
-		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		const html = document.getElementById('opencreditsModelCards')!.innerHTML;
 		assert.ok(!findAttr(html, 'onerror'), 'must not contain a live onerror attribute; got: ' + html);
 		assert.strictEqual(textOn(html, 'model-card-name'), payload);
 	});
@@ -521,7 +556,7 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 		const providerPayload = 'z" onmouseover="alert(2)" w="';
 		const { sandbox, document } = loadModelCardsSandbox([{ id: idPayload, name: 'Model', provider: providerPayload }]);
 		sandbox.renderOpenCreditsModelCards();
-		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		const html = document.getElementById('opencreditsModelCards')!.innerHTML;
 		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
 		const dataModelId = findAttrOn(html, 'model-card', 'data-model-id');
 		const dataProvider = findAttrOn(html, 'model-card', 'data-provider');
@@ -533,7 +568,7 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 		const payload = '<img src=x onerror=alert(1)>';
 		const { sandbox, document } = loadModelCardsSandbox([{ id: 'm1', name: 'Model', provider: payload }]);
 		sandbox.renderOpenCreditsModelCards();
-		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		const html = document.getElementById('opencreditsModelCards')!.innerHTML;
 		assert.ok(!findAttr(html, 'onerror'), 'must not contain an onerror attribute; got: ' + html);
 		assert.strictEqual(textOn(html, 'model-card-provider'), payload);
 	});
@@ -541,7 +576,7 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 	test('a plain model with no special characters still renders visibly (no functional regression)', () => {
 		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-4', name: 'GPT-4', provider: 'openai' }]);
 		sandbox.renderOpenCreditsModelCards();
-		const html = document.getElementById('opencreditsModelCards').innerHTML;
+		const html = document.getElementById('opencreditsModelCards')!.innerHTML;
 		assert.ok(html.includes('GPT-4'), 'expected the model name to appear; got: ' + html);
 		const dataModelId = findAttrOn(html, 'model-card', 'data-model-id');
 		assert.strictEqual(dataModelId && dataModelId.value, 'openai/gpt-4');
@@ -609,7 +644,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 	test('renderMarketplace: a "javascript:" icon URL is dropped -- no <img> element, placeholder rendered instead', () => {
 		const { sandbox, document } = loadMarketplaceSandbox([]);
 		sandbox.renderMarketplace([{ id: 's1', name: 'Srv', icon: 'javascript:alert(1)' }]);
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		assert.ok(!tagExists(html, 'img'), 'must not render an <img> element for a javascript: icon URL; got: ' + html);
 		assert.ok(classExists(html, 'marketplace-item-icon-placeholder'), 'expected the placeholder fallback instead; got: ' + html);
 	});
@@ -617,7 +652,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 	test('renderMarketplace: a plain https icon URL still renders normally (no functional regression)', () => {
 		const { sandbox, document } = loadMarketplaceSandbox([]);
 		sandbox.renderMarketplace([{ id: 's1', name: 'Srv', icon: 'https://example.com/icon.png' }]);
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		const src = findAttrOn(html, 'marketplace-item-icon', 'src');
 		assert.strictEqual(src && src.value, 'https://example.com/icon.png');
 	});
@@ -626,7 +661,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 		const server = { id: 's1', name: 'Srv', icon: 'javascript:alert(1)', description: 'desc' };
 		const { sandbox, document } = loadMarketplaceSandbox([server]);
 		sandbox.showMarketplaceDetail('s1');
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		assert.ok(!tagExists(html, 'img'), 'must not render an <img> element for a javascript: icon URL; got: ' + html);
 		assert.ok(classExists(html, 'marketplace-item-icon-placeholder'), 'expected the placeholder fallback instead; got: ' + html);
 	});
@@ -635,7 +670,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 		const server = { id: 's1', name: 'Srv', url: 'javascript:alert(1)', description: 'desc' };
 		const { sandbox, document } = loadMarketplaceSandbox([server]);
 		sandbox.showMarketplaceDetail('s1');
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		assert.ok(!classExists(html, 'marketplace-detail-link'), 'must not render a GitHub link for a javascript: url; got: ' + html);
 		assert.ok(!findAttr(html, 'href'), 'must not contain an href attribute anywhere; got: ' + html);
 	});
@@ -644,7 +679,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 		const server = { id: 's1', name: 'Srv', url: 'Java\tScRiPt:alert(1)', description: 'desc' };
 		const { sandbox, document } = loadMarketplaceSandbox([server]);
 		sandbox.showMarketplaceDetail('s1');
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		assert.ok(!classExists(html, 'marketplace-detail-link'), 'must not render a GitHub link for an obfuscated javascript: url; got: ' + html);
 		assert.ok(!findAttr(html, 'href'), 'must not contain an href attribute anywhere; got: ' + html);
 	});
@@ -653,7 +688,7 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-
 		const server = { id: 's1', name: 'Srv', url: 'https://github.com/foo/bar', description: 'desc' };
 		const { sandbox, document } = loadMarketplaceSandbox([server]);
 		sandbox.showMarketplaceDetail('s1');
-		const html = document.getElementById('marketplaceGrid').innerHTML;
+		const html = document.getElementById('marketplaceGrid')!.innerHTML;
 		const href = findAttrOn(html, 'marketplace-detail-link', 'href');
 		assert.strictEqual(href && href.value, 'https://github.com/foo/bar');
 	});
@@ -690,7 +725,7 @@ suite('webview attribute escaping: addEnvVariableRow (fork-issue-61 Part C PoC)'
 		const payload = 'x" onmouseover="alert(1)" y="';
 		const { sandbox, document } = loadEnvRowSandbox();
 		sandbox.addEnvVariableRow(payload, 'plain');
-		const container = document.getElementById('env-variables-list');
+		const container = document.getElementById('env-variables-list')!;
 		const html = container.children[0].innerHTML;
 		assert.ok(!findAttr(html, 'onmouseover'), 'must not contain an onmouseover attribute; got: ' + html);
 		const keyValue = findAttrOn(html, 'env-key', 'value');
@@ -701,7 +736,7 @@ suite('webview attribute escaping: addEnvVariableRow (fork-issue-61 Part C PoC)'
 		const payload = 'sk-abc"123';
 		const { sandbox, document } = loadEnvRowSandbox();
 		sandbox.addEnvVariableRow('API_KEY', payload);
-		const container = document.getElementById('env-variables-list');
+		const container = document.getElementById('env-variables-list')!;
 		const html = container.children[0].innerHTML;
 		const value = findAttrOn(html, 'env-value', 'value');
 		assert.strictEqual(value && value.value, payload);
@@ -710,7 +745,7 @@ suite('webview attribute escaping: addEnvVariableRow (fork-issue-61 Part C PoC)'
 	test('a plain key/value with no special characters still renders visibly (no functional regression)', () => {
 		const { sandbox, document } = loadEnvRowSandbox();
 		sandbox.addEnvVariableRow('API_KEY', 'sk-abc123');
-		const container = document.getElementById('env-variables-list');
+		const container = document.getElementById('env-variables-list')!;
 		const html = container.children[0].innerHTML;
 		const keyValue = findAttrOn(html, 'env-key', 'value');
 		const value = findAttrOn(html, 'env-value', 'value');
@@ -943,5 +978,155 @@ suite('extractFunction: regex literals containing a quote no longer desync extra
 			"\treturn s.replace(/'/g, 'X');",
 			'}'
 		].join('\n'));
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// fork-issue-65 (review): editMCPServer() unconditionally did
+// document.getElementById('addServerBtn').style.display = 'none' as its very first DOM write --
+// but no element anywhere in the real, emitted webview HTML carries id="addServerBtn" (the
+// "+ Add manually" buttons have no id at all; pre-existing, predates fork-issue-65, traced to upstream
+// deca7de). getElementById('addServerBtn') therefore returns null in a real browser, and
+// null.style throws a TypeError -- BEFORE editMCPServer ever reaches the #serverScope lock the
+// Part A suite below tests, making that fix a no-op in practice. The old FakeDocument
+// auto-vivified an element for every id, including ids that don't exist in the real HTML, so this
+// null-deref was structurally invisible to this harness -- it could never go red no matter what
+// the real code did. FakeDocument.getElementById now returns null for any id not present in the
+// real getHtml(...) output (see realHtmlIds above), same as a real browser.
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview MCP server form: editMCPServer() does not throw on the (real, id-less) "+ Add manually" button (fork-issue-65 review PoC)', () => {
+
+	test('editMCPServer() does not throw even though #addServerBtn does not exist in the real HTML, and actually shows the form', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'project' } });
+		assert.doesNotThrow(() => sandbox.editMCPServer('srv'));
+		assert.strictEqual(sandbox.__testState().editingServerName, 'srv', 'editMCPServer must have run past the addServerBtn line to reach editingServerName = name');
+		assert.strictEqual(document.getElementById('addServerForm')!.style.display, 'block', 'the edit form itself must actually become visible');
+		assert.strictEqual(document.getElementById('popularServers')!.style.display, 'none');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// fork-issue-65 Part A PoC: editMCPServer() populated every form field from the server's own config
+// EXCEPT #serverScope, which kept whatever the select happened to be showing (left over from a
+// previous "Add manually"/edit, or its HTML default). saveMCPServer() then sends that stale value
+// as the scope to write to. A scope mismatch (editing a "global" server while the select still
+// shows "Project") doesn't move the server between .mcp.json and ~/.claude.json -- moving a server
+// between scopes isn't implemented anywhere -- it writes a SECOND copy into the wrongly-selected
+// scope's file, leaving the original in place: a silent duplicate. Fix: editMCPServer() sets
+// #serverScope to config._scope and locks it (disabled), same as the #serverName field right above
+// it (a scope change is a move between two config files, not an edit, and isn't implemented as one
+// either) -- hideAddServerForm() (the single reset point for both Cancel and a successful save,
+// already responsible for unlocking #serverName again) undoes the lock for a fresh "Add manually".
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview MCP server form: #serverScope locked to the server\'s own scope while editing (fork-issue-65 Part A PoC)', () => {
+
+	test('editing a "global"-scope server sets #serverScope to "global" and disables it', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'global' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.value, 'global');
+		assert.strictEqual(scopeEl.disabled, true);
+	});
+
+	test('editing a "project"-scope server sets #serverScope to "project" and disables it', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'project' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.value, 'project');
+		assert.strictEqual(scopeEl.disabled, true);
+	});
+
+	test('after editing, hideAddServerForm() (Cancel, or a successful Save) unlocks #serverScope again for the next "Add manually"', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'global' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.disabled, true, 'sanity check: editMCPServer must have locked it first');
+		sandbox.hideAddServerForm();
+		assert.strictEqual(scopeEl.disabled, false, '#serverScope must be free to choose again after hideAddServerForm()');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// fork-issue-65 Part B1 PoC: mcpServerConfigsByName (fork-issue-60) was a plain {} object. Looking a server name up
+// in it (mcpServerConfigsByName[name]) walks the prototype chain for names that collide with an
+// inherited Object.prototype property -- "toString", "constructor", "valueOf", etc. -- returning a
+// function (truthy) instead of undefined, which slips straight past editMCPServer's
+// "if (!config) return;" guard and proceeds to populate the edit form from that function as if it
+// were a real server config. Fix: Object.create(null) instead of {}, both at the top-level
+// declaration and at displayMCPServers()'s per-render reset -- a null-prototype object has no
+// inherited properties to fall through to, so the lookup correctly returns undefined.
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview MCP server form: editMCPServer() prototype-pollution guard (fork-issue-65 Part B1 PoC)', () => {
+
+	test('editMCPServer("toString") does not resolve Object.prototype.toString as a config -- the form stays untouched', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		// A render that does NOT include a server literally named "toString" -- same situation as
+		// an unrelated stale/crafted call reaching editMCPServer with that name.
+		sandbox.displayMCPServers({ 'other-server': { type: 'stdio', command: 'echo' } });
+		sandbox.editMCPServer('toString');
+		assert.strictEqual(sandbox.__testState().editingServerName, null, 'editingServerName must stay null -- editMCPServer must have returned early');
+		assert.strictEqual(document.getElementById('serverName')!.value, '', '#serverName must not have been populated');
+	});
+
+	test('editMCPServer("constructor") does not resolve Object.prototype.constructor as a config -- the form stays untouched', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ 'other-server': { type: 'stdio', command: 'echo' } });
+		sandbox.editMCPServer('constructor');
+		assert.strictEqual(sandbox.__testState().editingServerName, null, 'editingServerName must stay null -- editMCPServer must have returned early');
+		assert.strictEqual(document.getElementById('serverName')!.value, '', '#serverName must not have been populated');
+	});
+
+	test('editMCPServer for a real, previously rendered server still works (no functional regression)', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo' } });
+		sandbox.editMCPServer('srv');
+		assert.strictEqual(sandbox.__testState().editingServerName, 'srv');
+		assert.strictEqual(document.getElementById('serverName')!.value, 'srv');
+		assert.strictEqual(document.getElementById('serverCommand')!.value, 'echo');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// fork-issue-65 Part B2 PoC: displayMCPServers() built .server-type's text via
+// escapeHtml(serverType.toUpperCase()) -- .toUpperCase() throws a TypeError for any non-string,
+// truthy config.type (e.g. a malformed .mcp.json with "type": 5 or "type": {}). That throw happens
+// mid-way through the innerHTML string build for that one server, inside the "for...of" loop, with
+// no try/catch anywhere in displayMCPServers() -- so it propagates straight out of the function,
+// aborting the render: every server after the malformed one, AND the "+ Add manually"/"Authenticate"
+// buttons appended after the loop, never get appended to the DOM. Fix: String(serverType) before
+// .toUpperCase(), still passed through escapeHtml() as before (fork-issue-60).
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview MCP server list: a non-string config.type no longer aborts the render (fork-issue-65 Part B2 PoC)', () => {
+
+	test('a numeric type (5) on a server in the middle of the list does not throw, and every server plus the trailing buttons still get rendered', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		const servers = {
+			good1: { type: 'stdio', command: 'echo' },
+			bad: { type: 5, command: 'echo' },
+			good2: { type: 'stdio', command: 'echo' }
+		};
+		assert.doesNotThrow(() => sandbox.displayMCPServers(servers));
+		const serversList = document.getElementById('mcpServersList')!;
+		assert.strictEqual(serversList.children.length, 4, 'expected 3 server items + 1 trailing actions div; got ' + serversList.children.length);
+		assert.strictEqual(serversList.children[3].className, 'mcp-add-server', 'the trailing "+ Add manually"/"Authenticate" actions div must be the last child');
+		assert.ok(serversList.children[0].innerHTML.includes('good1'));
+		assert.ok(serversList.children[1].innerHTML.includes('bad'));
+		assert.ok(serversList.children[2].innerHTML.includes('good2'), 'good2 (rendered after the malformed server) must still appear (fork-issue-65 regression check)');
+	});
+
+	test('an object type ({}) does not throw either, and its .server-type text renders as the stringified value', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		assert.doesNotThrow(() => sandbox.displayMCPServers({ srv: { type: {}, command: 'echo' } }));
+		const serversList = document.getElementById('mcpServersList')!;
+		assert.strictEqual(serversList.children.length, 2, 'expected 1 server item + 1 trailing actions div');
+		assert.strictEqual(textOn(serversList.children[0].innerHTML, 'server-type'), '[OBJECT OBJECT]');
 	});
 });
