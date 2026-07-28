@@ -21,8 +21,8 @@
 
 import * as assert from 'assert';
 import * as vm from 'vm';
-import * as parse5 from 'parse5';
 import getScript from '../script';
+import { extractFunction, findAttrOn, textOn, tagExists } from './webview-dom-helpers';
 
 function getEmittedScriptBody(): string {
 	const html = getScript(false);
@@ -33,50 +33,9 @@ function getEmittedScriptBody(): string {
 	return match[1];
 }
 
-// Duplicated from webview-attr-escape.test.ts (not exported there) -- see that file's own
-// comment for why the quote-aware brace matching exists, and #64 for its known regex-literal
-// gap. NOT repaired here, per #63's task scope; every call site below verifies its own
-// extraction result instead of trusting it blindly (start/end/no dragged-in trailing function).
-function extractFunction(source: string, name: string): string {
-	const sigMatch = new RegExp('function\\s+' + name + '\\s*\\(').exec(source);
-	if (!sigMatch) {
-		throw new Error('function ' + name + ' not found in emitted script');
-	}
-	const braceStart = source.indexOf('{', sigMatch.index);
-	if (braceStart === -1) {
-		throw new Error('no opening brace found for function ' + name);
-	}
-	let depth = 0;
-	let inString: string | null = null;
-	for (let i = braceStart; i < source.length; i++) {
-		const ch = source[i];
-		if (inString) {
-			if (ch === '\\') { i++; continue; }
-			if (ch === inString) { inString = null; }
-			continue;
-		}
-		if (ch === '/' && source[i + 1] === '/') {
-			const nl = source.indexOf('\n', i);
-			i = nl === -1 ? source.length : nl;
-			continue;
-		}
-		if (ch === '/' && source[i + 1] === '*') {
-			const end = source.indexOf('*/', i + 2);
-			i = end === -1 ? source.length : end + 1;
-			continue;
-		}
-		if (ch === '\'' || ch === '"' || ch === '`') { inString = ch; continue; }
-		else if (ch === '{') { depth++; }
-		else if (ch === '}') {
-			depth--;
-			if (depth === 0) { return source.slice(sigMatch.index, i + 1); }
-		}
-	}
-	throw new Error('unbalanced braces while extracting function ' + name);
-}
-
 // Verifies an extractFunction() result actually starts/ends where expected and didn't drag in a
-// trailing declaration (#64) -- the check the task asks for before building on the extraction.
+// trailing declaration (#64, fixed by making extractFunction parser-based) -- kept as a
+// belt-and-suspenders check before building on the extraction.
 function assertCleanExtraction(name: string, src: string, expectedStart: string): void {
 	assert.ok(src.startsWith(expectedStart), 'extractFunction(' + name + ') did not start where expected; got: ' + src.slice(0, 80));
 	assert.ok(src.trimEnd().endsWith('}'), 'extractFunction(' + name + ') did not end at a closing brace; got: ' + src.slice(-80));
@@ -161,79 +120,6 @@ class FakeNode {
 			.join('');
 		return '<' + this.tagName + attrs + '>' + this.innerHTML + '</' + this.tagName + '>';
 	}
-}
-
-// Concatenates the direct #text children of the first element carrying cssClass (document
-// order); throws if no such element exists. Copied from webview-attr-escape.test.ts's helper of
-// the same name/behaviour (not exported there). Crucially only looks at DIRECT text children --
-// pre-#63 output wraps the text one level deeper in a <p>/<h1>/<li> etc., and a real code-block
-// (a real <div>/<details> element) is skipped entirely too -- so this returns the exact prose
-// text around a code block, or '' if the message is nothing but a code block.
-function textOn(html: string, cssClass: string): string {
-	const frag = parse5.parseFragment(html);
-	let result: string | undefined;
-	let elementFound = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (elementFound) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.attrs) {
-			const classAttr = el.attrs.find(x => x.name === 'class');
-			if (classAttr && classAttr.value.split(/\s+/).includes(cssClass)) {
-				elementFound = true;
-				const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-				result = (parent.childNodes || [])
-					.filter(n => n.nodeName === '#text')
-					.map(n => (n as parse5.DefaultTreeAdapterMap['textNode']).value)
-					.join('');
-				return;
-			}
-		}
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	if (!elementFound) {
-		throw new Error('no element with class "' + cssClass + '" found in: ' + html);
-	}
-	return result || '';
-}
-
-function tagExists(html: string, tagName: string): boolean {
-	const frag = parse5.parseFragment(html);
-	let found = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (found) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.tagName === tagName) { found = true; return; }
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	return found;
-}
-
-// Scoped lookup (per the task: findAttrOn, not the global-scan findAttr) -- finds the first
-// element carrying cssClass and returns attrName's value from THAT element specifically.
-function findAttrOn(html: string, cssClass: string, attrName: string): { name: string; value: string } | undefined {
-	const frag = parse5.parseFragment(html);
-	let result: { name: string; value: string } | undefined;
-	let elementFound = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (elementFound) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.attrs) {
-			const classAttr = el.attrs.find(x => x.name === 'class');
-			if (classAttr && classAttr.value.split(/\s+/).includes(cssClass)) {
-				elementFound = true;
-				result = el.attrs.find(x => x.name === attrName);
-				return;
-			}
-		}
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	if (!elementFound) {
-		throw new Error('no element with class "' + cssClass + '" found in: ' + html);
-	}
-	return result;
 }
 
 interface FakeMessagesDiv {

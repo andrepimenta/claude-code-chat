@@ -10,16 +10,17 @@
 // template literal -- never as an importable module, unlike escapeAttr/
 // evaluateCodeBlockCollapse -- so this suite extracts their exact
 // source text from the ACTUAL getScript() output (out/script.js, i.e. the real emitted webview
-// code, not a hand-copied version of the TS source) via brace-matching, runs it in a vm
-// sandbox with the one stub escapeHtml() needs (document.createElement), and parses the
-// resulting HTML string with parse5 -- the same HTML5-spec parser class real browsers use --
-// to assert no attribute-breakout / inline-handler-breakage survives. Run with
-// `npm run test:webview-attr-escape`.
+// code, not a hand-copied version of the TS source) via extractFunction() (webview-dom-helpers.ts,
+// parser-based since #64), runs it in a vm sandbox with the one stub escapeHtml() needs
+// (document.createElement), and parses the resulting HTML string with parse5 -- the same
+// HTML5-spec parser class real browsers use -- to assert no attribute-breakout / inline-handler-
+// breakage survives. Run with `npm run test:webview-attr-escape`.
 
 import * as assert from 'assert';
 import * as vm from 'vm';
 import * as parse5 from 'parse5';
 import getScript from '../script';
+import { extractFunction, findAttr, findAttrOn, textOn, tagExists } from './webview-dom-helpers';
 
 function getEmittedScriptBody(): string {
 	const html = getScript(false);
@@ -28,52 +29,6 @@ function getEmittedScriptBody(): string {
 		throw new Error('getScript(false) did not contain a <script>...</script> block');
 	}
 	return match[1];
-}
-
-// Extracts one top-level "function NAME(...) { ... }" declaration's exact source text from
-// the emitted script body via quote-aware brace matching, so formatFilePath/formatToolInputUI
-// run exactly as emitted, never hand-copied from the TS source.
-function extractFunction(source: string, name: string): string {
-	const sigMatch = new RegExp('function\\s+' + name + '\\s*\\(').exec(source);
-	if (!sigMatch) {
-		throw new Error('function ' + name + ' not found in emitted script');
-	}
-	const braceStart = source.indexOf('{', sigMatch.index);
-	if (braceStart === -1) {
-		throw new Error('no opening brace found for function ' + name);
-	}
-	let depth = 0;
-	let inString: string | null = null;
-	for (let i = braceStart; i < source.length; i++) {
-		const ch = source[i];
-		if (inString) {
-			if (ch === '\\') { i++; continue; }
-			if (ch === inString) { inString = null; }
-			continue;
-		}
-		// #60: comments can contain an unbalanced quote (e.g. editMCPServer's pre-existing
-		// "// Don't allow name changes when editing") that would otherwise be misread as a
-		// string start, desyncing the brace count for everything after it and pulling in
-		// unrelated trailing functions (found via editMCPServer, which no earlier suite ever
-		// extracted). Skip comment contents entirely, same as a real JS tokenizer would.
-		if (ch === '/' && source[i + 1] === '/') {
-			const nl = source.indexOf('\n', i);
-			i = nl === -1 ? source.length : nl;
-			continue;
-		}
-		if (ch === '/' && source[i + 1] === '*') {
-			const end = source.indexOf('*/', i + 2);
-			i = end === -1 ? source.length : end + 1;
-			continue;
-		}
-		if (ch === '\'' || ch === '"' || ch === '`') { inString = ch; continue; }
-		else if (ch === '{') { depth++; }
-		else if (ch === '}') {
-			depth--;
-			if (depth === 0) { return source.slice(sigMatch.index, i + 1); }
-		}
-	}
-	throw new Error('unbalanced braces while extracting function ' + name);
 }
 
 // escapeHtml()'s only external dependency is document.createElement('div') (textContent set,
@@ -108,56 +63,6 @@ function loadSandbox(): Sandbox {
 	vm.createContext(sandbox);
 	new vm.Script(src).runInContext(sandbox);
 	return sandbox as unknown as Sandbox;
-}
-
-// First DFS match wins (document order) -- formatToolInputUI's output nests a
-// span.file-path-truncated (from formatFilePath) inside a div.diff-file-path, and both
-// currently carry a data-file-path attribute with the same value, so a "last match wins"
-// walk would silently return the inner span's copy instead of the outer div's -- the one
-// the div's own onclick="openFileInEditor(this.dataset.filePath)" actually reads. That would
-// let a regression that drops data-file-path from the div alone (while leaving the span's
-// copy intact) pass unnoticed. Use findAttrOn() below when a specific element matters.
-function findAttr(html: string, attrName: string): { name: string; value: string } | undefined {
-	const frag = parse5.parseFragment(html);
-	let found: { name: string; value: string } | undefined;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (found) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.attrs) {
-			const a = el.attrs.find(x => x.name === attrName);
-			if (a) { found = a; return; }
-		}
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	return found;
-}
-
-// Scoped lookup: finds the first element carrying cssClass (document order) and returns
-// attrName's value from THAT element specifically (undefined if the element lacks it) --
-// unlike findAttr(), this doesn't get confused by a same-named attribute on a nested element.
-function findAttrOn(html: string, cssClass: string, attrName: string): { name: string; value: string } | undefined {
-	const frag = parse5.parseFragment(html);
-	let result: { name: string; value: string } | undefined;
-	let elementFound = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (elementFound) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.attrs) {
-			const classAttr = el.attrs.find(x => x.name === 'class');
-			if (classAttr && classAttr.value.split(/\s+/).includes(cssClass)) {
-				elementFound = true;
-				result = el.attrs.find(x => x.name === attrName);
-				return;
-			}
-		}
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	if (!elementFound) {
-		throw new Error('no element with class "' + cssClass + '" found in: ' + html);
-	}
-	return result;
 }
 
 suite('webview attribute escaping: formatFilePath / formatToolInputUI (#57 PoC)', () => {
@@ -242,39 +147,6 @@ function extractDeclaration(source: string, name: string): string {
 		throw new Error('declaration for ' + name + ' not found in emitted script');
 	}
 	return match[0];
-}
-
-// Concatenates the direct #text children of the first element carrying cssClass (document
-// order); throws if no such element exists. If escaping were missing, a payload like
-// '<img src=x onerror=alert(1)>' would parse as a real <img> element instead of literal text,
-// so those characters would be MISSING from this concatenation -- the full raw payload
-// round-tripping back as text is what proves the escaping worked.
-function textOn(html: string, cssClass: string): string {
-	const frag = parse5.parseFragment(html);
-	let result: string | undefined;
-	let elementFound = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (elementFound) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.attrs) {
-			const classAttr = el.attrs.find(x => x.name === 'class');
-			if (classAttr && classAttr.value.split(/\s+/).includes(cssClass)) {
-				elementFound = true;
-				const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-				result = (parent.childNodes || [])
-					.filter(n => n.nodeName === '#text')
-					.map(n => (n as parse5.DefaultTreeAdapterMap['textNode']).value)
-					.join('');
-				return;
-			}
-		}
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	if (!elementFound) {
-		throw new Error('no element with class "' + cssClass + '" found in: ' + html);
-	}
-	return result || '';
 }
 
 // Minimal DOM stand-in for displayMCPServers/editMCPServer/updateServerForm. All three only
@@ -470,11 +342,11 @@ interface DropdownSandbox {
 function loadDropdownSandbox(models: unknown[]): { sandbox: DropdownSandbox; dropdown: FakeElement } {
 	const body = getEmittedScriptBody();
 	const dropdown = new FakeElement();
-	// #64 (known infra gap, not fixed here): extractFunction('escapeAttr') also drags in
+	// #64 (fixed): extractFunction('escapeAttr') used to also drag in
 	// safeHttpUrl/openFileInEditor/formatFilePath/toggleDiffExpansion/toggleResultExpansion --
-	// escapeAttr's own /'/g regex literal desyncs the brace-matcher's naive quote tracking (see
-	// extractFunction's own comment above). Checked via a standalone extraction dump before
-	// relying on it here: harmless, those extra functions are only declared, never called.
+	// escapeAttr's own /'/g regex literal desynced the old brace-matcher's naive quote tracking.
+	// extractFunction is now parser-based (webview-dom-helpers.ts) and returns exactly the
+	// escapeAttr function, nothing more.
 	const src = [
 		extractFunction(body, 'escapeHtml'),
 		extractFunction(body, 'escapeAttr'),
@@ -685,19 +557,6 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 // Fix: safeHttpUrl() only lets http:/https: through; the caller then omits the attribute/link
 // entirely (icon placeholder / no GitHub link) instead of rendering a dead attribute.
 // ─────────────────────────────────────────────────────────────────────────
-
-function tagExists(html: string, tagName: string): boolean {
-	const frag = parse5.parseFragment(html);
-	let found = false;
-	(function walk(node: parse5.DefaultTreeAdapterMap['node']): void {
-		if (found) { return; }
-		const el = node as parse5.DefaultTreeAdapterMap['element'];
-		if (el.tagName === tagName) { found = true; return; }
-		const parent = node as parse5.DefaultTreeAdapterMap['parentNode'];
-		if (parent.childNodes) { parent.childNodes.forEach(walk); }
-	})(frag);
-	return found;
-}
 
 function classExists(html: string, cssClass: string): boolean {
 	const frag = parse5.parseFragment(html);
@@ -936,11 +795,10 @@ function renderCodeBlockRawAttr(code: string): string {
 // value, capturing what it hands to navigator.clipboard.writeText(...).
 function runCopyCodeBlock(dataRawCode: string): string {
 	const body = getEmittedScriptBody();
-	// #64 (known infra gap, not fixed here): extractFunction can drag in trailing functions when
-	// it misreads a regex literal as an unbalanced quote (see the renderDropdown suite's own #64
-	// comment above). copyCodeBlock's decode chain has four /pattern/g regex literals, none of
-	// which contain a brace or a "//"/quote that could desync the brace-matcher -- checked here
-	// via length/start/end instead of assuming that's safe.
+	// #64 (fixed): extractFunction is now parser-based and can no longer drag in trailing
+	// functions by misreading a regex literal as an unbalanced quote (copyCodeBlock's own decode
+	// chain has four /pattern/g regex literals). Kept as an explicit start/end/no-trailing-
+	// declaration check anyway, as a belt-and-suspenders regression guard for this one call site.
 	const src = extractFunction(body, 'copyCodeBlock');
 	assert.ok(src.startsWith('function copyCodeBlock(codeId) {'), 'extractFunction(copyCodeBlock) did not start where expected; got: ' + src.slice(0, 80));
 	assert.ok(src.trimEnd().endsWith('}'), 'extractFunction(copyCodeBlock) did not end at a closing brace; got: ' + src.slice(-80));
@@ -1016,5 +874,73 @@ suite('webview attribute escaping: copyCodeBlock double-decode (#62 Part A PoC)'
 		assert.strictEqual(dataRawCode, code + '\n');
 		const clipboardText = runCopyCodeBlock(dataRawCode);
 		assert.strictEqual(clipboardText, code + '\n');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// #64: extractFunction() (webview-dom-helpers.ts) used to find a function's source text via
+// hand-rolled, quote-aware brace matching, which knew about strings and comments but not about
+// regex literals. escapeAttr's own `.replace(/'/g, '&#39;')` made the old scanner see `/` then
+// `'` and misread the apostrophe as a string start, desyncing the brace count for everything
+// after it -- pulling 2365 characters of unrelated trailing functions (safeHttpUrl,
+// openFileInEditor, formatFilePath, toggleDiffExpansion, toggleResultExpansion) into the
+// "escapeAttr" extraction, and duplicating formatFilePath into the vm sandbox. This was
+// previously harmless only because escapeAttr sits at the front of that chunk and a later,
+// correctly-extracted formatFilePath always overwrote the contaminated one -- reordering or
+// editing toggleResultExpansion would have broken every test in this file. extractFunction is
+// now parser-based (TypeScript's own parser) and structurally cannot have this failure mode;
+// these tests pin that down for the exact case that triggered it.
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('extractFunction: regex literals containing a quote no longer desync extraction (#64)', () => {
+
+	test('extracting escapeAttr returns exactly its own body -- no trailing functions dragged in', () => {
+		const body = getEmittedScriptBody();
+		const src = extractFunction(body, 'escapeAttr');
+		assert.ok(src.startsWith('function escapeAttr('), 'expected the escapeAttr extraction to start with its own signature; got: ' + src.slice(0, 80));
+		assert.ok(src.trimEnd().endsWith('}'), 'expected the escapeAttr extraction to end at a closing brace; got: ' + src.slice(-80));
+		// The #64 bug specifically dragged in these five trailing declarations (in this order) --
+		// see the file header comment above.
+		for (const trailingName of ['safeHttpUrl', 'openFileInEditor', 'formatFilePath', 'toggleDiffExpansion', 'toggleResultExpansion']) {
+			assert.ok(
+				!src.includes('function ' + trailingName + '('),
+				'escapeAttr extraction must not contain a trailing function ' + trailingName + '(...) declaration (#64 regression); got: ' + src
+			);
+		}
+		// General form of the same check: no OTHER top-level "function NAME(" declaration may
+		// appear anywhere inside the extracted text at all.
+		assert.ok(
+			!/\n\s*function\s+\w+\s*\(/.test(src.slice('function escapeAttr('.length)),
+			'escapeAttr extraction appears to have dragged in a trailing function declaration (#64 regression); got length ' + src.length
+		);
+		// escapeAttr's own regex literals must still be present verbatim -- proves the fix didn't
+		// achieve a short extraction by truncating early instead of stopping at the right brace.
+		assert.ok(src.includes("replace(/'/g, '&#39;')"), 'escapeAttr extraction is missing its own final .replace(/\'/g, \'&#39;\') call; got: ' + src);
+	});
+
+	test('extracting formatFilePath (declared after escapeAttr in the emitted script) still returns exactly its own body, not escapeAttr\'s', () => {
+		const body = getEmittedScriptBody();
+		const src = extractFunction(body, 'formatFilePath');
+		assert.ok(src.startsWith('function formatFilePath('), 'expected the formatFilePath extraction to start with its own signature; got: ' + src.slice(0, 80));
+		assert.ok(!src.includes('function escapeAttr('), 'formatFilePath extraction must not contain escapeAttr\'s declaration; got: ' + src);
+		assert.ok(!src.includes('function toggleDiffExpansion('), 'formatFilePath extraction must not contain toggleDiffExpansion\'s declaration; got: ' + src);
+	});
+
+	test('a synthetic function with an apostrophe inside a regex literal in its body extracts correctly and does not swallow the next declaration', () => {
+		const source = [
+			'function withQuoteInRegex(s) {',
+			"\treturn s.replace(/'/g, 'X');",
+			'}',
+			'',
+			'function nextFn() {',
+			'\treturn 1;',
+			'}'
+		].join('\n');
+		const src = extractFunction(source, 'withQuoteInRegex');
+		assert.strictEqual(src, [
+			'function withQuoteInRegex(s) {',
+			"\treturn s.replace(/'/g, 'X');",
+			'}'
+		].join('\n'));
 	});
 });
