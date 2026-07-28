@@ -1064,13 +1064,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// Approximate context-window size per model, used to turn currentContextTokens
-		// into a percentage for the status bar (#27). Best-effort approximation, not the
-		// model's authoritative limit — router models use context_length from the
-		// recommended-models catalog. Native fable/opus/sonnet are the 1M-token variants
-		// per user decision (this setup runs on those); 'default' and unknown models
-		// fall back to a conservative 200K (underestimating only warns early).
+		// into a percentage for the status bar (fork-issue-27). Best-effort approximation,
+		// not the model's authoritative limit — router models use context_length from
+		// the recommended-models catalog. Native opus/sonnet use the standard 200K
+		// context window; 'default' and unknown models fall back to the same
+		// conservative 200K (underestimating only warns early).
 		function getContextWindow(model) {
-			const nativeWindows = { fable: 1000000, opus: 1000000, sonnet: 1000000, 'default': 200000 };
+			const nativeWindows = { opus: 200000, sonnet: 200000, 'default': 200000 };
 			if (nativeWindows[model]) {
 				return nativeWindows[model];
 			}
