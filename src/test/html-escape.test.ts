@@ -1,6 +1,6 @@
 // Unit tests for the fork-issue-49 attribute escaper (escapeAttr). Pure (no vscode, no network, no
 // DOM), so these run under plain mocha against the compiled out/ output -- same pattern as
-// diff-utils/shell-utils/auto-model-switch/math-segments/collapse-rules. escapeHtml() in
+// collapse-rules/markdown-restore/settings-batch. escapeHtml() in
 // script.ts serialises through textContent->innerHTML and therefore leaves " and ' untouched,
 // which is fine for element content but not for title="..."/data-*="..." attribute values --
 // escapeAttr() is the dedicated fix for that sink. The first suite covers plain character

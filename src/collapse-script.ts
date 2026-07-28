@@ -1,11 +1,11 @@
 import { normalizeCollapseThreshold, evaluateCodeBlockCollapse } from './collapse-rules';
 
 // Webview-side glue for the fork-issue-48 collapsible-code-blocks feature (upstream #151), injected
-// into script.ts's getScript() template the same way getMathScript()/getSkillsScript() are
+// into script.ts's getScript() template the same way getSkillsScript()/getPluginsScript() are
 // (see plugins-script.ts). Two different things happen below and they must not be confused:
 //
 // 1. normalizeCollapseThreshold.toString() / evaluateCodeBlockCollapse.toString() are REAL,
-//    host-side template interpolations (like findMathSegments.toString() in math-script.ts):
+//    host-side template interpolations (like escapeAttr.toString() in html-escape.ts):
 //    they run in Node when getCollapseScript() is called, and splice each function's own
 //    *compiled* source into the returned string. collapse-rules.ts must stay fully
 //    self-contained for exactly this reason -- only its own text crosses into the browser,
@@ -21,7 +21,7 @@ const getCollapseScript = () => `
 		${normalizeCollapseThreshold.toString()}
 		${evaluateCodeBlockCollapse.toString()}
 
-		// R2/R3: bound to the <summary>'s synchronous onclick, never the <details>'s
+		// Bound to the <summary>'s synchronous onclick, never the <details>'s
 		// ontoggle -- toggle fires asynchronously and also for a programmatic .open
 		// assignment, which would make applyCodeBlockCollapseDefaults() below unable to
 		// tell a real user click from its own catch-up pass after the first run.
@@ -29,7 +29,7 @@ const getCollapseScript = () => `
 			summaryEl.parentElement.setAttribute('data-user-toggled', '1');
 		}
 
-		// Catch-up pass (R1): settingsData arrives AFTER the history replay
+		// Catch-up pass: settingsData arrives AFTER the history replay
 		// (extension.ts _loadConversationHistory -> _sendReadyMessage -> _sendCurrentSettings),
 		// so blocks rendered from history always start out using the webview's hardcoded
 		// default. This re-applies the real collapseLongCodeBlocks setting to every block the

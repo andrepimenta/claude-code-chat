@@ -748,10 +748,8 @@ interface CodeBlockSandbox {
 	parseSimpleMarkdown(markdown: string): string;
 }
 
-// renderMathEnabled: false -- these PoCs never need KaTeX (no "$"/"\(" in the test inputs), and
-// skipping math extraction entirely (rather than stubbing extractMathSegments/restoreMathSegments
-// and their katex dependency) keeps the sandbox to exactly the functions the data-raw-code path
-// actually needs: escapeHtml, escapeAttr, normalizeCollapseThreshold, evaluateCodeBlockCollapse,
+// The sandbox is kept to exactly the functions the data-raw-code path actually needs:
+// escapeHtml, escapeAttr, normalizeCollapseThreshold, evaluateCodeBlockCollapse,
 // extractCodeBlocks, parseSimpleMarkdown. extractCodeBlocks (fork-issue-63): parseSimpleMarkdown's
 // fenced-code-block extraction moved into its own shared function (also used by
 // renderUserMessageContent, see user-message-rawtext.test.ts) -- parseSimpleMarkdown now
@@ -766,7 +764,6 @@ function loadCodeBlockSandbox(): CodeBlockSandbox {
 		.map(name => extractFunction(body, name))
 		.join('\n');
 	const sandbox: Record<string, unknown> = {
-		renderMathEnabled: false,
 		collapseLongCodeBlocks: true,
 		collapseCodeBlockLines: 20,
 		document: {

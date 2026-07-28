@@ -2,10 +2,10 @@
 // from the fork-issue-47 review). String.replace(placeholder, value) interprets "$&"/"$`"/"$'"/"$$"
 // in the replacement string as substitution patterns -- a code block whose (already
 // escaped) content happens to contain such a sequence (e.g. shell code with "$'...'")
-// tears the surrounding HTML apart instead of appearing unchanged. restoreMathSegments
-// (math-script.ts) has had this fix from the start -- this function brings the code-block
-// restore loop up to the same standard (function replacement instead of string
-// replacement). script.ts splices only the compiled function text into the page via
+// tears the surrounding HTML apart instead of appearing unchanged. This function uses
+// function replacement (returning the value from a callback) instead of a plain string
+// as the second argument, which sidesteps the substitution-pattern interpretation
+// entirely. script.ts splices only the compiled function text into the page via
 // .toString() (same pattern as html-escape.ts/collapse-rules.ts) -- so this function
 // must stay self-contained: no module-level symbol, no import, no helper function
 // outside the body.

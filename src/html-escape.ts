@@ -2,7 +2,7 @@
 // textContent->innerHTML and therefore leaves " and ' UNTOUCHED -- for title="..."/data-*="..."
 // that isn't enough (attribute breakout). This function is NOT called here: script.ts
 // splices only its own compiled text into the page via .toString() (same pattern as
-// math-segments.ts/collapse-rules.ts). So it MUST stay self-contained -- no
+// collapse-rules.ts/markdown-restore.ts). So it MUST stay self-contained -- no
 // module-level symbol, no import, no helper function outside the body.
 export function escapeAttr(value: unknown): string {
 	const s = value === null || value === undefined ? '' : String(value);

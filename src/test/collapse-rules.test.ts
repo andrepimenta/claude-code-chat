@@ -1,7 +1,7 @@
 // Unit tests for the fork-issue-48 collapsible-code-blocks logic (normalizeCollapseThreshold /
 // evaluateCodeBlockCollapse). Pure (no vscode, no network, no filesystem access), so these
 // run under plain mocha against the compiled out/ output -- same pattern as
-// diff-utils/shell-utils/auto-model-switch/math-segments. The first suite covers
+// html-escape/markdown-restore/settings-batch. The first suite covers
 // evaluateCodeBlockCollapse's line-counting edge cases (trailing newline, CRLF, empty
 // input, a single very long line), the second covers normalizeCollapseThreshold's
 // default/clamp behaviour, and the third is the splice-sandbox test that proves both

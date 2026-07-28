@@ -3424,8 +3424,8 @@ class ClaudeChatProvider {
 	//
 	// Follow-up: the outer try/catch below exists because this method is
 	// called fire-and-forget (extension.ts's message handler does
-	// `this._enableYoloMode();`, no `await`/`.catch`, see the switch above). Before this
-	// review pass, only the two config.update() calls inside
+	// `this._enableYoloMode();`, no `await`/`.catch`, see the switch above). Previously,
+	// only the two config.update() calls inside
 	// updateWithWorkspaceThenGlobalFallback could reject; now that this method's own
 	// logic (e.g. a settings-batch.ts that's out of sync with extension.ts after a
 	// partial deploy, so updateWithWorkspaceThenGlobalFallback itself is undefined) can

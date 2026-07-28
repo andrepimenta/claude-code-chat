@@ -96,7 +96,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// button) use different wording, so this can't be a hardcoded string in the
 		// 'yoloModeEnabled' case itself; only one enable request is ever in flight at a
 		// time, so a single module-level slot is enough (same pragmatic pattern as
-		// sendOnEnter/renderMathEnabled above).
+		// collapseLongCodeBlocks/collapseCodeBlockLines above).
 		let pendingYoloEnableMessage = null;
 
 		// Open diff using stored data (no file read needed)

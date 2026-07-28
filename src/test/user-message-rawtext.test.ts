@@ -199,10 +199,6 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 		appendChild(child: FakeNode) { this.lastAppended = child; return child; }
 	};
 	const sandbox: Record<string, unknown> = {
-		// parseSimpleMarkdown's/renderUserMessageContent's own settings -- math extraction
-		// skipped entirely (none of the payloads below contain "$"/"\("), same simplification
-		// fork-issue-62's loadCodeBlockSandbox uses.
-		renderMathEnabled: false,
 		collapseLongCodeBlocks: true,
 		collapseCodeBlockLines: 20,
 		document: {

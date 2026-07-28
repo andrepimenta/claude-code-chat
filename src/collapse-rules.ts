@@ -1,7 +1,7 @@
 // Pure threshold/line-count logic for the fork-issue-48 collapsible-code-blocks feature (upstream
 // #151): decides whether a fenced code block parseSimpleMarkdown is about to render should
 // start collapsed, based on its line count and the configured threshold. No vscode import,
-// so this runs under plain mocha like diff-utils/shell-utils/auto-model-switch/math-segments.
+// so this runs under plain mocha like html-escape/markdown-restore/settings-batch.
 //
 // Neither function is ever called directly by the webview's copy of this file -- it has
 // none. Instead collapse-script.ts injects each function's own compiled source via

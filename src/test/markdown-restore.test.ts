@@ -1,15 +1,14 @@
 // Unit tests for the fork-issue-55 code-block restore loop (restoreCodeBlockPlaceholders), the
 // __CODEBLOCK_N__ half of parseSimpleMarkdown's placeholder dance. Pure (no vscode, no
 // network, no DOM), so these run under plain mocha against the compiled out/ output --
-// same pattern as diff-utils/shell-utils/auto-model-switch/math-segments/collapse-rules/
-// html-escape. fork-issue-47's review found that the loop used html.replace(placeholder, str),
-// a plain STRING as the 2nd argument -- String.replace treats "$&"/"$`"/"$'"/"$$" in a
-// string replacement as substitution patterns, so a code block whose (already-escaped)
-// content happens to contain one of those sequences tears the surrounding HTML apart
-// instead of being reinserted unchanged. restoreMathSegments (math-script.ts) already used
-// function-replacement for exactly this reason when fork-issue-47 introduced it; this fixes the
-// code-block loop to match. The first suite covers ordinary multi-placeholder restores,
-// the second is the regression suite for each substitution pattern individually plus one
+// same pattern as collapse-rules/html-escape/settings-batch. fork-issue-47's review found
+// that the loop used html.replace(placeholder, str), a plain STRING as the 2nd argument --
+// String.replace treats "$&"/"$`"/"$'"/"$$" in a string replacement as substitution
+// patterns, so a code block whose (already-escaped) content happens to contain one of
+// those sequences tears the surrounding HTML apart instead of being reinserted unchanged.
+// This fixes the code-block loop to use function-replacement instead, for exactly that
+// reason. The first suite covers ordinary multi-placeholder restores, the second is the
+// regression suite for each substitution pattern individually plus one
 // combined case, and the third is the splice-sandbox test that proves the function still
 // works with zero module context -- exactly how script.ts's .toString() splice runs it in
 // the webview. Run with `npm run test:markdown-restore`.
