@@ -111,34 +111,6 @@ suite('settings-batch: applySettingsBatch (error normalization)', () => {
 	});
 });
 
-suite('settings-batch: applySettingsBatch (onSettled hook, per-key perm-log chronology)', () => {
-
-	test('onSettled fires once per key, right after it settles, in attempt order, with no error argument on success', async () => {
-		const events: Array<[string, unknown, unknown]> = [];
-		await applySettingsBatch(
-			{ a: 1, b: 2 },
-			async () => { /* always succeeds */ },
-			(key, value, error) => { events.push([key, value, error]); }
-		);
-		assert.deepStrictEqual(events, [['a', 1, undefined], ['b', 2, undefined]]);
-	});
-
-	test('onSettled receives the exact normalized message failures[] carries for a failing key, interleaved with the surrounding successes', async () => {
-		const events: Array<[string, unknown, unknown]> = [];
-		const result = await applySettingsBatch(
-			{ a: 1, b: 2, c: 3 },
-			async (key) => {
-				if (key === 'b') {
-					throw new Error('boom');
-				}
-			},
-			(key, value, error) => { events.push([key, value, error]); }
-		);
-		assert.deepStrictEqual(events, [['a', 1, undefined], ['b', 2, 'boom'], ['c', 3, undefined]]);
-		assert.strictEqual(result.failures[0].message, 'boom');
-	});
-});
-
 suite('settings-batch: applySettingsBatch (malformed input -- the outer safety-net catch in extension.ts)', () => {
 
 	test("a nullish settings object rejects instead of resolving silently -- the only way out of this module into a caller's outer try/catch (extension.ts's key=<batch> marker)", async () => {

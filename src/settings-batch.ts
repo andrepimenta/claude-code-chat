@@ -11,18 +11,6 @@
 // fallback, _permLog, the summary error message) via the injected updateSetting
 // callback -- no vscode import here, so this runs under plain mocha, same pattern as
 // shell-utils/restore-commit-utils/perm-log-redact. Run with `npm run test:settings-batch`.
-//
-// Review follow-up: a first cut of this module logged all "update ok" lines
-// after the whole batch settled, then all "update FAILED" lines -- that lost the perm
-// log's per-key chronology extension.ts's own onDidChangeConfiguration listener depends
-// on (config.update() fires refreshSettingsOnConfigChange -> _sendCurrentSettings,
-// which writes its own settingsData perm-log line right after the key that triggered
-// it -- the #23 colorblind-roundtrip diagnosis relied on that interleaving), and meant
-// a batch that hangs or throws mid-loop left zero "ok" lines behind, i.e. no progress
-// evidence in exactly the case that needs it most. onSettled below is called
-// synchronously inside the same per-key try/catch as updateSetting, so a caller that
-// logs from it gets one line per key, in the exact order keys were attempted -- same
-// guarantee applied/failures already have, just not batched up first.
 
 export interface SettingUpdateFailure {
 	key: string;
@@ -57,15 +45,10 @@ function toErrorMessage(error: unknown): string {
 // its own try/catch -- unlike the pre-#56 single try/catch around the whole loop, a
 // rejection for one key never stops the remaining keys from being attempted. Keys are
 // attempted in the same order Object.entries(settings) always yields (insertion order
-// for string keys), so applied/failures each preserve that order internally. onSettled
-// (optional) is invoked synchronously right after each key's own try/catch resolves --
-// with no error argument on success, with the same normalized string toErrorMessage
-// already put into failures[].message on failure -- so a caller can log/react per key
-// without waiting for the whole batch and without re-deriving the error text itself.
+// for string keys), so applied/failures each preserve that order internally.
 export async function applySettingsBatch(
 	settings: { [key: string]: any },
-	updateSetting: (key: string, value: any) => Promise<void>,
-	onSettled?: (key: string, value: unknown, error?: unknown) => void
+	updateSetting: (key: string, value: any) => Promise<void>
 ): Promise<SettingsBatchResult> {
 	const applied: string[] = [];
 	const failures: SettingUpdateFailure[] = [];
@@ -73,11 +56,9 @@ export async function applySettingsBatch(
 		try {
 			await updateSetting(key, value);
 			applied.push(key);
-			onSettled?.(key, value);
 		} catch (error) {
 			const message = toErrorMessage(error);
 			failures.push({ key, message });
-			onSettled?.(key, value, message);
 		}
 	}
 	return { applied, failures };
