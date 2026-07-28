@@ -111,7 +111,7 @@ suite('settings-batch: applySettingsBatch (error normalization)', () => {
 	});
 });
 
-suite('settings-batch: applySettingsBatch (onSettled hook, opus-review point 1 -- per-key perm-log chronology)', () => {
+suite('settings-batch: applySettingsBatch (onSettled hook, per-key perm-log chronology)', () => {
 
 	test('onSettled fires once per key, right after it settles, in attempt order, with no error argument on success', async () => {
 		const events: Array<[string, unknown, unknown]> = [];
