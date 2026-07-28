@@ -250,7 +250,7 @@ class ClaudeChatProvider {
 		const iconPath = vscode.Uri.joinPath(this._extensionUri, 'icon-bubble.png');
 		this._panel.iconPath = iconPath;
 
-		this._panel.webview.html = this._getHtmlForWebview();
+		this._panel.webview.html = this._getHtmlForWebview(this._panel.webview);
 
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
@@ -706,7 +706,7 @@ class ClaudeChatProvider {
 
 		this._webview = webview;
 		this._webviewView = webviewView;
-		this._webview.html = this._getHtmlForWebview();
+		this._webview.html = this._getHtmlForWebview(this._webview);
 
 		this._setupWebviewMessageHandler(this._webview);
 		this._initializePermissions();
@@ -3383,8 +3383,12 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private _getHtmlForWebview(): string {
-		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY, vscode.env?.appName, this._context?.extension?.packageJSON?.version);
+	private _getHtmlForWebview(webview: vscode.Webview): string {
+		// out/katex/ (copy-assets.js, see assets/katex/VERSION.md) served through
+		// the webview's own resource URI scheme -- localResourceRoots already covers the
+		// whole extension folder at both call sites above.
+		const katexBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'out', 'katex')).toString();
+		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY, vscode.env?.appName, this._context?.extension?.packageJSON?.version, katexBaseUri);
 	}
 
 	private _sendCurrentSettings(): void {
@@ -3400,6 +3404,7 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'ui.renderMath': config.get<boolean>('ui.renderMath', true),
 			'isOpenCredits': this._isOpenCredits()
 		};
 

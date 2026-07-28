@@ -208,20 +208,28 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.ui.renderMath": {
+          "type": "boolean",
+          "default": true,
+          "description": "Render LaTeX/TeX math in chat messages ($...$, $$...$$, \\(...\\), \\[...\\]) using the bundled KaTeX."
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "tsc -p ./ && node build/copy-assets.js",
+    "watch": "node build/copy-assets.js && tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
-    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
+    "test:math-segments": "npm run compile && mocha --ui tdd out/test/math-segments.test.js --reporter spec",
+    "test:markdown-restore": "npm run compile && mocha --ui tdd out/test/markdown-restore.test.js --reporter spec",
+    "test:webview-syntax": "npm run compile && node build/check-webview-syntax.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

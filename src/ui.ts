@@ -8,13 +8,16 @@ import getSkillsHtml from './skills-ui'
 import getPluginsHtml from './plugins-ui'
 
 
-const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f', editorName: string = 'unknown', extensionVersion: string = 'unknown') => `<!DOCTYPE html>
+const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f', editorName: string = 'unknown', extensionVersion: string = 'unknown', katexBaseUri: string) => `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src *;">
 	<title>Claude Code Chat</title>
+	<!-- Loaded before the main stylesheet so our own .katex-error/.katex-display
+	     rules (ui-styles.ts) win the cascade over KaTeX's defaults of the same specificity. -->
+	<link rel="stylesheet" href="${katexBaseUri}/katex.min.css">
 	${styles}
 </head>
 <body>
@@ -412,6 +415,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<p id="providerExclusionHint" style="display: none; font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 24px;">
 						When enabled, requests are routed only through US and EU-based infrastructure providers.
 					</p>
+					<div class="tool-item" style="margin-top: 16px;">
+						<input type="checkbox" id="render-math" onchange="updateSettings()">
+						<label for="render-math">Render LaTeX/TeX math (KaTeX)</label>
+					</div>
 				</div>
 
 			</div>
@@ -1074,6 +1081,9 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	</div>
 
 	<script>window.__recommendedModels = ${JSON.stringify(recommendedModels)};window.__topMcpServers = ${JSON.stringify(topMcpServers)};window.__topSkills = ${JSON.stringify(topSkills)};window.__topPlugins = ${JSON.stringify(topPlugins)};</script>
+	<!-- Synchronous (no defer/async) so window.katex exists before getScript()'s
+	     renderMathHtml can run -- a classic <script src> blocks parsing until it loads. -->
+	<script src="${katexBaseUri}/katex.min.js"></script>
 	${getScript(isTelemetryEnabled, opencreditsApiUrl, opencreditsWebUrl, opencreditsPublishableKey)}
 	
 	<!--
