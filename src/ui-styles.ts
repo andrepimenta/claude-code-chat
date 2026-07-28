@@ -4120,6 +4120,32 @@ const styles = `
         border-color: var(--vscode-focusBorder);
     }
 
+    .cli-badge {
+        padding: 4px 10px;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--vscode-descriptionForeground);
+        background-color: var(--vscode-badge-background);
+        border-radius: 4px;
+        cursor: default;
+        position: relative;
+    }
+
+    .cli-badge:hover::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        bottom: calc(100% + 6px);
+        right: 0;
+        background: var(--vscode-editorHoverWidget-background, #1e1e1e);
+        color: var(--vscode-editorHoverWidget-foreground, #ccc);
+        border: 1px solid var(--vscode-editorHoverWidget-border, #454545);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        white-space: nowrap;
+        z-index: 100;
+    }
+
     .mcp-add-server {
         text-align: center;
         margin-bottom: 24px;
