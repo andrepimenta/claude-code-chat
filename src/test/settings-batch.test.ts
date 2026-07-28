@@ -29,16 +29,16 @@ suite('settings-batch: applySettingsBatch (fork-issue-56 -- a failing key must n
 
 	test('a key that throws is recorded as a failure, and every key after it is still applied', async () => {
 		const result = await applySettingsBatch(
-			{ 'ui.renderMath': true, 'ui.fontFamily': 'monospace', 'ui.fontSize': 14, 'diff.autoOpen': true },
+			{ 'advanced.maxOutputTokens': 5000, 'ui.fontFamily': 'monospace', 'ui.fontSize': 14, 'diff.autoOpen': true },
 			async (key) => {
-				if (key === 'ui.renderMath') {
+				if (key === 'advanced.maxOutputTokens') {
 					throw new Error('config not registered');
 				}
 			}
 		);
 		assert.deepStrictEqual(result.applied, ['ui.fontFamily', 'ui.fontSize', 'diff.autoOpen'],
-			'keys after the failing one must still be applied, not silently dropped (the real fork-issue-56 scenario)');
-		assert.deepStrictEqual(result.failures, [{ key: 'ui.renderMath', message: 'config not registered' }]);
+			'keys after the failing one must still be applied, not silently dropped (the fork-issue-56 scenario)');
+		assert.deepStrictEqual(result.failures, [{ key: 'advanced.maxOutputTokens', message: 'config not registered' }]);
 	});
 
 	test('a failing key in the middle of the batch still lets both earlier and later keys succeed', async () => {

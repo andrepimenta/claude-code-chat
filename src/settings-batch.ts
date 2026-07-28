@@ -2,11 +2,12 @@
 // the whole settings batch from the webview through a single loop wrapped in one
 // try/catch -- if config.update() threw for one key (e.g. a setting not yet registered
 // right after a version bump), the loop broke and every subsequent key in the same
-// batch silently never got saved. Real-world hit on 2026-07-26: ui.renderMath wasn't
-// registered yet, and six settings that came after it in the same batch (font family,
-// font size, completion popup/sound, send-on-enter, diff.autoOpen) were dropped without
-// any indication in the UI. This module owns only the per-key try/catch + result
-// collection; extension.ts still owns every side effect (the actual
+// batch silently never got saved. In the order the webview's updateSettings() message
+// sends them, a rejection on e.g. advanced.maxOutputTokens would have silently dropped
+// every key after it in the same batch (environment.variables, router.enabled,
+// diff.autoOpen, ui.fontFamily, ui.fontSize) without any indication in the UI. This
+// module owns only the per-key try/catch + result collection; extension.ts still owns
+// every side effect (the actual
 // vscode.workspace config.update() call, permissions.yoloMode's workspace-then-global
 // fallback, the summary error message) via the injected updateSetting
 // callback -- no vscode import here, so this runs under plain mocha, same pattern as
