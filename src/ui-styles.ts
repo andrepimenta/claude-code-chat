@@ -2271,7 +2271,7 @@ const styles = `
         background-color: var(--vscode-list-hoverBackground);
     }
 
-    /* Compact suggested (#36) once context usage crosses the same 85%+ range the
+    /* Compact suggested (fork-issue-36) once context usage crosses the same 85%+ range the
        Ctx indicator starts warning at — a subtle nudge, no animation. */
     .slash-btn.compact-suggested {
         box-shadow: 0 0 0 1px var(--vscode-inputValidation-warningBorder);
@@ -5151,7 +5151,7 @@ const styles = `
         color: #10b981 !important;
     }
 
-    /* Compact mode (#18) */
+    /* Compact mode (fork-issue-18) */
     body.compact-mode .messages {
         padding: 5px;
         font-size: calc(var(--vscode-editor-font-size) - 1px);

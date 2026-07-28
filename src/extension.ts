@@ -15,7 +15,7 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
-// Manual compact (#36): the headless CLI has no real /compact, so the compact button
+// Manual compact (fork-issue-36): the headless CLI has no real /compact, so the compact button
 // asks the running session for a handoff summary instead, then starts the next turn
 // as a fresh session seeded with that summary (see _startCompact/_finishCompact).
 const COMPACT_PROMPT = 'Write a concise handoff summary of this conversation so a fresh session can continue seamlessly, then stop. Include, as compact markdown: (1) the overall task/goal; (2) key decisions, constraints and assumptions; (3) relevant or changed files and paths, each with its role in one line; (4) what is done vs. still open, as concrete next steps; (5) any gotchas or non-obvious context. Do not call any tools or make changes — output only the summary.';
@@ -28,7 +28,7 @@ function buildCompactSeedMessage(summary: string, message: string): string {
 
 const exec = util.promisify(cp.exec);
 
-// File target for [perm] diagnostics (#15): console.error of an installed
+// File target for [perm] diagnostics (fork-issue-15): console.error of an installed
 // extension is only visible in the DevTools console, which makes field
 // debugging of the stdio permission channel impossible — mirror it to a file.
 const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
@@ -191,7 +191,7 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	// Last filename this provider loaded/saved to — used by loadConversation() to
 	// tell "reloading the same conversation" from "switching to a different one"
-	// (#41), so the #36 pin/checkpoints are only dropped on an actual switch.
+	// (fork-issue-41), so the fork-issue-36 pin/checkpoints are only dropped on an actual switch.
 	private _lastSavedFilename: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
@@ -229,7 +229,7 @@ class ClaudeChatProvider {
 	// a permission round-trip is still pending (would surface as "Stream closed").
 	private _resultSeen: boolean = false;
 	private _draftMessage: string = '';
-	// Manual compact (#36): true while the summarize turn started by _startCompact()
+	// Manual compact (fork-issue-36): true while the summarize turn started by _startCompact()
 	// is in flight. _pendingCompactSummary holds its result once seen, consumed as the
 	// seed for the next fresh session. _forceFreshSession is a one-shot override that
 	// skips --resume on the very next _sendMessageToClaude() call. _pinnedConversationFilename
@@ -239,7 +239,7 @@ class ClaudeChatProvider {
 	private _pendingCompactSummary: string | undefined;
 	private _forceFreshSession = false;
 	private _pinnedConversationFilename: string | undefined;
-	// CLI-session resume (#37): guards against a double-click interleaving two
+	// CLI-session resume (fork-issue-37): guards against a double-click interleaving two
 	// preview loads once the first call yields at an await.
 	private _cliResumeInProgress = false;
 
@@ -953,7 +953,7 @@ class ClaudeChatProvider {
 
 		let actualMessage = message;
 
-		// Manual compact (#36): seed the first real message of a fresh, post-compact
+		// Manual compact (fork-issue-36): seed the first real message of a fresh, post-compact
 		// session with the previous session's handoff summary. Consumed once — later
 		// messages in the same (new) session go through unmodified.
 		if (!opts?.compact && this._pendingCompactSummary) {
@@ -967,7 +967,7 @@ class ClaudeChatProvider {
 		this._draftMessage = '';
 
 		if (opts?.compact) {
-			// Summarize turn for the compact button (#36): no user-visible echo — show
+			// Summarize turn for the compact button (fork-issue-36): no user-visible echo — show
 			// the compacting indicator instead.
 			this._postMessage({ type: 'compacting', data: { isCompacting: true } });
 		} else {
@@ -985,7 +985,7 @@ class ClaudeChatProvider {
 		});
 
 		// Create backup commit before Claude makes changes (skipped for the internal
-		// compact summarize turn — #36)
+		// compact summarize turn — fork-issue-36)
 		if (!opts?.compact) {
 			try {
 				await this._createBackupCommit(message);
@@ -1034,7 +1034,7 @@ class ClaudeChatProvider {
 		}
 
 		// Add permission mode / effort based on the selected mode (manual = no flag,
-		// i.e. byte-identical to the previous default spawn) (#31)
+		// i.e. byte-identical to the previous default spawn) (fork-issue-31)
 		if (this._selectedMode && this._selectedMode !== 'manual') {
 			args.push('--permission-mode', this._selectedMode);
 		}
@@ -1050,9 +1050,9 @@ class ClaudeChatProvider {
 		}
 
 		// Add session resume if we have a current session. Skipped once right after a
-		// compact (#36): _forceFreshSession forces a session-less spawn so the CLI
+		// compact (fork-issue-36): _forceFreshSession forces a session-less spawn so the CLI
 		// starts clean instead of resuming the (now summarized-away) old session.
-		// Snapshotted before being consumed below so the spawn log (#41) can report
+		// Snapshotted before being consumed below so the spawn log (fork-issue-41) can report
 		// what this spawn actually did — _forceFreshSession is false again and
 		// _currentSessionId still holds the old id by the time the log line runs.
 		const forcedFresh = this._forceFreshSession;
@@ -1171,7 +1171,7 @@ class ClaudeChatProvider {
 		this._resultSeen = false;
 		this._permLog(`spawned claude pid=${claudeProcess.pid} session=${resumeSessionId ?? '(new)'} forceFresh=${forcedFresh}`);
 
-		// stdin lifecycle tracing (#15): record every way the control channel can
+		// stdin lifecycle tracing (fork-issue-15): record every way the control channel can
 		// die, so a field "Stream closed" can be attributed to a concrete event.
 		claudeProcess.stdin?.on('close', () => {
 			this._permLog(`stdin CLOSE event pid=${claudeProcess.pid} current=${this._currentClaudeProcess?.pid ?? 'none'}`);
@@ -1283,7 +1283,7 @@ class ClaudeChatProvider {
 
 		if (claudeProcess.stdout) {
 			claudeProcess.stdout.on('data', (data) => {
-				// Stale-guard (#41): a killed process's reference is cleared before its
+				// Stale-guard (fork-issue-41): a killed process's reference is cleared before its
 				// stdio actually tears down, so late data from a superseded process must
 				// not mutate state (e.g. _currentSessionId) for whichever process is
 				// current now.
@@ -1343,7 +1343,7 @@ class ClaudeChatProvider {
 
 		claudeProcess.on('close', (code) => {
 
-			// Manual compact (#36): captured before any of the branches below run, so
+			// Manual compact (fork-issue-36): captured before any of the branches below run, so
 			// _finishCompact() below always sees whether THIS turn was the summarize
 			// turn, regardless of exit code.
 			const wasCompact = this._compactInProgress;
@@ -1380,7 +1380,7 @@ class ClaudeChatProvider {
 						installAttempted: !!this._context.globalState.get('installAttempted')
 					});
 				} else if (!wasCompact) {
-					// Error with output. Suppressed for the compact summarize turn (#36) —
+					// Error with output. Suppressed for the compact summarize turn (fork-issue-36) —
 					// _finishCompact's own compactSeparator message explains the failure.
 					this._sendAndSaveMessage({
 						type: 'error',
@@ -1389,7 +1389,7 @@ class ClaudeChatProvider {
 				}
 			}
 
-			// Manual compact (#36): resolve the pending compaction (seed captured or not)
+			// Manual compact (fork-issue-36): resolve the pending compaction (seed captured or not)
 			// before the queue drains, regardless of exit code.
 			if (wasCompact) {
 				this._finishCompact(code === 0);
@@ -1685,7 +1685,7 @@ class ClaudeChatProvider {
 
 					this._isProcessing = false;
 
-					// Manual compact (#36): capture the summarize turn's own result text
+					// Manual compact (fork-issue-36): capture the summarize turn's own result text
 					// as the seed for the next (fresh) session. Just capture it here —
 					// _finishCompact (driven by the close handler) does the state transition.
 					if (this._compactInProgress && typeof jsonData.result === 'string') {
@@ -1773,7 +1773,7 @@ class ClaudeChatProvider {
 		// Clear current session
 		this._currentSessionId = undefined;
 
-		// Manual compact (#36): clear any in-flight/pending compaction state so the new
+		// Manual compact (fork-issue-36): clear any in-flight/pending compaction state so the new
 		// session starts clean.
 		this._compactInProgress = false;
 		this._pendingCompactSummary = undefined;
@@ -2114,7 +2114,7 @@ class ClaudeChatProvider {
 	}
 
 	/**
-	 * [perm] diagnostics (#15): mirror to console AND a temp file, because the
+	 * [perm] diagnostics (fork-issue-15): mirror to console AND a temp file, because the
 	 * console of an installed extension host is not persisted anywhere readable.
 	 * Logging must never break the extension — swallow all fs errors.
 	 */
@@ -2129,12 +2129,12 @@ class ClaudeChatProvider {
 	}
 
 	/**
-	 * #15: end stdin only once a result arrived AND no permission request is
+	 * fork-issue-15: end stdin only once a result arrived AND no permission request is
 	 * pending. Known limitation (perm-log evidence 2026-07-22): background
 	 * subagents can request permissions AFTER the turn's result, which this
 	 * close still kills — but simply suppressing the close is worse: the CLI
 	 * runs in persistent stream-json mode and the whole turn lifecycle
-	 * (#16 queue flush, #17 notify, _currentClaudeProcess reset) hangs on the
+	 * (fork-issue-16 queue flush, fork-issue-17 notify, _currentClaudeProcess reset) hangs on the
 	 * process 'close' event, so never ending stdin risks a frozen chat. The
 	 * real fix is a lifecycle rework (keep channel open, detach on next user
 	 * message); until that lands, this stays the reviewed 2f1ae0d behavior.
@@ -3195,7 +3195,7 @@ class ClaudeChatProvider {
 	}
 
 	// Derives the conversation's JSON filename from its first user message and start
-	// time. Shared by the normal save path and _finishCompact's pinning (#36), which
+	// time. Shared by the normal save path and _finishCompact's pinning (fork-issue-36), which
 	// snapshots it before a compact-triggered session swap changes _currentSessionId
 	// out from under it.
 	private _deriveConversationFilename(): string {
@@ -3219,7 +3219,7 @@ class ClaudeChatProvider {
 		if (!this._currentSessionId) { return; }
 
 		try {
-			// Filename is normally re-derived every save; pinned once a compact (#36)
+			// Filename is normally re-derived every save; pinned once a compact (fork-issue-36)
 			// has swapped in a new session, so the conversation keeps saving to the same
 			// file instead of splitting when _currentSessionId changes underneath it.
 			let filename = this._deriveConversationFilename();
@@ -3269,7 +3269,7 @@ class ClaudeChatProvider {
 	// Resolve the on-disk directory holding this workspace's CLI session transcripts
 	// (~/.claude/projects/<slug>/*.jsonl), so the "CLI Sessions" list can surface
 	// conversations started directly from a `claude` terminal instead of this
-	// extension (#37). Skipped for WSL workspaces — those transcripts live inside the
+	// extension (fork-issue-37). Skipped for WSL workspaces — those transcripts live inside the
 	// WSL filesystem, not under the Windows home directory this runs against.
 	private async _getCliProjectsDirs(): Promise<string[]> {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
@@ -3292,7 +3292,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	// Send the "CLI Sessions" list for the History panel (#37): sessions found on disk
+	// Send the "CLI Sessions" list for the History panel (fork-issue-37): sessions found on disk
 	// for this workspace that aren't already tracked in this extension's own
 	// _conversationIndex (or the currently active session). Read-only and best-effort
 	// throughout — the JSONL format is CLI-internal and unstable, so any failure here
@@ -3401,7 +3401,7 @@ class ClaudeChatProvider {
 	}
 
 	// Best-effort preview of the last ~20 user/assistant messages in a CLI session,
-	// for display only when resuming one (#37) — read from just the last 512KB of the
+	// for display only when resuming one (fork-issue-37) — read from just the last 512KB of the
 	// file so a long-running CLI session doesn't require loading its full transcript.
 	private async _readCliSessionPreview(filePath: string): Promise<Array<{ role: 'user' | 'assistant', text: string }>> {
 		const collected: Array<{ role: 'user' | 'assistant', text: string }> = [];
@@ -3450,7 +3450,7 @@ class ClaudeChatProvider {
 	}
 
 	// Resume a CLI session (~/.claude/projects/<slug>/<sid>.jsonl) picked from the
-	// "CLI Sessions" list (#37). Mirrors the state reset in _newSession(), minus the
+	// "CLI Sessions" list (fork-issue-37). Mirrors the state reset in _newSession(), minus the
 	// process kill — there's nothing to kill, since a CLI session was never spawned
 	// by this extension. Only sets _currentSessionId so the next real message resumes
 	// it via the unchanged --resume send path; the preview posted below is display-only
@@ -3480,7 +3480,7 @@ class ClaudeChatProvider {
 		this._totalTokensOutput = 0;
 		this._requestCount = 0;
 
-		// Manual compact (#36): clear any in-flight/pending compaction state so the
+		// Manual compact (fork-issue-36): clear any in-flight/pending compaction state so the
 		// resumed session starts clean.
 		this._commits = [];
 		this._compactInProgress = false;
@@ -3686,7 +3686,7 @@ class ClaudeChatProvider {
 		const pid = processToKill?.pid;
 		this._permLog(`killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
 
-		// Manual compact (#36): a kill always ends any in-flight summarize turn. The
+		// Manual compact (fork-issue-36): a kill always ends any in-flight summarize turn. The
 		// seed must go too — after a completed compaction it is consumed before the
 		// next spawn, so the only state where it can still be set here is a stop
 		// mid-summarize (result already parsed, close not yet fired). Leaving it
@@ -3818,7 +3818,7 @@ class ClaudeChatProvider {
 			this._totalTokensOutput = conversationData.totalTokens?.output || 0;
 
 			// Resume this conversation's own CLI session instead of leaving _currentSessionId
-			// pointing at whatever conversation was active before this one was opened (#41) —
+			// pointing at whatever conversation was active before this one was opened (fork-issue-41) —
 			// otherwise the next turn resumes the wrong session, and the following save
 			// overwrites it with this conversation's messages. Only trusted if its transcript
 			// file still exists (case-insensitive slug dirs, same check _resumeCliSession uses
@@ -3845,13 +3845,13 @@ class ClaudeChatProvider {
 				}
 			}
 			this._currentSessionId = resumedSessionId;
-			// A #36 pin only belongs to the conversation it was created for — drop it
+			// A fork-issue-36 pin only belongs to the conversation it was created for — drop it
 			// (and the checkpoint SHAs) when switching to a different saved conversation,
 			// keep it when re-loading the same one.
 			if (this._lastSavedFilename !== filename) {
 				this._pinnedConversationFilename = undefined;
 				// Same conditional: re-loading the open conversation keeps its checkpoint
-				// SHAs restorable; only switching conversations drops them (#41).
+				// SHAs restorable; only switching conversations drops them (fork-issue-41).
 				this._commits = [];
 			}
 			this._lastSavedFilename = filename;
@@ -4390,7 +4390,7 @@ class ClaudeChatProvider {
 	}
 
 	private _executeSlashCommand(command: string): void {
-		// Handle /compact via the summarize-and-restart flow (#36) instead of sending a
+		// Handle /compact via the summarize-and-restart flow (fork-issue-36) instead of sending a
 		// literal "/compact" to the CLI — the headless CLI has no real /compact.
 		if (command === 'compact') {
 			this._startCompact();
@@ -4426,7 +4426,7 @@ class ClaudeChatProvider {
 		});
 	}
 
-	// Manual compact (#36): kicks off the summarize turn on the current (full-context)
+	// Manual compact (fork-issue-36): kicks off the summarize turn on the current (full-context)
 	// session. The actual state transition happens in _finishCompact, driven by the
 	// close handler once that turn's process exits.
 	private _startCompact(): void {
@@ -4446,7 +4446,7 @@ class ClaudeChatProvider {
 		this._sendMessageToClaude(COMPACT_PROMPT, undefined, { compact: true });
 	}
 
-	// Manual compact (#36): called once the summarize turn's process has exited
+	// Manual compact (fork-issue-36): called once the summarize turn's process has exited
 	// (success or not). Pins the conversation filename and arms a forced-fresh-session
 	// for the next _sendMessageToClaude() call regardless of outcome — a failed
 	// summarize (e.g. a context-limit error) still needs a guaranteed way out of a

@@ -83,7 +83,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
 
-		// #46 (upstream #98): raw text handed to parseSimpleMarkdown for each
+		// fork-issue-46 (upstream #98): raw text handed to parseSimpleMarkdown for each
 		// rendered claude/user message, keyed by that message's root div. The
 		// copy button (copyMessageContent) reads from here instead of the
 		// rendered DOM, so Markdown render artifacts — e.g. <ol>/<li> letting
@@ -201,7 +201,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 
-			// #46: remember the raw source text for the copy button, when given.
+			// fork-issue-46: remember the raw source text for the copy button, when given.
 			if (rawText !== undefined) {
 				messageRawText.set(messageDiv, rawText);
 			}
@@ -3523,7 +3523,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyMessageContent(messageDiv) {
 			const contentDiv = messageDiv.querySelector('.message-content');
 			if (contentDiv) {
-				// #46 (upstream #98): prefer the raw source text the message was
+				// fork-issue-46 (upstream #98): prefer the raw source text the message was
 				// rendered from over the rendered DOM. contentDiv.innerText re-derives
 				// list numbering etc. from the live <ol>/<li> markup, which can
 				// mismatch or duplicate the original Markdown digits. Falls back to
@@ -3803,7 +3803,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 
 				case 'compactSeparator':
-					// Manual compact (#36): the backend already reset its own token
+					// Manual compact (fork-issue-36): the backend already reset its own token
 					// counters; mirror that here so the status bar doesn't linger at
 					// the pre-compact value.
 					totalTokensInput = 0;
