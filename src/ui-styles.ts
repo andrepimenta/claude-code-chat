@@ -3682,6 +3682,15 @@ const styles = `
         transform: translateY(0);
     }
 
+    .status-text .ctx-warn {
+        color: var(--vscode-editorWarning-foreground);
+    }
+
+    .status-text .ctx-crit {
+        color: var(--vscode-editorError-foreground);
+        font-weight: 600;
+    }
+
     .status-text .usage-icon {
         width: 12px;
         height: 12px;

@@ -1029,6 +1029,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let totalCost = 0;
 		let totalTokensInput = 0;
 		let totalTokensOutput = 0;
+		let currentContextTokens = 0;
 		let requestCount = 0;
 		let isProcessing = false;
 		let requestStartTime = null;
@@ -1062,6 +1063,33 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			vscode.postMessage({ type: 'viewUsage', usageType: usageType });
 		}
 
+		// Approximate context-window size per model, used to turn currentContextTokens
+		// into a percentage for the status bar (fork-issue-27). Best-effort approximation,
+		// not the model's authoritative limit — router models use context_length from
+		// the recommended-models catalog. Native opus/sonnet use the standard 200K
+		// context window; 'default' and unknown models fall back to the same
+		// conservative 200K (underestimating only warns early).
+		function getContextWindow(model) {
+			const nativeWindows = { opus: 200000, sonnet: 200000, 'default': 200000 };
+			if (nativeWindows[model]) {
+				return nativeWindows[model];
+			}
+			const recommended = (window.__recommendedModels || []).find(function(m) { return m.id === model; });
+			return (recommended && recommended.context_length) || 200000;
+		}
+
+		// Builds the "Ctx 12,345 / ~200K (62%)" status-bar fragment, with a warning/
+		// critical class once usage crosses 80%/95% (fork-issue-27). Empty string when there's no
+		// context reading yet, so the status line looks exactly like before in that case.
+		function getContextIndicatorHtml() {
+			if (!currentContextTokens || currentContextTokens <= 0) return '';
+			const win = getContextWindow(currentModel);
+			const pct = win > 0 ? Math.round((currentContextTokens / win) * 100) : 0;
+			const ctxClass = pct >= 95 ? ' class="ctx-crit"' : pct >= 80 ? ' class="ctx-warn"' : '';
+			const winStr = win >= 1000000 ? \`\${Math.round(win / 1000000)}M\` : \`\${Math.round(win / 1000)}K\`;
+			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
+		}
+
 		function updateStatusWithTotals() {
 			if (isProcessing) {
 				// While processing, show elapsed time (and tokens for non-OpenCredits users)
@@ -1076,13 +1104,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show tokens and elapsed time
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-					statusText = \`Processing • \${tokensStr}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
+					// Regular users: show context usage and elapsed time (fork-issue-27 — the
+					// context indicator replaced the old cumulative token sum here)
+					statusText = \`Processing\${getContextIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
-				updateStatus(statusText, 'processing');
+				updateStatusHtml(statusText, 'processing');
 			} else {
 				// When ready, show full info
 				let usageStr;
@@ -1113,12 +1139,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show tokens, requests, and usage
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					// Regular users: show context usage, requests, and usage (fork-issue-27 — the
+					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
-					statusText = \`Ready • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
+					statusText = \`Ready\${getContextIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				}
 				updateStatusHtml(statusText, 'ready');
 			}
@@ -3550,7 +3574,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					addMessage(message.data, 'system');
 					updateStatusWithTotals();
 					break;
-					
+
+				case '__persistPanelState':
+					vscode.setState({ ...(vscode.getState() || {}), __panel: message.state });
+					break;
+
 				case 'restoreInputText':
 					const inputField = document.getElementById('messageInput');
 					if (inputField && message.data) {
@@ -3560,7 +3588,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						inputField.style.height = Math.min(inputField.scrollHeight, 200) + 'px';
 					}
 					break;
-					
+
+				case 'insertContext': {
+					const field = document.getElementById('messageInput');
+					if (field && message.data) {
+						const existing = field.value;
+						const sep = existing ? (existing.endsWith('\\n') ? '\\n' : '\\n\\n') : '';
+						field.value = existing + sep + message.data;
+						field.focus();
+						const endPos = field.value.length;
+						field.setSelectionRange(endPos, endPos);
+						field.dispatchEvent(new Event('input', { bubbles: true }));
+					}
+					break;
+				}
+
 				case 'output':
 					if (message.data.trim()) {
 						let displayData = message.data;
@@ -3685,7 +3727,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Update token totals in real-time
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
-					
+					currentContextTokens = message.data.currentContextTokens || currentContextTokens;
+
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
@@ -3757,6 +3800,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					totalCost = 0;
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					requestCount = 0;
 					updateStatusWithTotals();
 					break;
@@ -3771,6 +3815,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Reset token counts since conversation was compacted
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					updateStatusWithTotals();
 
 					const preTokens = message.data.preTokens ? message.data.preTokens.toLocaleString() : 'unknown';

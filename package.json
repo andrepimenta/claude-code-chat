@@ -60,6 +60,17 @@
         "title": "Open Claude Code Chat",
         "category": "Claude Code Chat",
         "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.newChat",
+        "title": "New Claude Chat (Separate)",
+        "category": "Claude Code Chat",
+        "icon": "icon-bubble.png"
+      },
+      {
+        "command": "claude-code-chat.addSelectionToChat",
+        "title": "Add Selection to Claude Chat",
+        "category": "Claude Code Chat"
       }
     ],
     "keybindings": [
@@ -73,6 +84,12 @@
       "commandPalette": [
         {
           "command": "claude-code-chat.openChat"
+        },
+        {
+          "command": "claude-code-chat.newChat"
+        },
+        {
+          "command": "claude-code-chat.addSelectionToChat"
         }
       ],
       "editor/context": [
@@ -80,12 +97,22 @@
           "command": "claude-code-chat.openChat",
           "group": "claude@1",
           "when": "editorTextFocus"
+        },
+        {
+          "command": "claude-code-chat.addSelectionToChat",
+          "group": "claude@2",
+          "when": "editorHasSelection"
         }
       ],
       "editor/title": [
         {
           "command": "claude-code-chat.openChat",
           "group": "navigation@1",
+          "when": "true"
+        },
+        {
+          "command": "claude-code-chat.newChat",
+          "group": "navigation@2",
           "when": "true"
         }
       ],
@@ -113,6 +140,11 @@
           "command": "claude-code-chat.openChat",
           "group": "navigation@1",
           "when": "view == workbench.explorer.fileView"
+        },
+        {
+          "command": "claude-code-chat.newChat",
+          "group": "navigation@1",
+          "when": "view == claude-code-chat.chat"
         }
       ],
       "touchBar": [
