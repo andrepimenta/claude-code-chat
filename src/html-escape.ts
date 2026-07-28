@@ -1,4 +1,4 @@
-// Attribute escaping for the webview (#49). script.ts' escapeHtml() serializes via
+// Attribute escaping for the webview (fork-issue-49). script.ts' escapeHtml() serializes via
 // textContent->innerHTML and therefore leaves " and ' UNTOUCHED -- for title="..."/data-*="..."
 // that isn't enough (attribute breakout). This function is NOT called here: script.ts
 // splices only its own compiled text into the page via .toString() (same pattern as
@@ -15,7 +15,7 @@ export function escapeAttr(value: unknown): string {
 		.replace(/'/g, '&#39;');
 }
 
-// #61: escapeAttr() makes href=/src= breakout-safe but doesn't check the scheme -- a
+// fork-issue-61: escapeAttr() makes href=/src= breakout-safe but doesn't check the scheme -- a
 // javascript:-link from third-party data (an MCP registry entry) stays clickable/live.
 // safeHttpUrl() only lets http:/https: through, otherwise an empty string (the caller then
 // omits the attribute/link entirely instead of rendering a dead attribute). The cleanup before

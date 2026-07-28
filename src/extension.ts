@@ -3412,8 +3412,8 @@ class ClaudeChatProvider {
 		});
 	}
 
-	// #59: workspace-then-global fallback (same pattern _updateSettings already used for
-	// this key, via updateWithWorkspaceThenGlobalFallback). Before #59 this only tried
+	// fork-issue-59: workspace-then-global fallback (same pattern _updateSettings already used for
+	// this key, via updateWithWorkspaceThenGlobalFallback). Before fork-issue-59 this only tried
 	// Workspace and swallowed the error into the console -- in a window with no
 	// workspace folder open that meant YOLO mode was never actually persisted, while the
 	// webview's "YOLO Mode enabled!" chat message (script.ts's enableYoloMode()) fired
@@ -3430,7 +3430,7 @@ class ClaudeChatProvider {
 	// logic (e.g. a settings-batch.ts that's out of sync with extension.ts after a
 	// partial deploy, so updateWithWorkspaceThenGlobalFallback itself is undefined) can
 	// also throw, an uncaught rejection here would silently swallow the click with none
-	// of #59's reporting -- exactly the failure class #59 exists to close.
+	// of fork-issue-59's reporting -- exactly the failure class fork-issue-59 exists to close.
 	private async _enableYoloMode(): Promise<void> {
 		try {
 			const config = vscode.workspace.getConfiguration('claudeCodeChat');
@@ -3474,7 +3474,7 @@ class ClaudeChatProvider {
 		for (const [key, value] of Object.entries(settings)) {
 			try {
 				if (key === 'permissions.yoloMode') {
-					// #59: YOLO mode: try workspace first, fall back to global (same
+					// fork-issue-59: YOLO mode: try workspace first, fall back to global (same
 					// helper _enableYoloMode uses).
 					const yoloResult = await updateWithWorkspaceThenGlobalFallback(
 						async () => { await config.update(key, value, vscode.ConfigurationTarget.Workspace); },

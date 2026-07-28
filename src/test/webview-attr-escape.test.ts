@@ -1,17 +1,17 @@
-// PoC/regression tests for #57 (HTML attribute / inline-handler injection via escapeHtml()
-// used in attribute contexts). #49's escapeHtml() serialises through
+// PoC/regression tests for fork-issue-57 (HTML attribute / inline-handler injection via escapeHtml()
+// used in attribute contexts). fork-issue-49's escapeHtml() serialises through
 // textContent->innerHTML and therefore leaves " and ' untouched -- fine for element text
 // content, but not for attribute values (title="...", data-*="...", src="...", href="...",
 // value="...") or for a value embedded as a JS string argument inside an inline
 // onclick="fn('...')" handler. escapeAttr() (also escapes " and ') plus the
-// data-*/this.dataset.* pattern (see #58's renderPermissions) is the fix for both sinks.
+// data-*/this.dataset.* pattern (see fork-issue-58's renderPermissions) is the fix for both sinks.
 //
 // formatFilePath/formatToolInputUI only exist inline inside script.ts's giant getScript()
 // template literal -- never as an importable module, unlike escapeAttr/
 // evaluateCodeBlockCollapse -- so this suite extracts their exact
 // source text from the ACTUAL getScript() output (out/script.js, i.e. the real emitted webview
 // code, not a hand-copied version of the TS source) via extractFunction() (webview-dom-helpers.ts,
-// parser-based since #64), runs it in a vm sandbox with the one stub escapeHtml() needs
+// parser-based since fork-issue-64), runs it in a vm sandbox with the one stub escapeHtml() needs
 // (document.createElement), and parses the resulting HTML string with parse5 -- the same
 // HTML5-spec parser class real browsers use -- to assert no attribute-breakout / inline-handler-
 // breakage survives. Run with `npm run test:webview-attr-escape`.
@@ -65,7 +65,7 @@ function loadSandbox(): Sandbox {
 	return sandbox as unknown as Sandbox;
 }
 
-suite('webview attribute escaping: formatFilePath / formatToolInputUI (#57 PoC)', () => {
+suite('webview attribute escaping: formatFilePath / formatToolInputUI (fork-issue-57 PoC)', () => {
 
 	test('an attribute-breakout file_path (a" onmouseover="alert(1)" zz=") produces no onmouseover attribute anywhere in the emitted element', () => {
 		const sandbox = loadSandbox();
@@ -74,7 +74,7 @@ suite('webview attribute escaping: formatFilePath / formatToolInputUI (#57 PoC)'
 		assert.ok(!findAttr(html, 'onmouseover'), 'emitted HTML must not contain an onmouseover attribute; got: ' + html);
 	});
 
-	test('the same payload also stays contained when passed straight through formatFilePath (the #57 reference sink)', () => {
+	test('the same payload also stays contained when passed straight through formatFilePath (the fork-issue-57 reference sink)', () => {
 		const sandbox = loadSandbox();
 		const payload = 'a" onmouseover="alert(1)" zz="';
 		const html = sandbox.formatFilePath(payload);
@@ -125,14 +125,14 @@ suite('webview attribute escaping: formatFilePath / formatToolInputUI (#57 PoC)'
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #60 PoC: displayMCPServers() built the Edit/Delete buttons' onclick handlers by
+// fork-issue-60 PoC: displayMCPServers() built the Edit/Delete buttons' onclick handlers by
 // interpolating the raw server name (and, for Edit, JSON.stringify(config)) directly into a
-// JS string literal inside an HTML attribute -- with NO escaping at all (not even the #57-era
+// JS string literal inside an HTML attribute -- with NO escaping at all (not even the fork-issue-57-era
 // escapeHtml() mistake). A server name of x'); alert(1); (' from a workspace's own .mcp.json
 // (loaded with _scope: 'project', see extension.ts) broke straight out of
 // editMCPServer('...', ...) and ran arbitrary JS in a CSP of default-src * 'unsafe-inline'
 // 'unsafe-eval'. Fix: name (and scope, for Delete) move into data-* (escapeAttr) +
-// this.dataset.*, same pattern as #57/#58. The config object itself can never be
+// this.dataset.*, same pattern as fork-issue-57/fork-issue-58. The config object itself can never be
 // escapeAttr()'d sanely as a JS-object-literal attribute value, so it no longer touches an
 // attribute at all -- it's kept in a webview-scope map (mcpServerConfigsByName) and
 // editMCPServer looks it up by name.
@@ -175,7 +175,7 @@ class FakeElement {
 	set innerHTML(v: string) { this._innerHTML = v; }
 	appendChild(child: FakeElement): FakeElement { this.children.push(child); return child; }
 	insertAdjacentHTML(): void { /* cosmetic only */ }
-	// #61: renderAllModels()/renderDropdown() wire click handlers via
+	// fork-issue-61: renderAllModels()/renderDropdown() wire click handlers via
 	// listContainer.querySelectorAll(...).forEach(...) -- an empty array is enough here since
 	// none of these PoCs need the click wiring itself, only the innerHTML the sinks produce.
 	querySelectorAll(): FakeElement[] { return []; }
@@ -243,7 +243,7 @@ function renderServerItem(servers: Record<string, unknown>, name: string): { htm
 	return { html: item.innerHTML, sandbox, document };
 }
 
-suite('webview attribute escaping: displayMCPServers / editMCPServer (#60 PoC)', () => {
+suite('webview attribute escaping: displayMCPServers / editMCPServer (fork-issue-60 PoC)', () => {
 
 	test('an attribute-breakout server name (x\'); alert(1); (\') cannot inject extra JS statements -- the onclick text is always the fixed, name-independent dataset call', () => {
 		const payload = 'x\'); alert(1); (\'';
@@ -326,13 +326,13 @@ suite('webview attribute escaping: displayMCPServers / editMCPServer (#60 PoC)',
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #61 Part A PoC: renderDropdown() (the model combo box built by initModelCombo()) and
+// fork-issue-61 Part A PoC: renderDropdown() (the model combo box built by initModelCombo()) and
 // renderAllModels() (the "all models" modal) wrote model.id/model.name/model.owned_by
 // straight into data-id=/data-model-id= attributes and innerHTML text -- with NO escaping at
-// all (not even the #57-era escapeHtml()-in-attribute-context mistake). The models come from
+// all (not even the fork-issue-57-era escapeHtml()-in-attribute-context mistake). The models come from
 // fetch(OPENCREDITS_API_URL + '/v1/models'), a third-party HTTP endpoint outside our control.
 // Fix: escapeAttr() for the data-id/data-model-id attribute values, escapeHtml() for the
-// name/id/owned_by text nodes -- same split as #57's fix.
+// name/id/owned_by text nodes -- same split as fork-issue-57's fix.
 // ─────────────────────────────────────────────────────────────────────────
 
 interface DropdownSandbox {
@@ -342,7 +342,7 @@ interface DropdownSandbox {
 function loadDropdownSandbox(models: unknown[]): { sandbox: DropdownSandbox; dropdown: FakeElement } {
 	const body = getEmittedScriptBody();
 	const dropdown = new FakeElement();
-	// #64 (fixed): extractFunction('escapeAttr') used to also drag in
+	// fork-issue-64 (fixed): extractFunction('escapeAttr') used to also drag in
 	// safeHttpUrl/openFileInEditor/formatFilePath/toggleDiffExpansion/toggleResultExpansion --
 	// escapeAttr's own /'/g regex literal desynced the old brace-matcher's naive quote tracking.
 	// extractFunction is now parser-based (webview-dom-helpers.ts) and returns exactly the
@@ -373,7 +373,7 @@ function loadDropdownSandbox(models: unknown[]): { sandbox: DropdownSandbox; dro
 	return { sandbox: sandbox as unknown as DropdownSandbox, dropdown };
 }
 
-suite('webview attribute escaping: renderDropdown model combo box (#61 Part A PoC)', () => {
+suite('webview attribute escaping: renderDropdown model combo box (fork-issue-61 Part A PoC)', () => {
 
 	test('an attribute-breakout model id stays contained -- no onmouseover attribute survives, and data-id round-trips the exact raw payload', () => {
 		const payload = 'x" onmouseover="alert(1)" y="';
@@ -428,7 +428,7 @@ function loadAllModelsSandbox(): { sandbox: AllModelsSandbox; document: FakeDocu
 	return { sandbox: sandbox as unknown as AllModelsSandbox, document };
 }
 
-suite('webview attribute escaping: renderAllModels "all models" modal (#61 Part A PoC)', () => {
+suite('webview attribute escaping: renderAllModels "all models" modal (fork-issue-61 Part A PoC)', () => {
 
 	test('an attribute-breakout model id stays contained -- no onmouseover attribute survives, and data-model-id round-trips the exact raw payload', () => {
 		const payload = 'x" onmouseover="alert(1)" y="';
@@ -469,7 +469,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (#61 Part 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #61 Part A follow-up: openCreditsModels is overwritten wholesale by
+// fork-issue-61 Part A follow-up: openCreditsModels is overwritten wholesale by
 // resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models') -- the SAME
 // third-party endpoint as renderDropdown/renderAllModels above, just reached indirectly via
 // extension.ts's 'updateRecommendedModels' postMessage -- and renderOpenCreditsModelCards()
@@ -505,7 +505,7 @@ function loadModelCardsSandbox(openCreditsModels: unknown[]): { sandbox: ModelCa
 	return { sandbox: sandbox as unknown as ModelCardsSandbox, document };
 }
 
-suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (#61 Part A follow-up PoC)', () => {
+suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (fork-issue-61 Part A follow-up PoC)', () => {
 
 	test('an <img onerror> payload in model.name renders as inert text, not a live element (the review finding)', () => {
 		const payload = '<img src=x onerror="alert(document.domain)">';
@@ -549,8 +549,8 @@ suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #61 Part B PoC: renderMarketplace() and showMarketplaceDetail() already ran the MCP
-// registry's icon/url values through escapeAttr() (post-#57), making src=/href= itself
+// fork-issue-61 Part B PoC: renderMarketplace() and showMarketplaceDetail() already ran the MCP
+// registry's icon/url values through escapeAttr() (post-fork-issue-57), making src=/href= itself
 // ausbruchsicher -- but neither ever checked the URL SCHEME, so a "javascript:" (or oddly-cased
 // / whitespace-obfuscated) src=/href= still rendered and would execute on click/load. The data
 // comes from registry.modelcontextprotocol.io / mcp.agent-tooling.dev, publishable by anyone.
@@ -604,7 +604,7 @@ function loadMarketplaceSandbox(marketplaceDisplayed: unknown[]): { sandbox: Mar
 	return { sandbox: sandbox as unknown as MarketplaceSandbox, document };
 }
 
-suite('webview attribute escaping: MCP marketplace icon/link schema guard (#61 Part B PoC)', () => {
+suite('webview attribute escaping: MCP marketplace icon/link schema guard (fork-issue-61 Part B PoC)', () => {
 
 	test('renderMarketplace: a "javascript:" icon URL is dropped -- no <img> element, placeholder rendered instead', () => {
 		const { sandbox, document } = loadMarketplaceSandbox([]);
@@ -660,10 +660,10 @@ suite('webview attribute escaping: MCP marketplace icon/link schema guard (#61 P
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #61 Part C PoC: addEnvVariableRow() wrote key/value straight into value="..." with NO
+// fork-issue-61 Part C PoC: addEnvVariableRow() wrote key/value straight into value="..." with NO
 // escaping at all. Self-XSS only (the values come from the user's own extension settings), but
 // a '"' in a saved value truncates the rendered field instead of round-tripping. Fix:
-// escapeAttr(), same pattern as the other #57-era value="..." sinks.
+// escapeAttr(), same pattern as the other fork-issue-57-era value="..." sinks.
 // ─────────────────────────────────────────────────────────────────────────
 
 interface EnvRowSandbox {
@@ -684,7 +684,7 @@ function loadEnvRowSandbox(): { sandbox: EnvRowSandbox; document: FakeDocument }
 	return { sandbox: sandbox as unknown as EnvRowSandbox, document };
 }
 
-suite('webview attribute escaping: addEnvVariableRow (#61 Part C PoC)', () => {
+suite('webview attribute escaping: addEnvVariableRow (fork-issue-61 Part C PoC)', () => {
 
 	test('an attribute-breakout key stays contained -- no onmouseover attribute survives, and value="..." round-trips the exact raw payload', () => {
 		const payload = 'x" onmouseover="alert(1)" y="';
@@ -720,7 +720,7 @@ suite('webview attribute escaping: addEnvVariableRow (#61 Part C PoC)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #62 Part A PoC: copyCodeBlock() read data-raw-code via getAttribute() -- which the browser
+// fork-issue-62 Part A PoC: copyCodeBlock() read data-raw-code via getAttribute() -- which the browser
 // already entity-decodes during HTML parsing, since data-raw-code is built via escapeAttr(code)
 // in parseSimpleMarkdown's codeBodyHtml assembly -- and then ran a SECOND, manual decode pass
 // (.replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')) on
@@ -752,13 +752,13 @@ interface CodeBlockSandbox {
 // skipping math extraction entirely (rather than stubbing extractMathSegments/restoreMathSegments
 // and their katex dependency) keeps the sandbox to exactly the functions the data-raw-code path
 // actually needs: escapeHtml, escapeAttr, normalizeCollapseThreshold, evaluateCodeBlockCollapse,
-// extractCodeBlocks, parseSimpleMarkdown. extractCodeBlocks (#63): parseSimpleMarkdown's
+// extractCodeBlocks, parseSimpleMarkdown. extractCodeBlocks (fork-issue-63): parseSimpleMarkdown's
 // fenced-code-block extraction moved into its own shared function (also used by
 // renderUserMessageContent, see user-message-rawtext.test.ts) -- parseSimpleMarkdown now
 // calls it instead of building the placeholder/collapse/copy-button HTML inline.
 function loadCodeBlockSandbox(): CodeBlockSandbox {
 	const body = getEmittedScriptBody();
-	// restoreCodeBlockPlaceholders (#55): script.ts splices this in via
+	// restoreCodeBlockPlaceholders (fork-issue-55): script.ts splices this in via
 	// `${restoreCodeBlockPlaceholders.toString()}` (build-time, see markdown-restore.ts), so it
 	// appears in the emitted body as an ordinary function declaration extractFunction can find,
 	// same as the others below -- parseSimpleMarkdown calls it to restore __CODEBLOCK_N__.
@@ -799,14 +799,14 @@ function renderCodeBlockRawAttr(code: string): string {
 // value, capturing what it hands to navigator.clipboard.writeText(...).
 function runCopyCodeBlock(dataRawCode: string): string {
 	const body = getEmittedScriptBody();
-	// #64 (fixed): extractFunction is now parser-based and can no longer drag in trailing
+	// fork-issue-64 (fixed): extractFunction is now parser-based and can no longer drag in trailing
 	// functions by misreading a regex literal as an unbalanced quote (copyCodeBlock's own decode
 	// chain has four /pattern/g regex literals). Kept as an explicit start/end/no-trailing-
 	// declaration check anyway, as a belt-and-suspenders regression guard for this one call site.
 	const src = extractFunction(body, 'copyCodeBlock');
 	assert.ok(src.startsWith('function copyCodeBlock(codeId) {'), 'extractFunction(copyCodeBlock) did not start where expected; got: ' + src.slice(0, 80));
 	assert.ok(src.trimEnd().endsWith('}'), 'extractFunction(copyCodeBlock) did not end at a closing brace; got: ' + src.slice(-80));
-	assert.ok(!/\n\s*function\s+\w+\s*\(/.test(src.slice('function copyCodeBlock(codeId) {'.length)), 'extractFunction(copyCodeBlock) appears to have dragged in a trailing function declaration (#64); got: ' + src);
+	assert.ok(!/\n\s*function\s+\w+\s*\(/.test(src.slice('function copyCodeBlock(codeId) {'.length)), 'extractFunction(copyCodeBlock) appears to have dragged in a trailing function declaration (fork-issue-64); got: ' + src);
 	let clipboardText: string | undefined;
 	const sandbox: Record<string, unknown> = {
 		document: {
@@ -833,7 +833,7 @@ function runCopyCodeBlock(dataRawCode: string): string {
 	return clipboardText;
 }
 
-suite('webview attribute escaping: copyCodeBlock double-decode (#62 Part A PoC)', () => {
+suite('webview attribute escaping: copyCodeBlock double-decode (fork-issue-62 Part A PoC)', () => {
 
 	test('a code block literally containing "&quot;" -- the clipboard text matches getAttribute() exactly, no longer double-decoded (the corruption case)', () => {
 		const code = 'literal &quot; entity';
@@ -882,7 +882,7 @@ suite('webview attribute escaping: copyCodeBlock double-decode (#62 Part A PoC)'
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #64: extractFunction() (webview-dom-helpers.ts) used to find a function's source text via
+// fork-issue-64: extractFunction() (webview-dom-helpers.ts) used to find a function's source text via
 // hand-rolled, quote-aware brace matching, which knew about strings and comments but not about
 // regex literals. escapeAttr's own `.replace(/'/g, '&#39;')` made the old scanner see `/` then
 // `'` and misread the apostrophe as a string start, desyncing the brace count for everything
@@ -896,26 +896,26 @@ suite('webview attribute escaping: copyCodeBlock double-decode (#62 Part A PoC)'
 // these tests pin that down for the exact case that triggered it.
 // ─────────────────────────────────────────────────────────────────────────
 
-suite('extractFunction: regex literals containing a quote no longer desync extraction (#64)', () => {
+suite('extractFunction: regex literals containing a quote no longer desync extraction (fork-issue-64)', () => {
 
 	test('extracting escapeAttr returns exactly its own body -- no trailing functions dragged in', () => {
 		const body = getEmittedScriptBody();
 		const src = extractFunction(body, 'escapeAttr');
 		assert.ok(src.startsWith('function escapeAttr('), 'expected the escapeAttr extraction to start with its own signature; got: ' + src.slice(0, 80));
 		assert.ok(src.trimEnd().endsWith('}'), 'expected the escapeAttr extraction to end at a closing brace; got: ' + src.slice(-80));
-		// The #64 bug specifically dragged in these five trailing declarations (in this order) --
+		// The fork-issue-64 bug specifically dragged in these five trailing declarations (in this order) --
 		// see the file header comment above.
 		for (const trailingName of ['safeHttpUrl', 'openFileInEditor', 'formatFilePath', 'toggleDiffExpansion', 'toggleResultExpansion']) {
 			assert.ok(
 				!src.includes('function ' + trailingName + '('),
-				'escapeAttr extraction must not contain a trailing function ' + trailingName + '(...) declaration (#64 regression); got: ' + src
+				'escapeAttr extraction must not contain a trailing function ' + trailingName + '(...) declaration (fork-issue-64 regression); got: ' + src
 			);
 		}
 		// General form of the same check: no OTHER top-level "function NAME(" declaration may
 		// appear anywhere inside the extracted text at all.
 		assert.ok(
 			!/\n\s*function\s+\w+\s*\(/.test(src.slice('function escapeAttr('.length)),
-			'escapeAttr extraction appears to have dragged in a trailing function declaration (#64 regression); got length ' + src.length
+			'escapeAttr extraction appears to have dragged in a trailing function declaration (fork-issue-64 regression); got length ' + src.length
 		);
 		// escapeAttr's own regex literals must still be present verbatim -- proves the fix didn't
 		// achieve a short extraction by truncating early instead of stopping at the right brace.

@@ -1,5 +1,5 @@
-// Placeholder back-substitution for code blocks in parseSimpleMarkdown (#55, a finding
-// from the #47 review). String.replace(placeholder, value) interprets "$&"/"$`"/"$'"/"$$"
+// Placeholder back-substitution for code blocks in parseSimpleMarkdown (fork-issue-55, a finding
+// from the fork-issue-47 review). String.replace(placeholder, value) interprets "$&"/"$`"/"$'"/"$$"
 // in the replacement string as substitution patterns -- a code block whose (already
 // escaped) content happens to contain such a sequence (e.g. shell code with "$'...'")
 // tears the surrounding HTML apart instead of appearing unchanged. restoreMathSegments

@@ -72,7 +72,7 @@ const getPluginsScript = () => `
 				var displayName = formatPluginName(name);
 				var desc = escapeHtml(plugin.description || 'No description');
 				var verified = plugin.verified;
-				// #57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
 				// " unescaped and able to break out of the data-plugin-id attribute below.
 				var safeId = escapeAttr(plugin.installId || name);
 

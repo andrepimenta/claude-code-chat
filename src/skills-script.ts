@@ -22,7 +22,7 @@ const getSkillsScript = () => `
 				var installs = skill.installs || 0;
 				var source = skill.source || '';
 				var installsHtml = installs > 0 ? '<span class="marketplace-item-stars">' + (installs >= 1000 ? (Math.round(installs / 100) / 10) + 'k' : installs) + ' installs</span>' : '';
-				// #57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
 				// " unescaped and able to break out of the data-skill-id attribute below.
 				var safeId = escapeAttr(skill.id || name);
 
@@ -186,7 +186,7 @@ const getSkillsScript = () => `
 				var name = skill.name || skill.skillId || 'Unknown';
 				var installs = skill.installs || 0;
 				var source = skill.source || '';
-				// #57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
 				// " unescaped and able to break out of the data-skill-id attribute below.
 				var safeId = escapeAttr(skill.id || name);
 

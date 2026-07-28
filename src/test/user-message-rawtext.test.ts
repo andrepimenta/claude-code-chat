@@ -1,4 +1,4 @@
-// PoC/regression tests for #63 (user messages rendered via parseSimpleMarkdown + innerHTML, so
+// PoC/regression tests for fork-issue-63 (user messages rendered via parseSimpleMarkdown + innerHTML, so
 // markdown syntax in the user's OWN typed text -- "**", "_", backticks, "#" lines, e.g. a prompt
 // mentioning a path like src/_test_.ts -- got silently reinterpreted as formatting instead of
 // showing up exactly as typed).
@@ -7,13 +7,13 @@
 // instead of parseSimpleMarkdown. renderUserMessageContent keeps prose completely raw (only
 // escapeHtml, never markdown-parsed) but still runs fenced ``` code blocks through the same
 // extractCodeBlocks() machinery parseSimpleMarkdown itself uses -- an earlier, plain-
-// textContent-only version of this fix also flattened code blocks (lost the #48
-// collapse/copy-button/language-label treatment and #62's data-raw-code), which was intentionally excluded from this behavior.
+// textContent-only version of this fix also flattened code blocks (lost the fork-issue-48
+// collapse/copy-button/language-label treatment and fork-issue-62's data-raw-code), which was intentionally excluded from this behavior.
 // Claude's/thinking's own messages are unchanged (parseSimpleMarkdown + innerHTML).
 //
 // These tests exercise the REAL case 'userInput': block's exact source text (extracted from the
 // compiled webview output, not hand-copied) together with the REAL renderUserMessageContent,
-// extractCodeBlocks and addMessage -- so they fail against both the pre-#63 source (wraps
+// extractCodeBlocks and addMessage -- so they fail against both the pre-fork-issue-63 source (wraps
 // everything in <p>/<strong>/<code> via parseSimpleMarkdown) and the intermediate plain-
 // textContent fix (flattens fenced code blocks into literal text), and pass against the current
 // source, without the test itself having to guess which state the repository is in. Run with
@@ -34,20 +34,20 @@ function getEmittedScriptBody(): string {
 }
 
 // Verifies an extractFunction() result actually starts/ends where expected and didn't drag in a
-// trailing declaration (#64, fixed by making extractFunction parser-based) -- kept as a
+// trailing declaration (fork-issue-64, fixed by making extractFunction parser-based) -- kept as a
 // belt-and-suspenders check before building on the extraction.
 function assertCleanExtraction(name: string, src: string, expectedStart: string): void {
 	assert.ok(src.startsWith(expectedStart), 'extractFunction(' + name + ') did not start where expected; got: ' + src.slice(0, 80));
 	assert.ok(src.trimEnd().endsWith('}'), 'extractFunction(' + name + ') did not end at a closing brace; got: ' + src.slice(-80));
 	assert.ok(
 		!/\n\s*function\s+\w+\s*\(/.test(src.slice(expectedStart.length)),
-		'extractFunction(' + name + ') appears to have dragged in a trailing function declaration (#64); got length ' + src.length
+		'extractFunction(' + name + ') appears to have dragged in a trailing function declaration (fork-issue-64); got length ' + src.length
 	);
 }
 
 // Extracts the exact statements inside `case '<caseLabel>': ... break;` (quote-aware would be
 // overkill here -- unlike extractFunction's braces, this case body contains no nested "break;" in
-// any of the pre-#63/intermediate/current source variants, only its own terminating one).
+// any of the pre-fork-issue-63/intermediate/current source variants, only its own terminating one).
 // Verified below via an explicit assertion, same spirit as assertCleanExtraction for
 // extractFunction.
 function extractCaseBlock(source: string, caseLabel: string): string {
@@ -138,9 +138,9 @@ interface UserInputPipelineSandbox {
 }
 
 // Splices together the REAL extracted addMessage/parseSimpleMarkdown/extractCodeBlocks/
-// renderUserMessageContent (same recipe #62's loadCodeBlockSandbox already uses for
+// renderUserMessageContent (same recipe fork-issue-62's loadCodeBlockSandbox already uses for
 // parseSimpleMarkdown's own dependencies) and the REAL case 'userInput': block, wrapped
-// as a callable function. Only addMessage's own free variables that are unrelated to #63 (scroll
+// as a callable function. Only addMessage's own free variables that are unrelated to fork-issue-63 (scroll
 // position, the copy-button raw-text map, the processing indicator, the two error-only helpers)
 // are stubbed -- see the inline comments on each stub below for exactly why each one is safe to
 // skip rather than extract. No timestamp/formatMessageTimestamp here -- that's a separate,
@@ -167,7 +167,7 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 		extractFunction(body, 'escapeAttr'),
 		extractFunction(body, 'normalizeCollapseThreshold'),
 		extractFunction(body, 'evaluateCodeBlockCollapse'),
-		// restoreCodeBlockPlaceholders (#55): script.ts splices this in via
+		// restoreCodeBlockPlaceholders (fork-issue-55): script.ts splices this in via
 		// `${restoreCodeBlockPlaceholders.toString()}` (build-time, see markdown-restore.ts), so it
 		// appears in the emitted body as an ordinary function declaration extractFunction can find --
 		// both parseSimpleMarkdownSrc and renderUserMessageContentSrc below call it.
@@ -176,7 +176,7 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 		parseSimpleMarkdownSrc,
 		renderUserMessageContentSrc,
 		addMessageSrc,
-		// #46's copy-button raw-text store -- addMessage only .set()s into it, never reads it
+		// fork-issue-46's copy-button raw-text store -- addMessage only .set()s into it, never reads it
 		// back, so a real (empty) WeakMap is enough, no extraction needed.
 		'let messageRawText = new WeakMap();',
 		// Scroll-position bookkeeping, entirely orthogonal to what/how the message text renders.
@@ -201,7 +201,7 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 	const sandbox: Record<string, unknown> = {
 		// parseSimpleMarkdown's/renderUserMessageContent's own settings -- math extraction
 		// skipped entirely (none of the payloads below contain "$"/"\("), same simplification
-		// #62's loadCodeBlockSandbox uses.
+		// fork-issue-62's loadCodeBlockSandbox uses.
 		renderMathEnabled: false,
 		collapseLongCodeBlocks: true,
 		collapseCodeBlockLines: 20,
@@ -226,7 +226,7 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 // Runs the REAL case 'userInput': block (as compiled right now) against a mock incoming message
 // and returns the resulting message element's outerHTML. Deliberately does NOT decide itself how
 // the text gets rendered -- that's exactly what's compiled into caseBody, so this genuinely
-// renders the pre-#63 markup-wrapped output against the old source, the flattened-code-block
+// renders the pre-fork-issue-63 markup-wrapped output against the old source, the flattened-code-block
 // output against the intermediate textContent-only fix, and the raw-text-with-real-code-blocks
 // output against the current source, without the test having to know which one it's looking at.
 function renderUserInputMessage(payload: string): string {
@@ -238,7 +238,7 @@ function renderUserInputMessage(payload: string): string {
 	return messagesDiv.lastAppended.outerHTML;
 }
 
-suite('webview user-message raw text rendering (#63)', () => {
+suite('webview user-message raw text rendering (fork-issue-63)', () => {
 
 	test('a markdown-looking payload with no code fence renders as exactly that text -- no <strong>/<em>/<code> elements', () => {
 		const payload = 'Please check **src/_test_.ts** and `foo_bar`';
@@ -286,9 +286,9 @@ suite('webview user-message raw text rendering (#63)', () => {
 		assert.ok(!findAttrOn(html, 'message-content', 'onerror'), 'sanity: message-content itself must not carry an onerror attribute; got: ' + html);
 		const dataRawCode = findAttrOn(html, 'language-js', 'data-raw-code');
 		assert.ok(dataRawCode, 'expected a data-raw-code attribute on the language-js code element; got: ' + html);
-		assert.strictEqual(dataRawCode!.value, 'const x = 1;\n', 'data-raw-code must contain the exact fenced code (#62 -- getAttribute()-equivalent, escapeAttr-escaped); got: ' + html);
+		assert.strictEqual(dataRawCode!.value, 'const x = 1;\n', 'data-raw-code must contain the exact fenced code (fork-issue-62 -- getAttribute()-equivalent, escapeAttr-escaped); got: ' + html);
 		assert.strictEqual(textOn(html, 'code-block-language'), 'js', 'the code block\'s language label must read "js"; got: ' + html);
-		assert.ok(tagExists(html, 'button'), 'expected the code block\'s copy button (#48/#62 copyCodeBlock) to exist; got: ' + html);
+		assert.ok(tagExists(html, 'button'), 'expected the code block\'s copy button (fork-issue-48/fork-issue-62 copyCodeBlock) to exist; got: ' + html);
 	});
 
 	test('an XSS payload INSIDE a fenced code block renders as inert text -- no <img> element anywhere, data-raw-code holds the exact raw code', () => {
@@ -340,8 +340,8 @@ suite('webview user-message raw text rendering (#63)', () => {
 // code-line divs) does not strip "$"/"`"/"'" characters, so a code block whose content
 // contains one of the String.replace(placeholder, string) substitution sequences
 // ("$&"/"$`"/"$'"/"$$") reaches the placeholder-restore step still intact. Both
-// parseSimpleMarkdown and renderUserMessageContent (#63) restore their __CODEBLOCK_N__
-// placeholders via the shared restoreCodeBlockPlaceholders (#55) -- a FUNCTION replacer,
+// parseSimpleMarkdown and renderUserMessageContent (fork-issue-63) restore their __CODEBLOCK_N__
+// placeholders via the shared restoreCodeBlockPlaceholders (fork-issue-55) -- a FUNCTION replacer,
 // immune to this. These tests exercise the REAL, full pipeline (extractCodeBlocks +
 // escapeHtml/escapeAttr + restoreCodeBlockPlaceholders, not a direct unit call to
 // restoreCodeBlockPlaceholders as in markdown-restore.test.ts) through both entry points and
@@ -351,7 +351,7 @@ suite('webview user-message raw text rendering (#63)', () => {
 // appearing more than once and/or a corrupted data-raw-code value.
 // ─────────────────────────────────────────────────────────────────────────
 
-suite('webview code-block restore: "$" substitution patterns cannot corrupt surrounding HTML (#70, full pipeline)', () => {
+suite('webview code-block restore: "$" substitution patterns cannot corrupt surrounding HTML (fork-issue-70, full pipeline)', () => {
 
 	// Covers all four String.replace substitution sequences at once: "$&" (matched substring),
 	// "$`" (pre-match), "$'" (post-match), "$$" (literal "$").

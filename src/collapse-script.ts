@@ -1,6 +1,6 @@
 import { normalizeCollapseThreshold, evaluateCodeBlockCollapse } from './collapse-rules';
 
-// Webview-side glue for the #48 collapsible-code-blocks feature (upstream #151), injected
+// Webview-side glue for the fork-issue-48 collapsible-code-blocks feature (upstream #151), injected
 // into script.ts's getScript() template the same way getMathScript()/getSkillsScript() are
 // (see plugins-script.ts). Two different things happen below and they must not be confused:
 //
@@ -17,7 +17,7 @@ import { normalizeCollapseThreshold, evaluateCodeBlockCollapse } from './collaps
 //    -- but if you add code that does, escape it the same way (see script.ts's
 //    parseSimpleMarkdown for examples).
 const getCollapseScript = () => `
-		// ─── Collapsible code blocks + per-message fold (#48) ───
+		// ─── Collapsible code blocks + per-message fold (fork-issue-48) ───
 		${normalizeCollapseThreshold.toString()}
 		${evaluateCodeBlockCollapse.toString()}
 

@@ -84,13 +84,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
-		// #48 (upstream #151): claudeCodeChat.ui.collapseLongCodeBlocks / .collapseCodeBlockLines.
+		// fork-issue-48 (upstream #151): claudeCodeChat.ui.collapseLongCodeBlocks / .collapseCodeBlockLines.
 		// Must sit up here (let isn't hoisted), even though the rest of the logic
 		// is spliced in further down via \${getCollapseScript()}.
 		let collapseLongCodeBlocks = true;
 		let collapseCodeBlockLines = 20;
 		let attachedImages = []; // Array of { filePath, previewUri }
-		// #59: text for the next 'yoloModeEnabled' response's chat message, set by
+		// fork-issue-59: text for the next 'yoloModeEnabled' response's chat message, set by
 		// enableYoloMode() right before it posts 'enableYoloMode' to the extension host.
 		// The two call sites (inline permission-menu item vs. the standalone chat
 		// button) use different wording, so this can't be a hardcoded string in the
@@ -176,7 +176,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				headerDiv.appendChild(labelDiv);
 				headerDiv.appendChild(copyBtn);
 
-				// #48 (upstream #151): manual collapse of an entire message.
+				// fork-issue-48 (upstream #151): manual collapse of an entire message.
 				// Deliberately inserted AFTER the copy button, because .copy-btn's
 				// margin-left:auto pushes both to the right (ui-styles.ts:1152).
 				const collapseBtn = document.createElement('button');
@@ -194,7 +194,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const contentDiv = document.createElement('div');
 			contentDiv.className = 'message-content';
 			
-			// #63: user messages are pre-rendered by renderUserMessageContent (raw text,
+			// fork-issue-63: user messages are pre-rendered by renderUserMessageContent (raw text,
 			// only fenced code blocks turned into real markup) before reaching here, so
 			// they go through the same contentDiv.innerHTML path as Claude's/thinking's
 			// parseSimpleMarkdown output.
@@ -271,7 +271,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							todo.status === 'in_progress' ? '🔄' : '⏳';
 						todoHtml += '\\n' + status + ' ' + todo.content;
 					}
-					// #49: plain text, no markup -- .tool-input has white-space: pre-line
+					// fork-issue-49: plain text, no markup -- .tool-input has white-space: pre-line
 					contentDiv.textContent = todoHtml;
 				} else {
 					// Format raw input with expandable content for long values
@@ -353,7 +353,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
-		// #62: the dead expandable-input helper (the same "[expand]" placeholder +
+		// fork-issue-62: the dead expandable-input helper (the same "[expand]" placeholder +
 		// data-key/data-value expand-btn pattern) removed as dead code -- unreachable (grep
 		// across src/ + out/ found only its own declaration, no call site, no window[...]/
 		// onclick-string dynamic invocation anywhere) and superseded by formatToolInputUI's own
@@ -497,7 +497,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				html += '<div class="plan-actions-label">Suggested actions:</div>';
 				input.allowedPrompts.forEach(function(p) {
 					var label = p.prompt || (p.tool + ' command');
-					// #57: value moved into data-prompt (escapeAttr) instead of an HTML-entity-
+					// fork-issue-57: value moved into data-prompt (escapeAttr) instead of an HTML-entity-
 					// escaped JS string literal inside onclick -- the old escapeHtml()+manual
 					// &#39; replace still left " unescaped, breaking out of the attribute.
 					html += '<button class="plan-action-btn" data-prompt="' + escapeAttr(label) + '" onclick="sendPlanAction(this.dataset.prompt)" title="' + escapeAttr(p.tool) + '">' + escapeHtml(label) + '</button>';
@@ -534,7 +534,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Special handling for Read tool with file_path
 			if (input.file_path && Object.keys(input).length === 1) {
 				const formattedPath = formatFilePath(input.file_path);
-				// #57: path moved into data-file-path (escapeAttr) + this.dataset.filePath --
+				// fork-issue-57: path moved into data-file-path (escapeAttr) + this.dataset.filePath --
 				// the old escapeHtml() + hand-escaped \' JS-string embed broke on both " (attribute
 				// breakout) and ' (premature end of the JS string argument).
 				return '<div class="diff-file-path" data-file-path="' + escapeAttr(input.file_path) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
@@ -859,12 +859,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return div.innerHTML;
 		}
 
-		// #49: attribute escaping -- escapeHtml() leaves " and ' untouched. Build-time splice
+		// fork-issue-49: attribute escaping -- escapeHtml() leaves " and ' untouched. Build-time splice
 		// (same pattern as math-script/collapse-script) so npm run test:html-escape can
 		// exercise the function under Node. NOTE: this deliberately uses "\${", not "\\\${".
 		${escapeAttr.toString()}
 
-		// #61: schema guard for href=/src= -- escapeAttr() alone lets javascript:-links
+		// fork-issue-61: schema guard for href=/src= -- escapeAttr() alone lets javascript:-links
 		// through untouched. Same build-time splice as escapeAttr directly above.
 		${safeHttpUrl.toString()}
 
@@ -922,7 +922,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function toggleExpand(button) {
 			const key = button.getAttribute('data-key') || '';
-			// #49: getAttribute() already returns decoded values -- the manual
+			// fork-issue-49: getAttribute() already returns decoded values -- the manual
 			// &quot;/&#39; unescaping that used to be here was a SECOND decode.
 			const value = button.getAttribute('data-value') || '';
 
@@ -1619,7 +1619,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		let editingServerName = null;
-		// #60: configs keyed by server name -- editMCPServer used to receive the whole config
+		// fork-issue-60: configs keyed by server name -- editMCPServer used to receive the whole config
 		// object JSON.stringify()'d straight into an onclick(...) attribute (a second,
 		// un-escapeAttr-able sink alongside the name itself). The object now stays in JS-land;
 		// only the (escapeAttr'd) name crosses into the attribute. Reset on every
@@ -1914,7 +1914,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			(servers || []).forEach(function(server) {
 				var name = server.name || 'Unknown';
 				var desc = escapeHtml(server.description || 'No description');
-				// #61: no schema guard on the icon URL let a "javascript:" src (or similar)
+				// fork-issue-61: no schema guard on the icon URL let a "javascript:" src (or similar)
 				// through unescaped-but-well-formed -- safeHttpUrl() restricts src= to
 				// http:/https:, falling back to the placeholder instead of a dead src=""
 				var safeIcon = safeHttpUrl(server.icon || '');
@@ -1925,7 +1925,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 				var typeHtml = installType ? '<span class="marketplace-item-type">' + escapeHtml(installType) + '</span>' : '';
 
-				// #57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
 				// " unescaped and able to break out of the data-server attribute below.
 				var safeId = escapeAttr(server.id || name);
 				html += '<div class="marketplace-item" data-server="' + safeId + '" onclick="showMarketplaceDetail(this.dataset.server)">' +
@@ -1973,7 +1973,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			var name = server.name || 'Unknown';
 			var desc = server.description || 'No description available.';
-			// #61: no schema guard on icon/url let "javascript:" through unescaped-but-
+			// fork-issue-61: no schema guard on icon/url let "javascript:" through unescaped-but-
 			// well-formed -- safeHttpUrl() restricts src=/href= to http:/https:, falling
 			// back to the placeholder / omitting the link instead of a dead attribute.
 			var safeIcon = safeHttpUrl(server.icon || '');
@@ -2078,7 +2078,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function displayMCPServers(servers) {
 			const serversList = document.getElementById('mcpServersList');
 			serversList.innerHTML = '';
-			// #60: reset per render so editMCPServer can never resolve a stale/removed server's
+			// fork-issue-60: reset per render so editMCPServer can never resolve a stale/removed server's
 			// config through a name that no longer has a corresponding button.
 			mcpServerConfigsByName = {};
 
@@ -2117,12 +2117,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 
 				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : 'Extension';
-				// #60: name/config moved out of the inline onclick -- a name containing a single
+				// fork-issue-60: name/config moved out of the inline onclick -- a name containing a single
 				// quote used to break straight out of editMCPServer('...') into the attribute,
 				// and JSON.stringify(config) was a second, un-escapeAttr-able sink. The config
 				// now lives only in mcpServerConfigsByName; editMCPServer looks it up by name,
 				// which itself travels through data-server-name (escapeAttr) + this.dataset,
-				// same pattern as #57/#58.
+				// same pattern as fork-issue-57/fork-issue-58.
 				mcpServerConfigsByName[name] = config;
 				const serverActionsHtml = \`<button class="btn outlined server-edit-btn" data-server-name="\${escapeAttr(name)}" onclick="editMCPServer(this.dataset.serverName)">Edit</button>
 						<button class="btn outlined server-delete-btn" data-server-name="\${escapeAttr(name)}" data-server-scope="\${escapeAttr(serverScope)}" onclick="deleteMCPServer(this.dataset.serverName, this.dataset.serverScope)">Delete</button>\`;
@@ -2220,7 +2220,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (moreBtn) moreBtn.style.display = '';
 			if (modelDropdown) modelDropdown.style.display = 'none';
 
-			// #61 follow-up: openCreditsModels is the same third-party-sourced
+			// fork-issue-61 follow-up: openCreditsModels is the same third-party-sourced
 			// data as renderOpenCreditsModelCards()'s model-card sink below -- this function is
 			// safe not because of the data source but because it never builds an HTML string:
 			// setAttribute()/textContent/a real function assigned to .onclick all treat their
@@ -2291,7 +2291,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					}
 				}
 
-				// #61 follow-up: openCreditsModels is overwritten wholesale by
+				// fork-issue-61 follow-up: openCreditsModels is overwritten wholesale by
 				// resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models')
 				// -- the same third-party endpoint as renderDropdown/renderAllModels -- and
 				// renderOpenCreditsModelCards() runs unconditionally on that update, with no
@@ -2553,7 +2553,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}) : models;
 
 				var html = filtered.slice(0, 50).map(function(m) {
-					// #61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+					// fork-issue-61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
 					// third-party HTTP endpoint -- data-id is an attribute value (escapeAttr),
 					// the name/id text goes into innerHTML (escapeHtml).
 					return '<div class="model-combo-option" data-id="' + escapeAttr(m.id) + '">' +
@@ -2701,7 +2701,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				const isSelected = currentModel === model.id;
 				const contextLength = model.context_length ? Math.round(model.context_length / 1000) + 'K' : '';
 
-				// #61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+				// fork-issue-61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
 				// third-party HTTP endpoint -- data-model-id is an attribute value
 				// (escapeAttr), the name/id/owned_by text goes into innerHTML (escapeHtml).
 				return '<div class="all-models-item' + (isSelected ? ' selected' : '') + '" data-model-id="' + escapeAttr(model.id) + '">' +
@@ -3576,7 +3576,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyCodeBlock(codeId) {
 			const codeElement = document.getElementById(codeId);
 			if (codeElement) {
-				// #62: getAttribute() already returns the entity-decoded value (the browser
+				// fork-issue-62: getAttribute() already returns the entity-decoded value (the browser
 				// decodes data-raw-code's escapeAttr()-produced entities during HTML parsing --
 				// see the escapedCode assembly in parseSimpleMarkdown) -- there used to be a
 				// second, manual decode pass here that mangled code literally containing the
@@ -3654,7 +3654,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						// #63: raw text except fenced code blocks -- see
+						// fork-issue-63: raw text except fenced code blocks -- see
 						// renderUserMessageContent (near parseSimpleMarkdown).
 						addMessage(renderUserMessageContent(message.data), 'user');
 					}
@@ -3707,7 +3707,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 					
 				case 'yoloModeEnabled':
-					// #59: confirmation only arrives here after the extension host
+					// fork-issue-59: confirmation only arrives here after the extension host
 					// actually persisted permissions.yoloMode (workspace, or global as
 					// fallback) -- the chat message moved here (out of enableYoloMode())
 					// so it can no longer fire before/regardless of that write.
@@ -3716,7 +3716,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 
 				case 'yoloModeEnableFailed':
-					// #59: both the workspace and global config.update() attempts threw
+					// fork-issue-59: both the workspace and global config.update() attempts threw
 					// -- surface it in-chat too, not just via the extension host's native
 					// error notification, and never show the "enabled" message. The raw
 					// host error (message.error) deliberately does NOT go into this
@@ -4212,7 +4212,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			menu.style.display = isVisible ? 'none' : 'block';
 		}
 
-		// #52: consolidated enableYoloMode - there used to be two separate
+		// fork-issue-52: consolidated enableYoloMode - there used to be two separate
 		// enableYoloMode function declarations in this scope; the later one
 		// silently won, so the argument-less inline chat button call hit
 		// getElementById('permissionMenu-undefined') and threw. With a
@@ -4227,7 +4227,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// permissions.yoloMode and replies with settingsData, whose handler
 		// (~6147/~6150) sets the checkbox and calls updateYoloWarning().
 		//
-		// #59: the "enabled" chat message used to fire right here, unconditionally,
+		// fork-issue-59: the "enabled" chat message used to fire right here, unconditionally,
 		// the moment the button was clicked -- independent of whether
 		// _enableYoloMode() on the extension host actually managed to persist
 		// anything (it had no global fallback, so with no workspace folder open the
@@ -4534,7 +4534,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		updateStatus('Initializing...', 'disconnected');
 
-		// #55: restoreCodeBlockPlaceholders (the call site is further down in
+		// fork-issue-55: restoreCodeBlockPlaceholders (the call site is further down in
 		// parseSimpleMarkdown) -- build-time splice (same pattern as math-script/collapse-script/
 		// html-escape) so npm run test:markdown-restore can exercise the function under
 		// Node. The next line splices the compiled function source via toString()
@@ -4545,10 +4545,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// __CODEBLOCK_N__ placeholder and returning the already-rendered code-block HTML
 		// (collapse wrapper, language label, copy button, data-raw-code) for each -- shared by
 		// parseSimpleMarkdown (Claude/thinking messages, full markdown) and
-		// renderUserMessageContent (#63, revised: user messages stay raw text except fenced code
-		// blocks, which keep the #48 collapse/copy-button/language-label treatment). Pure
+		// renderUserMessageContent (fork-issue-63, revised: user messages stay raw text except fenced code
+		// blocks, which keep the fork-issue-48 collapse/copy-button/language-label treatment). Pure
 		// extraction out of parseSimpleMarkdown -- same regex, same per-block HTML as before, so
-		// #62's getAttribute('data-raw-code')-via-escapeAttr guarantee still holds for both
+		// fork-issue-62's getAttribute('data-raw-code')-via-escapeAttr guarantee still holds for both
 		// callers, each restoring its own __CODEBLOCK_N__ placeholders afterwards.
 		function extractCodeBlocks(markdown) {
 			// Store code blocks temporarily to protect them from further processing
@@ -4570,11 +4570,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				// Create unique ID for this code block
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
-				// #57: escapeAttr (was escapeHtml() + a manual "\"" -> "&quot;" patch that left
+				// fork-issue-57: escapeAttr (was escapeHtml() + a manual "\"" -> "&quot;" patch that left
 				// "'" unescaped) for the data-raw-code attribute below.
 				const escapedCode = escapeAttr(code);
 
-				// #48 (upstream #151): blocks over the threshold become <details>;
+				// fork-issue-48 (upstream #151): blocks over the threshold become <details>;
 				// shorter ones stay character-for-character as before.
 				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
 				const copyGuard = collapseInfo.collapse ? 'event.preventDefault();event.stopPropagation();' : '';
@@ -4607,7 +4607,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			let processedMarkdown = codeBlockExtraction.text;
 			const codeBlockPlaceholders = codeBlockExtraction.placeholders;
 
-			// #40 (upstream #63): escape raw HTML in the remaining prose before any
+			// fork-issue-40 (upstream #63): escape raw HTML in the remaining prose before any
 			// further markdown processing. contentDiv.innerHTML = content (addMessage)
 			// renders this output as real DOM, so an unescaped tag like "<select>" in
 			// Claude's/the user's text gets parsed as HTML and an unbalanced tag can
@@ -4700,7 +4700,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (inUnorderedList) html += '</ul>';
 			if (inOrderedList) html += '</ol>';
 
-			// Restore code block placeholders. #55: restoreCodeBlockPlaceholders (spliced
+			// Restore code block placeholders. fork-issue-55: restoreCodeBlockPlaceholders (spliced
 			// above) uses function-replacement, not html.replace(placeholder, str) --
 			// otherwise "$&"/"$\`"/"$'"/"$$" inside a code block would be interpreted as
 			// String.replace substitution patterns and tear the surrounding HTML apart.
@@ -4709,22 +4709,22 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return html;
 		}
 
-		// #63 (revised after further review): user messages stay raw text -- "**", "_", "#" lines,
+		// fork-issue-63 (revised after further review): user messages stay raw text -- "**", "_", "#" lines,
 		// single backticks, paths like src/_test_.ts must show up exactly as typed -- EXCEPT
-		// fenced triple-backtick code blocks, which keep the #48 collapse/copy-button/
+		// fenced triple-backtick code blocks, which keep the fork-issue-48 collapse/copy-button/
 		// language-label treatment (the plain textContent-only approach also flattened those,
 		// which was intentionally excluded from this behavior). Reuses extractCodeBlocks() -- the exact same function
-		// parseSimpleMarkdown calls above -- so the code-block HTML (incl. #62's
+		// parseSimpleMarkdown calls above -- so the code-block HTML (incl. fork-issue-62's
 		// data-raw-code via escapeAttr) is only ever built in one place. The remaining
 		// prose is only escapeHtml()'d, never markdown-parsed, so it's set via
 		// contentDiv.innerHTML same as Claude's messages, but nothing outside a fenced block can
 		// ever be interpreted as markup. Newlines are left untouched (escapeHtml doesn't touch
 		// them) -- CSS (.message.user .message-content, white-space: pre-wrap) renders them as
 		// line breaks.
-		// Placeholder restore reuses restoreCodeBlockPlaceholders() (#55, spliced above), the
+		// Placeholder restore reuses restoreCodeBlockPlaceholders() (fork-issue-55, spliced above), the
 		// same function-replacement parseSimpleMarkdown calls above -- a direct
 		// html.replace(placeholder, str) here would have the same "$&"/"$\`"/"$'"/"$$"
-		// tear-the-HTML-apart bug #55 fixed, just newly duplicated in this function instead.
+		// tear-the-HTML-apart bug fork-issue-55 fixed, just newly duplicated in this function instead.
 		function renderUserMessageContent(text) {
 			const codeBlockExtraction = extractCodeBlocks(text);
 			const escapedProse = escapeHtml(codeBlockExtraction.text);
@@ -5359,7 +5359,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
-				// #48 (upstream #151): reconcile defaults. settingsData arrives AFTER the
+				// fork-issue-48 (upstream #151): reconcile defaults. settingsData arrives AFTER the
 				// history replay (extension.ts _loadConversationHistory -> _sendReadyMessage),
 				// so the default is applied retroactively here to every block the user
 				// hasn't touched yet.

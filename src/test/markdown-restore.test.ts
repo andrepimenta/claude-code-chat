@@ -1,13 +1,13 @@
-// Unit tests for the #55 code-block restore loop (restoreCodeBlockPlaceholders), the
+// Unit tests for the fork-issue-55 code-block restore loop (restoreCodeBlockPlaceholders), the
 // __CODEBLOCK_N__ half of parseSimpleMarkdown's placeholder dance. Pure (no vscode, no
 // network, no DOM), so these run under plain mocha against the compiled out/ output --
 // same pattern as diff-utils/shell-utils/auto-model-switch/math-segments/collapse-rules/
-// html-escape. #47's review found that the loop used html.replace(placeholder, str),
+// html-escape. fork-issue-47's review found that the loop used html.replace(placeholder, str),
 // a plain STRING as the 2nd argument -- String.replace treats "$&"/"$`"/"$'"/"$$" in a
 // string replacement as substitution patterns, so a code block whose (already-escaped)
 // content happens to contain one of those sequences tears the surrounding HTML apart
 // instead of being reinserted unchanged. restoreMathSegments (math-script.ts) already used
-// function-replacement for exactly this reason when #47 introduced it; this fixes the
+// function-replacement for exactly this reason when fork-issue-47 introduced it; this fixes the
 // code-block loop to match. The first suite covers ordinary multi-placeholder restores,
 // the second is the regression suite for each substitution pattern individually plus one
 // combined case, and the third is the splice-sandbox test that proves the function still
@@ -35,7 +35,7 @@ suite('markdown-restore: restoreCodeBlockPlaceholders (basic)', () => {
 	});
 });
 
-suite('markdown-restore: restoreCodeBlockPlaceholders ($ substitution patterns, #55)', () => {
+suite('markdown-restore: restoreCodeBlockPlaceholders ($ substitution patterns, fork-issue-55)', () => {
 
 	test('"$&" (matched-substring pattern) in the code block value survives unchanged, not the matched placeholder', () => {
 		const codeHtml = '<pre class="code-block"><code>echo $&amp; run in background</code></pre>';

@@ -1,4 +1,4 @@
-// Pure threshold/line-count logic for the #48 collapsible-code-blocks feature (upstream
+// Pure threshold/line-count logic for the fork-issue-48 collapsible-code-blocks feature (upstream
 // #151): decides whether a fenced code block parseSimpleMarkdown is about to render should
 // start collapsed, based on its line count and the configured threshold. No vscode import,
 // so this runs under plain mocha like diff-utils/shell-utils/auto-model-switch/math-segments.

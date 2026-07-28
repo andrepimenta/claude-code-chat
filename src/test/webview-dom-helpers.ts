@@ -1,8 +1,8 @@
 // Shared extraction/DOM-inspection helpers for the webview vm-sandbox test suites
 // (webview-attr-escape.test.ts, user-message-rawtext.test.ts). Both files extracted
-// hand-copied duplicates of these five functions; pulled out here per #64.
+// hand-copied duplicates of these five functions; pulled out here per fork-issue-64.
 //
-// #64: extractFunction() used to find a function's source text via hand-rolled, quote-aware
+// fork-issue-64: extractFunction() used to find a function's source text via hand-rolled, quote-aware
 // brace matching. That scanner knew about strings and // and /* */ comments, but not about
 // regex literals -- escapeAttr's own `.replace(/'/g, '&#39;')` made the scanner see `/` then
 // `'` and misread the apostrophe as a string start, desyncing the brace count for everything

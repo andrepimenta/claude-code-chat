@@ -1,16 +1,16 @@
-// #59: permissions.yoloMode's workspace-then-global fallback, pulled into its own pure
+// fork-issue-59: permissions.yoloMode's workspace-then-global fallback, pulled into its own pure
 // function so both _enableYoloMode (the inline "Enable Yolo Mode" chat button / menu
-// item, #52) and _updateSettings's existing per-key handling of the same setting key
+// item, fork-issue-52) and _updateSettings's existing per-key handling of the same setting key
 // can share one implementation instead of keeping two copies of the same try/catch in
 // extension.ts. No vscode import here, so this runs under plain mocha. Run with
 // `npm run test:settings-batch`.
 //
 // Note: upstream (fork) also has an applySettingsBatch helper in this module for a
-// separate, unrelated fix (#56, whole-settings-batch loop resilience) that is not part
+// separate, unrelated fix (fork-issue-56, whole-settings-batch loop resilience) that is not part
 // of this security-hardening branch and is intentionally not included here.
 
 // Turns whatever a rejected update callback threw into a plain string, the same way the
-// pre-#59 code's 'err=' + (error?.message || error) string-concatenation did (Error
+// pre-fork-issue-59 code's 'err=' + (error?.message || error) string-concatenation did (Error
 // instances and message-bearing objects use .message; anything else -- a thrown string,
 // undefined, a plain object -- coerces the same way String() / template-literal
 // interpolation would), so a caller like extension.ts's _permLog never has to guard
@@ -40,14 +40,14 @@ export interface WorkspaceThenGlobalFallbackResult {
 	globalError?: string;
 }
 
-// #59: permissions.yoloMode's workspace-then-global fallback, pulled into its own pure
+// fork-issue-59: permissions.yoloMode's workspace-then-global fallback, pulled into its own pure
 // function so both _enableYoloMode (the inline "Enable Yolo Mode" chat button / menu
-// item, #52) and _updateSettings's existing per-key handling of the same setting key
+// item, fork-issue-52) and _updateSettings's existing per-key handling of the same setting key
 // can share one implementation instead of keeping two copies of the same try/catch in
 // extension.ts. extension.ts still owns the actual vscode.workspace config.update()
 // calls via the injected callbacks.
 //
-// Before #59, _enableYoloMode had no global fallback at all and its bare catch only
+// Before fork-issue-59, _enableYoloMode had no global fallback at all and its bare catch only
 // logged to the extension host's console -- in a window with no workspace folder open,
 // config.update(..., Workspace) throws, _sendCurrentSettings() (and therefore the
 // webview) never found out, and the setting was silently never persisted. The chat

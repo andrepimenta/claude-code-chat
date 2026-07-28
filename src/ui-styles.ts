@@ -1141,7 +1141,7 @@ const styles = `
         background-color: var(--vscode-list-hoverBackground);
     }
 
-    /* Manual per-message collapse (#48, upstream #151) */
+    /* Manual per-message collapse (fork-issue-48, upstream #151) */
     .message-collapse-btn {
         background: transparent;
         border: none;
@@ -1205,12 +1205,12 @@ const styles = `
         padding-left: 6px;
     }
 
-    /* #63: user messages render their prose as raw text nodes (no <p> wrapper), so pre-wrap is
+    /* fork-issue-63: user messages render their prose as raw text nodes (no <p> wrapper), so pre-wrap is
        needed to keep newlines/multi-space visible; break-word stops long unbroken tokens (paths,
        URLs) from overflowing. line-height: 1.6 matches .message p's (ui-styles.ts, ~line 4045),
        which no longer applies here since the prose text isn't wrapped in <p> anymore -- without
        this, user messages would fall back to .messages' line-height: 1.4 and look tighter than
-       before #63 (a review finding). Code blocks inside a user message keep their own
+       before fork-issue-63 (a review finding). Code blocks inside a user message keep their own
        .message-content pre.code-block { white-space: pre } untouched -- that rule targets the
        <pre> element directly, which always wins over inherited pre-wrap from this ancestor. */
     .message.user .message-content {
@@ -1298,7 +1298,7 @@ const styles = `
         background: none;
     }
 
-    /* Collapsible long code blocks (#48, upstream #151). The <summary> keeps the
+    /* Collapsible long code blocks (fork-issue-48, upstream #151). The <summary> keeps the
        .code-block-header class so all existing and compact-mode rules still
        apply unchanged; only marker/cursor/flow styling is added. */
     details.code-block-container > summary.code-block-header {
