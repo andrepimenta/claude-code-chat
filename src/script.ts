@@ -1670,9 +1670,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (!config) {
 				return;
 			}
+
+			// Data-leak fix: clear out whatever the previous add/edit left behind (e.g. a
+			// stdio server's args/env) before populating this server's own values below --
+			// otherwise fields this config doesn't set (the "if (config.args...)" etc. checks
+			// further down) keep the previous server's leftover values and "Update Server"
+			// silently writes them into this server's config.
+			resetAddServerFormFields();
 			editingServerName = name;
 
-			// Hide add button and popular servers
+			// Hide add button, popular servers and the server list itself
 			// fork-issue-65 (review): 'addServerBtn' has no matching id="..." anywhere in the emitted
 			// HTML (pre-existing, predates fork-issue-65 -- the "+ Add manually" buttons carry no id at all).
 			// Without this guard, the TypeError on the next line aborted editMCPServer() before it
@@ -1682,7 +1689,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				addServerBtnEl.style.display = 'none';
 			}
 			document.getElementById('popularServers').style.display = 'none';
-			
+			// showAddServerForm() hides this too -- editMCPServer() opens the same form and
+			// needs to hide it the same way, or the list stays visible behind the form.
+			document.getElementById('mcpServersList').style.display = 'none';
+
 			// Show form
 			document.getElementById('addServerForm').style.display = 'block';
 			

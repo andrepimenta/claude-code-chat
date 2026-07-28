@@ -1507,3 +1507,48 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 		assert.strictEqual(posted[0].scope, 'global', 'must be exactly the scope picked in #mcpInstallScope -- must not silently come out as "extension" (inherited from the abandoned edit via a stale editingServerName) NOR as "" (a broken read); got: ' + JSON.stringify(posted[0]));
 	});
 });
+
+suite('webview MCP server form: editMCPServer() no longer leaks the previous edit\'s form fields into the next one', () => {
+
+	// Concrete data-leak scenario: server A (stdio, args/env set) is opened for editing, then --
+	// without Cancel or Save in between -- server B (stdio, no args/env of its own) is opened too.
+	// editMCPServer() only ever conditionally *sets* #serverArgs/#serverEnv ("if (config.args...)"
+	// etc.), it never clears them first, so B's form silently kept A's leftover values; "Update
+	// Server" for B would then have written A's args/env into B's config.
+	test('editing server B right after server A (no Cancel/Save in between) clears A\'s leftover args/env, does not carry them into B\'s form', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({
+			a: { type: 'stdio', command: 'echo', args: ['--foo'], env: { FOO: 'bar' }, _scope: 'project' },
+			b: { type: 'stdio', command: 'ls', _scope: 'project' },
+		});
+		sandbox.editMCPServer('a');
+		assert.strictEqual(document.getElementById('serverArgs')!.value, '--foo', 'sanity check: editMCPServer(\'a\') must have populated its own args');
+		assert.strictEqual(document.getElementById('serverEnv')!.value, 'FOO=bar', 'sanity check: editMCPServer(\'a\') must have populated its own env');
+		sandbox.editMCPServer('b');
+		assert.strictEqual(document.getElementById('serverArgs')!.value, '', 'the data leak: #serverArgs must be cleared for B, not still showing A\'s "--foo"');
+		assert.strictEqual(document.getElementById('serverEnv')!.value, '', 'the data leak: #serverEnv must be cleared for B, not still showing A\'s "FOO=bar"');
+	});
+
+	test('the concrete failure mode: "Update Server" for B right after editing A must not write A\'s args into B\'s config', () => {
+		const { sandbox, document, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({
+			a: { type: 'stdio', command: 'echo', args: ['--foo'], env: { FOO: 'bar' }, _scope: 'project' },
+			b: { type: 'stdio', command: 'ls', _scope: 'project' },
+		});
+		sandbox.editMCPServer('a');
+		sandbox.editMCPServer('b');
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].name, 'b');
+		const config = posted[0].config as { args?: string[]; env?: Record<string, string> };
+		assert.strictEqual(config.args, undefined, 'B has no args of its own -- must not have inherited A\'s ["--foo"]; got: ' + JSON.stringify(config));
+		assert.strictEqual(config.env, undefined, 'B has no env of its own -- must not have inherited A\'s {FOO: "bar"}; got: ' + JSON.stringify(config));
+	});
+
+	test('editMCPServer() hides #mcpServersList too, same as showAddServerForm() already does', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'project' } });
+		sandbox.editMCPServer('srv');
+		assert.strictEqual(document.getElementById('mcpServersList')!.style.display, 'none', '#mcpServersList must be hidden while the edit form is open, not left showing behind it');
+	});
+});
