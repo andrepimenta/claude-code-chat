@@ -1,7 +1,7 @@
-// Unit tests for the #50 checkpoint-restore fix (isValidCommitSha,
+// Unit tests for the fork-issue-50 checkpoint-restore fix (isValidCommitSha,
 // findRehydratedCommitInfo). Pure (no vscode, no network, no filesystem access), so
 // these run under plain mocha against the compiled out/ output -- same pattern as
-// diff-utils/shell-utils/auto-model-switch. The actual "does this commit still exist"
+// diff-utils/model-updater. The actual "does this commit still exist"
 // check (git cat-file -e against the shadow backup repo) stays in extension.ts,
 // untested here, same as diff-utils' git-show baseline read. Run with
 // `npm run test:restore-commit-utils`.

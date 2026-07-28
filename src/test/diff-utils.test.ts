@@ -1,8 +1,8 @@
-// Unit tests for the #38 turn-diff helpers (WSL path mapping, workspace-relative
+// Unit tests for the fork-issue-38 turn-diff helpers (WSL path mapping, workspace-relative
 // path resolution, binary detection, baseline URI construction). All pure (no
 // vscode, no network, no filesystem access), so these run under plain mocha against
-// the compiled out/ output -- same pattern as the shell-utils/auto-model-switch unit
-// tests. Run with `npm run test:diff-utils`.
+// the compiled out/ output -- same pattern as the model-updater unit tests. Run with
+// `npm run test:diff-utils`.
 
 import * as assert from 'assert';
 import {
@@ -18,7 +18,7 @@ import {
 suite('diff-utils: mapWslPathToWindows', () => {
 
 	test('maps /mnt/c/... to C:\\...', () => {
-		assert.strictEqual(mapWslPathToWindows('/mnt/c/Users/Roman/foo.ts'), 'C:\\Users\\Roman\\foo.ts');
+		assert.strictEqual(mapWslPathToWindows('/mnt/c/Users/example/foo.ts'), 'C:\\Users\\example\\foo.ts');
 	});
 
 	test('maps other drive letters too (e.g. /mnt/d)', () => {
@@ -26,15 +26,15 @@ suite('diff-utils: mapWslPathToWindows', () => {
 	});
 
 	test('is case-insensitive on the drive letter and normalizes it to uppercase', () => {
-		assert.strictEqual(mapWslPathToWindows('/mnt/C/Users/Roman/foo.ts'), 'C:\\Users\\Roman\\foo.ts');
+		assert.strictEqual(mapWslPathToWindows('/mnt/C/Users/example/foo.ts'), 'C:\\Users\\example\\foo.ts');
 	});
 
 	test('leaves an already-Windows path unchanged', () => {
-		assert.strictEqual(mapWslPathToWindows('C:\\Users\\Roman\\foo.ts'), 'C:\\Users\\Roman\\foo.ts');
+		assert.strictEqual(mapWslPathToWindows('C:\\Users\\example\\foo.ts'), 'C:\\Users\\example\\foo.ts');
 	});
 
 	test('leaves a non-/mnt Linux path unchanged (not a WSL-mapped drive)', () => {
-		assert.strictEqual(mapWslPathToWindows('/home/roman/foo.ts'), '/home/roman/foo.ts');
+		assert.strictEqual(mapWslPathToWindows('/home/user/foo.ts'), '/home/user/foo.ts');
 	});
 });
 

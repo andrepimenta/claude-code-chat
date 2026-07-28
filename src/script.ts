@@ -81,7 +81,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let attachedImages = []; // Array of { filePath, previewUri }
 
-		// #38: request a real VS Code diff (checkpoint-before-turn vs. the live file) for
+		// fork-issue-38: request a real VS Code diff (checkpoint-before-turn vs. the live file) for
 		// one Edit/MultiEdit/Write message. filePath/messageIndex come from the clicked
 		// button's own dataset (see generateUnifiedDiffHTML/formatMultiEditToolDiff), not
 		// a shared pending-edit slot, so the button keeps working after tool_result and
@@ -243,7 +243,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Format raw input with expandable content for long values
 					// Use diff format for Edit, MultiEdit, and Write tools, regular format for others
 					if (data.toolName === 'Edit' || data.toolName === 'MultiEdit' || data.toolName === 'Write') {
-						// #38: the Open Diff button stays visible after tool_result and after a
+						// fork-issue-38: the Open Diff button stays visible after tool_result and after a
 						// history reload -- it only needs a valid messageIndex (used to look up
 						// the pre-turn checkpoint on the host side), not the live-only,
 						// optimistic fileContentBefore read.
@@ -317,7 +317,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 
-			// #38: the Open Diff button on the request no longer gets hidden when its
+			// fork-issue-38: the Open Diff button on the request no longer gets hidden when its
 			// result arrives -- it stays available (and auto-open, if enabled, has
 			// already opened/updated the same turn diff by the time this runs).
 
@@ -1021,13 +1021,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// Approximate context-window size per model, used to turn currentContextTokens
-		// into a percentage for the status bar (#27). Best-effort approximation, not the
+		// into a percentage for the status bar (fork-issue-27). Best-effort approximation, not the
 		// model's authoritative limit — router models use context_length from the
-		// recommended-models catalog. Native fable/opus/sonnet are the 1M-token variants
-		// per user decision (this setup runs on those); 'default' and unknown models
-		// fall back to a conservative 200K (underestimating only warns early).
+		// recommended-models catalog. 'default' and unknown models fall back to a
+		// conservative 200K (underestimating only warns early).
 		function getContextWindow(model) {
-			const nativeWindows = { fable: 1000000, opus: 1000000, sonnet: 1000000, 'default': 200000 };
+			const nativeWindows = { opus: 200000, sonnet: 200000, 'default': 200000 };
 			if (nativeWindows[model]) {
 				return nativeWindows[model];
 			}
@@ -1036,7 +1035,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// Builds the "Ctx 12,345 / ~200K (62%)" status-bar fragment, with a warning/
-		// critical class once usage crosses 80%/95% (#27). Empty string when there's no
+		// critical class once usage crosses 80%/95% (fork-issue-27). Empty string when there's no
 		// context reading yet, so the status line looks exactly like before in that case.
 		function getContextIndicatorHtml() {
 			if (!currentContextTokens || currentContextTokens <= 0) {
@@ -1049,8 +1048,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
 		}
 
-		// Builds the "5h 42% · Week 18% · Opus 30%" status-bar fragment (#35), same
-		// structure/escaping as the #27 Ctx indicator above. Opus/Sonnet are the
+		// Builds the "5h 42% · Week 18% · Opus 30%" status-bar fragment (fork-issue-35), same
+		// structure/escaping as the fork-issue-27 Ctx indicator above. Opus/Sonnet are the
 		// per-model weekly buckets (seven_day_opus/seven_day_sonnet); each renders
 		// only when the account's usage data actually includes it. Empty string when
 		// there's no usage data yet.
@@ -1107,7 +1106,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show context usage and elapsed time (#27 — the
+					// Regular users: show context usage and elapsed time (fork-issue-27 — the
 					// context indicator replaced the old cumulative token sum here)
 					statusText = \`Processing\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
@@ -1142,7 +1141,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show context usage, requests, and usage (#27 — the
+					// Regular users: show context usage, requests, and usage (fork-issue-27 — the
 					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
@@ -3758,7 +3757,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 
 				case 'usageLimits':
-					// Store session-usage / weekly-limit snapshot (#35) and refresh the status bar
+					// Store session-usage / weekly-limit snapshot (fork-issue-35) and refresh the status bar
 					latestUsage = message.data || null;
 					updateStatusWithTotals();
 					break;
@@ -4896,7 +4895,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
-			// #38: auto-open a turn diff after a successful Edit/MultiEdit/Write
+			// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 			const diffAutoOpen = document.getElementById('diff-auto-open').checked;
 
 			// Collect environment variables from key-value UI
@@ -5195,7 +5194,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
-				// #38: auto-open a turn diff after a successful Edit/MultiEdit/Write
+				// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 				document.getElementById('diff-auto-open').checked = message.data['diff.autoOpen'] !== false;
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];

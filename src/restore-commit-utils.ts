@@ -1,4 +1,4 @@
-// Pure helpers for the #50 checkpoint-restore fix: after a history load switches
+// Pure helpers for the fork-issue-50 checkpoint-restore fix: after a history load switches
 // conversations, extension.ts's in-memory _commits list is cleared (see
 // _loadConversationHistory) even though the replayed showRestoreOption messages still
 // show a working Restore button for a checkpoint that still exists in the shadow
@@ -24,7 +24,7 @@ export function isValidCommitSha(sha: string): boolean {
 
 // Recovers a commit's display info (message/timestamp for the restore toasts) from the
 // matching showRestoreOption entry replayed into _currentConversation, for a sha that
-// _commits no longer knows about (#50: cleared by a history load that switched
+// _commits no longer knows about (fork-issue-50: cleared by a history load that switched
 // conversations). Only called once the caller has independently confirmed sha still
 // exists in the backup repo -- this never claims a sha exists, only recovers its
 // metadata, and falls back to a minimal placeholder built from the sha itself when no

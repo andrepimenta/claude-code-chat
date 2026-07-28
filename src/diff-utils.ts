@@ -1,10 +1,10 @@
-// Pure helpers for the #38 turn-diff feature (real vscode.diff view comparing the
+// Pure helpers for the fork-issue-38 turn-diff feature (real vscode.diff view comparing the
 // pre-turn checkpoint against the live file). No vscode import, so these run under
-// plain mocha like shell-utils/auto-model-switch/model-updater -- extension.ts owns
-// all the side effects (git exec, workspace lookup, vscode.Uri/vscode.diff) and just
-// feeds paths/buffers through these functions.
+// plain mocha like model-updater -- extension.ts owns all the side effects (git exec,
+// workspace lookup, vscode.Uri/vscode.diff) and just feeds paths/buffers through
+// these functions.
 
-// Maps a WSL-reported path (e.g. /mnt/c/Users/Roman/foo.ts, as seen in tool_use
+// Maps a WSL-reported path (e.g. /mnt/c/Users/example/foo.ts, as seen in tool_use
 // rawInput.file_path when claudeCodeChat.wsl.enabled is on) back to the real Windows
 // path VS Code and git need. Only rewrites an actual /mnt/<drive>/... path; anything
 // else (already a Windows path, or a Linux path outside /mnt) is returned unchanged.
@@ -24,7 +24,7 @@ export function mapWslPathToWindows(filePath: string): string {
 // case-insensitive on Windows, where the filesystem is case-insensitive but tool
 // input paths and the workspace folder path aren't guaranteed to agree on casing.
 // Returns undefined when filePath isn't inside workspaceRoot ("not mappable"), which
-// also covers filePath being the workspace root itself (opus review FIX 4: a
+// also covers filePath being the workspace root itself (review FIX 4: a
 // directory has no checkpointed blob to diff against, so treat it the same as
 // "outside the workspace" instead of handing callers a '' relPath).
 export function toWorkspaceRelativePath(filePath: string, workspaceRoot: string): string | undefined {
@@ -88,7 +88,7 @@ export function buildTurnDiffUriParts(sha: string, relPath: string): TurnDiffUri
 	};
 }
 
-// Inverse of buildTurnDiffUriParts (opus review FIX 3): recovers (sha, relPath) from
+// Inverse of buildTurnDiffUriParts (review FIX 3): recovers (sha, relPath) from
 // a claude-diff URI's own (path, query), so DiffContentProvider can resolve a cache
 // miss -- a tab restored via "Reopen Closed Editor" or a VS Code restart, after the
 // in-memory diffContentStore is gone -- without needing any other state. vscode.Uri

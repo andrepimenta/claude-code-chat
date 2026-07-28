@@ -17,7 +17,7 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
-// Undocumented endpoint for session-usage / weekly-limit percentages (#35). The
+// Undocumented endpoint for session-usage / weekly-limit percentages (fork-issue-35). The
 // server responds 429 to requests without a recognized User-Agent, hence pinning
 // one that matches a real claude-code CLI release.
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
@@ -27,7 +27,7 @@ const USAGE_USER_AGENT = 'claude-code/2.1.218';
 const KNOWN_ENDPOINT_MARKERS = ['opencredits.ai', 'localhost:8787'];
 
 const exec = util.promisify(cp.exec);
-// Used only for the #38 turn-diff `git show` call: relPath is derived from a tool's
+// Used only for the fork-issue-38 turn-diff `git show` call: relPath is derived from a tool's
 // file_path (Claude-controlled), so it goes through execFile's argv array instead of
 // exec's shell string -- no shell means embedded quotes/metacharacters in a path can't
 // break out into a second command, unlike the pre-existing exec() checkpoint calls
@@ -35,14 +35,14 @@ const exec = util.promisify(cp.exec);
 // git already produced itself, or this._backupRepoPath/workspacePath.
 const execFile = util.promisify(cp.execFile);
 
-// File target for [perm] diagnostics (#15): console.error of an installed
+// File target for [perm] diagnostics (fork-issue-15): console.error of an installed
 // extension is only visible in the DevTools console, which makes field
 // debugging of the stdio permission channel impossible — mirror it to a file.
 const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
 
 // Storage for diff content (used by DiffContentProvider). Keyed by turnDiffCacheKey()
 // (path+query) so two turns diffing the same relPath under different checkpoint SHAs
-// don't collide on the same entry. Bounded (opus review FIX 3): entries used to be
+// don't collide on the same entry. Bounded (review FIX 3): entries used to be
 // removed by an onDidCloseTextDocument listener, which neither fired for every tab
 // lifecycle (e.g. vscode.diff throwing after the entry was already stored) nor could
 // ever help resolve a cache miss -- a tab restored via "Reopen Closed Editor" or a VS
@@ -63,11 +63,11 @@ function cacheTurnDiffContent(key: string, content: string): void {
 	diffContentStore.set(key, content);
 }
 
-// Custom TextDocumentContentProvider for read-only diff views (#38 turn diff: serves
+// Custom TextDocumentContentProvider for read-only diff views (fork-issue-38 turn diff: serves
 // the pre-turn checkpoint content as the left/baseline side of vscode.diff). Content
 // is normally already cached (written by _openTurnDiff right before vscode.diff is
 // invoked), but a cache miss -- e.g. a claude-diff tab restored via "Reopen Closed
-// Editor" or after a VS Code restart, see opus review FIX 3 -- is resolved on demand
+// Editor" or after a VS Code restart, see review FIX 3 -- is resolved on demand
 // through the injected resolver, using only the (sha, relPath) already baked into the
 // URI itself (see parseTurnDiffUriParts), so the provider needs no other state.
 class DiffContentProvider implements vscode.TextDocumentContentProvider {
@@ -99,7 +99,7 @@ class DiffContentProvider implements vscode.TextDocumentContentProvider {
 	}
 }
 
-// #38 turn diff guards: `git show` is capped at a generous hard limit so a huge
+// fork-issue-38 turn diff guards: `git show` is capped at a generous hard limit so a huge
 // checkpointed file can't hang/OOM the exec call, but anything still over the much
 // smaller display limit (or binary) falls back to opening the file directly instead
 // of stuffing megabytes of text into a virtual document.
@@ -128,8 +128,8 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
 	// Register custom content provider for read-only diff views. Wired to the primary
-	// provider's baseline resolver (opus review FIX 3) -- extra panels from "New Claude
-	// Chat (Separate)" (#24) share the same extension context, so they resolve to the
+	// provider's baseline resolver (review FIX 3) -- extra panels from "New Claude
+	// Chat (Separate)" (fork-issue-24) share the same extension context, so they resolve to the
 	// same backup repo anyway; a claude-diff tab has no panel of its own to route to.
 	const diffProvider = new DiffContentProvider((sha, relPath) => provider.resolveTurnDiffBaselineForProvider(sha, relPath));
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
@@ -249,7 +249,7 @@ class ClaudeChatProvider {
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	// Session-usage / weekly-limit snapshot from the undocumented oauth/usage endpoint
-	// (#35), shown next to the #27 context indicator. Account-wide, not session-scoped
+	// (fork-issue-35), shown next to the fork-issue-27 context indicator. Account-wide, not session-scoped
 	// — deliberately not reset in _newSession()/sessionCleared. sevenDayOpus/
 	// sevenDaySonnet are the per-model-tier weekly buckets (CLI schema names, not
 	// display labels).
@@ -263,7 +263,7 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
-	// #38 turn diff auto-open: files already auto-diffed in the current turn, so
+	// fork-issue-38 turn diff auto-open: files already auto-diffed in the current turn, so
 	// repeated edits to the same file don't keep reopening/refocusing the tab. Reset
 	// at the start of every turn in _sendMessageToClaude.
 	private _autoOpenedDiffFilesThisTurn: Set<string> = new Set();
@@ -320,7 +320,7 @@ class ClaudeChatProvider {
 	}
 
 	/**
-	 * [perm] diagnostics (#15): mirror to console AND a temp file, because the
+	 * [perm] diagnostics (fork-issue-15): mirror to console AND a temp file, because the
 	 * console of an installed extension host is not persisted anywhere readable.
 	 * Logging must never break the extension — swallow all fs errors.
 	 */
@@ -514,7 +514,7 @@ class ClaudeChatProvider {
 			});
 		}
 
-		// Send (possibly cached) session-usage / weekly-limit percentages (#35)
+		// Send (possibly cached) session-usage / weekly-limit percentages (fork-issue-35)
 		void this._maybeSendUsageLimits();
 
 		// Send platform information to webview
@@ -1004,7 +1004,7 @@ class ClaudeChatProvider {
 
 		this._isProcessing = true;
 
-		// #38 turn diff auto-open: fresh per-turn dedup set for this new turn.
+		// fork-issue-38 turn diff auto-open: fresh per-turn dedup set for this new turn.
 		this._autoOpenedDiffFilesThisTurn = new Set<string>();
 
 		// Clear draft message since we're sending it
@@ -1657,11 +1657,11 @@ class ClaudeChatProvider {
 								});
 							}
 
-							// #38: auto-open a turn diff after a successful Edit/MultiEdit/Write,
+							// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write,
 							// once per file per turn (see _autoOpenedDiffFilesThisTurn reset in
 							// _sendMessageToClaude). Manual "Open Diff" clicks go through the same
 							// _openTurnDiff but aren't gated by the setting or this dedup set.
-							// trigger: 'auto' (opus review FIX 1) -- Claude sessions routinely edit
+							// trigger: 'auto' (review FIX 1) -- Claude sessions routinely edit
 							// files outside the workspace (scratchpad, ~/.claude memory, etc.), so
 							// _openTurnDiff failing here is the ordinary case, not something to
 							// interrupt the user with a toast/focus-stealing showTextDocument for.
@@ -1744,7 +1744,7 @@ class ClaudeChatProvider {
 						}
 					});
 
-					// #35/#54: refresh session-usage / weekly-limit percentages alongside the
+					// fork-issue-35/fork-issue-54: refresh session-usage / weekly-limit percentages alongside the
 					// existing totals update. The finished turn just consumed usage, so the
 					// 5-minute throttle would show stale percentages for exactly the update
 					// the user is watching — bypass it, with a 30s floor so rapid-fire turns
@@ -1762,7 +1762,7 @@ class ClaudeChatProvider {
 				break;
 
 			case 'rate_limit_event': {
-				// #35: learn the five-hour window's reset time from the CLI's own
+				// fork-issue-35: learn the five-hour window's reset time from the CLI's own
 				// rate-limit events, as a fallback for when the usage endpoint's
 				// response doesn't include one for that window.
 				const rateLimitType = jsonData.rate_limit_info?.rateLimitType;
@@ -1967,7 +1967,7 @@ class ClaudeChatProvider {
 
 	private async _restoreToCommit(commitSha: string): Promise<void> {
 		try {
-			// #50: commitSha can arrive rehydrated from a loaded conversation's
+			// fork-issue-50: commitSha can arrive rehydrated from a loaded conversation's
 			// persisted JSON, not only from same-session git output -- validate
 			// before it can reach any git command below.
 			if (!isValidCommitSha(commitSha)) {
@@ -1980,7 +1980,7 @@ class ClaudeChatProvider {
 
 			let commit = this._commits.find(c => c.sha === commitSha);
 
-			// #50: a history load that switches conversations clears _commits but
+			// fork-issue-50: a history load that switches conversations clears _commits but
 			// still replays this commit's showRestoreOption message, so its Restore
 			// button outlives this lookup. Confirm the sha against the shadow backup
 			// repo instead and rehydrate the display info from the replayed entry.
@@ -3803,7 +3803,7 @@ class ClaudeChatProvider {
 	}
 
 	// Reads the CLI's OAuth access token from ~/.claude/.credentials.json for the
-	// undocumented usage endpoint (#35). Read-only: never touches refreshToken, never
+	// undocumented usage endpoint (fork-issue-35). Read-only: never touches refreshToken, never
 	// logs the token, never sends it to the webview. Any failure (file missing, parse
 	// error) yields null.
 	private async _readOAuthAccessToken(): Promise<string | null> {
@@ -3819,7 +3819,7 @@ class ClaudeChatProvider {
 	}
 
 	// Fetch session-usage / weekly-limit percentages from the undocumented oauth/usage
-	// endpoint (#35). Best-effort: any failure (missing token, network error,
+	// endpoint (fork-issue-35). Best-effort: any failure (missing token, network error,
 	// unexpected response shape) yields null instead of throwing, so the caller can
 	// keep serving a stale cache.
 	private async _fetchUsageLimits(): Promise<typeof this._usageLimits | null> {
@@ -3894,7 +3894,7 @@ class ClaudeChatProvider {
 				result.sevenDaySonnet = sevenDaySonnet;
 			}
 
-			// #35: newer accounts return the per-model weekly windows only as
+			// fork-issue-35: newer accounts return the per-model weekly windows only as
 			// limits[] entries (kind "weekly_scoped" with a model scope) while the
 			// legacy seven_day_opus/seven_day_sonnet fields stay null. Top-level
 			// fields win when both are present.
@@ -3926,7 +3926,7 @@ class ClaudeChatProvider {
 	}
 
 	// Pushes a (possibly cached) usage-limits snapshot to the webview, throttled to at
-	// most one real fetch every 5 minutes (#35). Gated on subscription type: API and
+	// most one real fetch every 5 minutes (fork-issue-35). Gated on subscription type: API and
 	// OpenCredits users have no session/weekly limits to show.
 	private async _maybeSendUsageLimits(): Promise<void> {
 		if (!this._subscriptionType) {
@@ -4219,10 +4219,10 @@ class ClaudeChatProvider {
 		}
 	}
 
-	// #38 turn diff: walks _currentConversation backwards from messageIndex (inclusive)
+	// fork-issue-38 turn diff: walks _currentConversation backwards from messageIndex (inclusive)
 	// to the nearest showRestoreOption entry, which is the checkpoint commit made right
 	// before this turn's user message (_createBackupCommit runs before every turn). Works
-	// both live and after a history reload -- unlike _commits (#50), _currentConversation
+	// both live and after a history reload -- unlike _commits (fork-issue-50), _currentConversation
 	// is exactly what gets persisted/reloaded, so the index lines up either way.
 	private _findTurnBaselineSha(messageIndex: number): string | undefined {
 		const start = Math.min(messageIndex, this._currentConversation.length - 1);
@@ -4260,7 +4260,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	// opus review FIX 2: distinguishes a genuinely new file (nothing existed at the
+	// review FIX 2: distinguishes a genuinely new file (nothing existed at the
 	// checkpoint yet) from a file that's simply gitignored in the shadow backup repo
 	// (_createBackupCommit's `add -A` silently skips ignored paths) -- both produce the
 	// identical `does not exist in <tree>` from `git show`, but only the first should
@@ -4290,9 +4290,9 @@ class ClaudeChatProvider {
 	// returns it as a UTF-8 string, or throws when there's nothing sane to show. Shared
 	// by _openTurnDiff (manual/auto "open diff", already knows workspaceFolder/sha from
 	// the live call) and resolveTurnDiffBaselineForProvider (a DiffContentProvider
-	// cache miss, opus review FIX 3) so both go through the identical git-show +
+	// cache miss, review FIX 3) so both go through the identical git-show +
 	// classification + guards, and BOM-stripping only has to happen in one place
-	// (opus review FIX 5). Never returns a silently-wrong baseline -- callers each
+	// (review FIX 5). Never returns a silently-wrong baseline -- callers each
 	// decide what "failure" means for their UI (fallback toast/permLog vs. a generic
 	// VS Code tab error).
 	private async _resolveTurnDiffBaseline(backupRepoPath: string, workTreePath: string, sha: string, relPath: string): Promise<string> {
@@ -4306,7 +4306,7 @@ class ClaudeChatProvider {
 			content = stdout;
 		} catch (error: any) {
 			const stderrText = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr || error?.message || '');
-			// opus review FIX 2: `exists on disk, but not in <tree>` is deliberately NOT
+			// review FIX 2: `exists on disk, but not in <tree>` is deliberately NOT
 			// treated as "new file" below. Best effort only: whether git emits that
 			// message (vs. plain `does not exist in`) depends on the process cwd seeing
 			// the on-disk file, so e.g. a case-only mismatch (Src/ vs src/) is not
@@ -4335,11 +4335,11 @@ class ClaudeChatProvider {
 		}
 
 		// VS Code strips the BOM from the real file's text model, keep both sides
-		// consistent (opus review FIX 5).
+		// consistent (review FIX 5).
 		return content.toString('utf8').replace(/^\uFEFF/, '');
 	}
 
-	// Public seam for DiffContentProvider's injected resolver (opus review FIX 3,
+	// Public seam for DiffContentProvider's injected resolver (review FIX 3,
 	// wired up in activate()) -- reuses the same backup-repo baseline lookup
 	// _openTurnDiff uses, keyed only by the (sha, relPath) already encoded in a
 	// claude-diff tab's own URI, so a tab restored via "Reopen Closed Editor" or a VS
@@ -4353,12 +4353,12 @@ class ClaudeChatProvider {
 		return this._resolveTurnDiffBaseline(this._backupRepoPath, workspaceFolder.uri.fsPath, sha, relPath);
 	}
 
-	// #38: opens a real VS Code diff -- the checkpoint from right before this turn
+	// fork-issue-38: opens a real VS Code diff -- the checkpoint from right before this turn
 	// (left, read-only virtual document served from the shadow backup repo via
 	// DiffContentProvider) against the actual file on disk (right, live/editable, so
 	// later edits in the same turn keep showing up in the same tab). Shared by the
 	// manual "Open Diff" button and the auto-open after a successful tool_result;
-	// `trigger` picks which of the two _openTurnDiffFallback behaves as (opus review
+	// `trigger` picks which of the two _openTurnDiffFallback behaves as (review
 	// FIX 1).
 	private async _openTurnDiff(filePath: string, messageIndex: number, trigger: 'manual' | 'auto'): Promise<void> {
 		const resolvedPath = mapWslPathToWindows(filePath);
@@ -4376,7 +4376,7 @@ class ClaudeChatProvider {
 		}
 
 		// toWorkspaceRelativePath also returns undefined when resolvedPath IS the
-		// workspace root itself (opus review FIX 4) -- a directory has no checkpointed
+		// workspace root itself (review FIX 4) -- a directory has no checkpointed
 		// blob to diff against, so it's handled the same as "outside the workspace".
 		const relPath = toWorkspaceRelativePath(resolvedPath, workspaceFolder.uri.fsPath);
 		if (relPath === undefined) {
