@@ -4459,7 +4459,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// tear "x_1 … y_2" apart. Same placeholder approach as the code blocks
 			// above, with its own __CCCMATH_<nonce>_<i>__ prefix so the two extraction
 			// passes can't collide.
-			// Phase 4: guarded by claudeCodeChat.ui.renderMath (renderMathEnabled, default
+			// Guarded by claudeCodeChat.ui.renderMath (renderMathEnabled, default
 			// on) -- off skips extraction so the raw "$"/"\(" text falls through exactly
 			// like before this feature, instead of being replaced with rendered/fallback HTML.
 			let mathExtraction = { text: processedMarkdown, placeholders: [] };
@@ -4552,7 +4552,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (inOrderedList) html += '</ol>';
 
 			// Restore math placeholders before the code-block restore below.
-			// Phase 4: guarded the same way as the extraction step above.
+			// Guarded the same way as the extraction step above.
 			if (renderMathEnabled) {
 				html = restoreMathSegments(html, mathExtraction.placeholders);
 			}
@@ -4894,7 +4894,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
-			// LaTeX rendering (upstream #171) Phase 4: math rendering toggle
+			// LaTeX rendering (upstream #171): math rendering toggle
 			const renderMath = document.getElementById('render-math').checked;
 
 			// Collect environment variables from key-value UI
@@ -5193,7 +5193,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
-				// LaTeX rendering (upstream #171) Phase 4: math rendering toggle, default on
+				// LaTeX rendering (upstream #171): math rendering toggle, default on
 				renderMathEnabled = message.data['ui.renderMath'] !== false;
 				document.getElementById('render-math').checked = renderMathEnabled;
 
