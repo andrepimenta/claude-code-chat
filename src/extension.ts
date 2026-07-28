@@ -10,6 +10,7 @@ import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 import { updateWithWorkspaceThenGlobalFallback } from './settings-batch';
 import { quoteWinShellArgs } from './shell-utils';
+import { getMCPConfigPathForScope } from './mcp-config-path';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -655,6 +656,11 @@ class ClaudeChatProvider {
 				this._loadMCPServers();
 				return;
 			case 'saveMCPServer':
+				// fork-issue-67 (review): `|| 'project'` predates fork-issue-67 (upstream deca7de) and is kept
+				// as-is -- after fork-issue-67 Teil A/B the webview can no longer send an empty scope, so
+				// this is unreachable today, but removing a working fallback here for no present
+				// benefit would just open a fresh failure mode later. See the comment in
+				// src/mcp-config-path.ts (fork-issue-69) for what this used to mean in practice.
 				this._saveMCPServer(message.name, message.config, message.scope || 'project');
 				return;
 			case 'deleteMCPServer':
@@ -2727,26 +2733,18 @@ class ClaudeChatProvider {
 	}
 
 	private _getExtensionMCPConfigPath(): string | undefined {
-		const storagePath = this._context.storageUri?.fsPath;
-		if (!storagePath) { return undefined; }
-		return path.join(storagePath, 'mcp', 'mcp-servers.json');
+		return this._getMCPConfigPathForScope('extension');
 	}
 
+	// fork-issue-69: the scope -> path decision itself now lives in mcp-config-path.ts (pure, no
+	// vscode import, unit-tested); this method just collects the environment values that
+	// module needs and delegates. Behaviour is unchanged from before the extraction.
 	private _getMCPConfigPathForScope(scope: string): string | undefined {
-		// Local scope (fork-issue-39) is owned by the CLI (~/.claude.json → projects);
-		// the extension never writes it. Guard against a future caller falling
-		// through to the extension config path by mistake.
-		if (scope === 'local') { return undefined; }
-		if (scope === 'global') {
-			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-			return homeDir ? path.join(homeDir, '.claude.json') : undefined;
-		}
-		if (scope === 'project') {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-			return workspaceFolder ? path.join(workspaceFolder, '.mcp.json') : undefined;
-		}
-		// 'extension' scope — the private config
-		return this._getExtensionMCPConfigPath();
+		return getMCPConfigPathForScope(scope, {
+			homeDir: process.env.HOME || process.env.USERPROFILE || '',
+			workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+			extensionStoragePath: this._context.storageUri?.fsPath
+		});
 	}
 
 	private async _readMCPConfigFile(filePath: string): Promise<Record<string, any>> {
@@ -2798,9 +2796,9 @@ class ClaudeChatProvider {
 			// Read CLI local-scope servers (~/.claude.json → projects[cwd].mcpServers).
 			// Display-only (fork-issue-39): local scope is owned and managed by the CLI
 			// itself, so we merge it in read-only here — see displayMCPServers, which
-			// must not render edit/delete for these, since _getMCPConfigPathForScope
-			// has no 'local' case and would otherwise write into the extension's own
-			// config by mistake. Any failure here (missing file, malformed JSON, no
+			// must not render edit/delete for these: _getMCPConfigPathForScope resolves
+			// 'local' to undefined (fork-issue-69), so a write would fail rather than land anywhere.
+			// Any failure here (missing file, malformed JSON, no
 			// workspace) just means local scope doesn't show up; other scopes are
 			// unaffected.
 			try {
