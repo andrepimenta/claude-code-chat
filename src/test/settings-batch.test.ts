@@ -1,6 +1,6 @@
 // Unit tests for the fork-issue-56 settings-batch fix (applySettingsBatch). Pure (no vscode, no
 // network, no filesystem access), so these run under plain mocha against the compiled
-// out/ output -- same pattern as restore-commit-utils/perm-log-redact/markdown-restore.
+// out/ output -- same pattern as restore-commit-utils.
 // The first two suites are the actual regression coverage for the bug: a key that
 // throws must not abort the keys after it, unlike the pre-fork-issue-56 single try/catch loop
 // (extension.ts's old _updateSettings, which broke out of the whole batch on the first
@@ -113,7 +113,7 @@ suite('settings-batch: applySettingsBatch (error normalization)', () => {
 
 suite('settings-batch: applySettingsBatch (malformed input -- the outer safety-net catch in extension.ts)', () => {
 
-	test("a nullish settings object rejects instead of resolving silently -- the only way out of this module into a caller's outer try/catch (extension.ts's key=<batch> marker)", async () => {
+	test("a nullish settings object rejects instead of resolving silently -- the only way out of this module into a caller's outer try/catch (extension.ts's _updateSettings, which logs and shows an error message)", async () => {
 		await assert.rejects(
 			() => applySettingsBatch(undefined as any, async () => { /* never reached */ }),
 			/Cannot convert undefined or null to object/

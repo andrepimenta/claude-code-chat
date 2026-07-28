@@ -8,9 +8,9 @@
 // any indication in the UI. This module owns only the per-key try/catch + result
 // collection; extension.ts still owns every side effect (the actual
 // vscode.workspace config.update() call, permissions.yoloMode's workspace-then-global
-// fallback, _permLog, the summary error message) via the injected updateSetting
+// fallback, the summary error message) via the injected updateSetting
 // callback -- no vscode import here, so this runs under plain mocha, same pattern as
-// shell-utils/restore-commit-utils/perm-log-redact. Run with `npm run test:settings-batch`.
+// restore-commit-utils. Run with `npm run test:settings-batch`.
 
 export interface SettingUpdateFailure {
 	key: string;
@@ -26,8 +26,8 @@ export interface SettingsBatchResult {
 // the pre-fork-issue-56 code's 'err=' + (error?.message || error) string-concatenation did (Error
 // instances and message-bearing objects use .message; anything else -- a thrown string,
 // undefined, a plain object -- coerces the same way String() / template-literal
-// interpolation would), so a caller like extension.ts's _permLog never has to guard
-// against a missing .message itself.
+// interpolation would), so a caller like extension.ts's _updateSettings never has to
+// guard against a missing .message itself.
 function toErrorMessage(error: unknown): string {
 	if (typeof error === 'object' && error !== null && 'message' in error) {
 		const message = (error as { message: unknown }).message;
