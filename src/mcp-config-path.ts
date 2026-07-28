@@ -42,7 +42,7 @@ export function getMCPConfigPathForScope(scope: string, env: MCPConfigPathEnv): 
 	// the real pre-fork-issue-67 symptom for a locked, display-only #serverScope select with no
 	// matching 'extension' <option> (see fork-issue-65) was a stray duplicate written into the
 	// workspace's own .mcp.json (scope: 'project'), not into the extension's config.
-	// script.ts's saveMCPServer() (fork-issue-67 Teil A) now sends the server's own scope directly
+	// script.ts's saveMCPServer() (fork-issue-67 Part A) now sends the server's own scope directly
 	// while editing, closing that path from the UI entirely; this branch stays as a
 	// fail-loud guard for any other/future caller.
 	return undefined;

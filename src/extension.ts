@@ -657,7 +657,7 @@ class ClaudeChatProvider {
 				return;
 			case 'saveMCPServer':
 				// fork-issue-67 (review): `|| 'project'` predates fork-issue-67 (upstream deca7de) and is kept
-				// as-is -- after fork-issue-67 Teil A/B the webview can no longer send an empty scope, so
+				// as-is -- after fork-issue-67 Part A/B the webview can no longer send an empty scope, so
 				// this is unreachable today, but removing a working fallback here for no present
 				// benefit would just open a fresh failure mode later. See the comment in
 				// src/mcp-config-path.ts (fork-issue-69) for what this used to mean in practice.

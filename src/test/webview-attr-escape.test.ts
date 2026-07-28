@@ -1341,7 +1341,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
 		sandbox.editMCPServer('srv');
 		// Force the exact pre-fork-issue-67 symptom directly, independent of whether ui.ts's new <option>
-		// (Teil B) happens to already prevent it: the locked field is display-only, and
+		// (Part B) happens to already prevent it: the locked field is display-only, and
 		// saveMCPServer() must not depend on it holding the right value while editing.
 		document.getElementById('serverScope')!.value = '';
 		sandbox.saveMCPServer();
@@ -1351,7 +1351,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 		assert.strictEqual(posted[0].scope, 'extension', 'must come from the server\'s own _scope, not the (blank) select');
 	});
 
-	test('editMCPServer() alone (Teil B) also already makes #serverScope read back a non-empty "extension" value, now that a matching <option> exists', () => {
+	test('editMCPServer() alone (Part B) also already makes #serverScope read back a non-empty "extension" value, now that a matching <option> exists', () => {
 		const { sandbox, document } = loadMcpSandbox();
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
 		sandbox.editMCPServer('srv');
@@ -1410,7 +1410,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 	// review (2nd round): unlocking #serverScope (disabled = false) is not the same as
 	// resetting its SELECTION -- a disabled <option> only blocks the interactive picker, not the
 	// field from still reading back whatever editMCPServer() last set it to. Once ui.ts has a
-	// real (if disabled) <option value="extension"> (fork-issue-67 Teil B), that selection survives the
+	// real (if disabled) <option value="extension"> (fork-issue-67 Part B), that selection survives the
 	// unlock -- via EITHER showAddServerForm() OR hideAddServerForm() -- unless explicitly reset.
 	test('after editing an "extension"-scope server, showAddServerForm() resets #serverScope\'s value to "project", not left at "extension"', () => {
 		const { sandbox, document } = loadMcpSandbox();
