@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// Second half of the "compile" npm script (Gitea #47): tsc only handles src/**/*.ts, so
+// Second half of the "compile" npm script: tsc only handles src/**/*.ts, so
 // anything the webview loads via asWebviewUri (the vendored KaTeX assets, see
 // assets/katex/VERSION.md) needs an explicit copy into out/ -- tsc's outDir never sees
 // non-.ts files. Node builtins only, no new dependency for a two-file build step.

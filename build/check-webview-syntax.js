@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
-// Committed version of a check the team already ran by hand before #47 (Gitea #47,
-// A7): script.ts/ui.ts are giant TypeScript template literals producing the webview's
-// HTML/JS as plain strings, so tsc happily compiles a typo like a stray unescaped
+// Committed version of a check we used to run by hand before shipping the KaTeX
+// rendering feature: script.ts/ui.ts are giant TypeScript template literals producing
+// the webview's HTML/JS as plain strings, so tsc happily compiles a typo like a stray unescaped
 // backtick or "${" -- it only breaks once that string reaches an actual browser. This
 // script proves the emitted <script> content still parses, and that ui.ts actually
 // references the vendored KaTeX assets. Node builtins only, run via
@@ -62,25 +62,25 @@ if (!html.includes('katex.min.js')) {
 	fail('getHtml(...) output does not reference katex.min.js');
 }
 
-// -- 3) #55: die Codeblock-Restore-Schleife in parseSimpleMarkdown muss ueber die
-// gespleisste restoreCodeBlockPlaceholders(html, codeBlockPlaceholders) laufen, nie mehr
-// ueber ein direktes html.replace(placeholder, str) -- String.replace interpretiert
-// "$&"/"$`"/"$'"/"$$" im Ersatzstring als Substitutionsmuster und zerlegt dadurch jeden
-// Code-Block, der eine dieser Sequenzen enthaelt --
+// -- 3) The code-block restore loop in parseSimpleMarkdown must run through the
+// spliced restoreCodeBlockPlaceholders(html, codeBlockPlaceholders), never again
+// through a direct html.replace(placeholder, str) -- String.replace interprets
+// "$&"/"$`"/"$'"/"$$" in the replacement string as substitution patterns and thereby
+// corrupts any code block that contains one of these sequences --
 if (!scriptHtml.includes('function restoreCodeBlockPlaceholders')) {
-	fail('getScript(...) output does not contain the spliced restoreCodeBlockPlaceholders (markdown-restore.ts, #55)');
+	fail('getScript(...) output does not contain the spliced restoreCodeBlockPlaceholders (markdown-restore.ts)');
 }
-// Diskriminierende Nadel: "restoreCodeBlockPlaceholders(html, codeBlockPlaceholders)" allein
-// waere eine Tautologie -- der String steckt schon im gespleissten Funktionskopf
-// ("function restoreCodeBlockPlaceholders(html, codeBlockPlaceholders) {") und wuerde damit
-// auch dann PASSen, wenn die Aufrufstelle in parseSimpleMarkdown entfernt wird. "html = " davor
-// kommt im Emit nur an der echten Aufrufstelle vor.
+// Discriminating needle: "restoreCodeBlockPlaceholders(html, codeBlockPlaceholders)" alone
+// would be a tautology -- the string is already present in the spliced function head
+// ("function restoreCodeBlockPlaceholders(html, codeBlockPlaceholders) {") and would thus
+// still PASS even if the call site in parseSimpleMarkdown were removed. "html = " in front
+// of it only occurs in the emit at the real call site.
 if (!scriptHtml.includes('html = restoreCodeBlockPlaceholders(')) {
-	fail('getScript(...) output does not call restoreCodeBlockPlaceholders(...) from the code-block restore loop (#55)');
+	fail('getScript(...) output does not call restoreCodeBlockPlaceholders(...) from the code-block restore loop');
 }
 if (/html\.replace\(placeholder,\s*codeBlockPlaceholders\[i\]\)/.test(scriptHtml)) {
-	fail('getScript(...) output still contains the unsafe html.replace(placeholder, codeBlockPlaceholders[i]) string-replacement (#55 regression)');
+	fail('getScript(...) output still contains the unsafe html.replace(placeholder, codeBlockPlaceholders[i]) string-replacement regression');
 }
 
-console.log('PASS: getScript() <script> content parses (' + scriptBlocks.length + ' block(s), ' + scriptHtml.length + ' chars), getHtml() references katex.min.css + katex.min.js, and the #55 restoreCodeBlockPlaceholders splice is present and the code-block restore loop is safe');
+console.log('PASS: getScript() <script> content parses (' + scriptBlocks.length + ' block(s), ' + scriptHtml.length + ' chars), getHtml() references katex.min.css + katex.min.js, and the restoreCodeBlockPlaceholders splice is present and the code-block restore loop is safe');
 process.exit(0);

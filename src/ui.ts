@@ -15,7 +15,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-src *;">
 	<title>Claude Code Chat</title>
-	<!-- #47: loaded before the main stylesheet so our own .katex-error/.katex-display
+	<!-- Loaded before the main stylesheet so our own .katex-error/.katex-display
 	     rules (ui-styles.ts) win the cascade over KaTeX's defaults of the same specificity. -->
 	<link rel="stylesheet" href="${katexBaseUri}/katex.min.css">
 	${styles}
@@ -1081,7 +1081,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	</div>
 
 	<script>window.__recommendedModels = ${JSON.stringify(recommendedModels)};window.__topMcpServers = ${JSON.stringify(topMcpServers)};window.__topSkills = ${JSON.stringify(topSkills)};window.__topPlugins = ${JSON.stringify(topPlugins)};</script>
-	<!-- #47: synchronous (no defer/async) so window.katex exists before getScript()'s
+	<!-- Synchronous (no defer/async) so window.katex exists before getScript()'s
 	     renderMathHtml can run -- a classic <script src> blocks parsing until it loads. -->
 	<script src="${katexBaseUri}/katex.min.js"></script>
 	${getScript(isTelemetryEnabled, opencreditsApiUrl, opencreditsWebUrl, opencreditsPublishableKey)}

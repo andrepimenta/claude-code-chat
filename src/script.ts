@@ -83,9 +83,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
-		// #47 (upstream #171) Phase 4: claudeCodeChat.ui.renderMath toggle, default on.
+		// LaTeX rendering (upstream #171): claudeCodeChat.ui.renderMath toggle, default on.
 		// Guards the math extraction/restore steps in parseSimpleMarkdown below -- off
-		// makes messages fall through exactly as before #47 (raw "$"/"\\(" text).
+		// makes messages fall through exactly as before this feature (raw "$"/"\\(" text).
 		let renderMathEnabled = true;
 		let attachedImages = []; // Array of { filePath, previewUri }
 
@@ -4415,10 +4415,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		updateStatus('Initializing...', 'disconnected');
 
-		// #55: restoreCodeBlockPlaceholders (der Aufruf steht weiter unten in
-		// parseSimpleMarkdown) -- Build-Zeit-Splice (Muster math-script), damit npm run
-		// test:markdown-restore die Funktion unter Node pruefen kann. Die naechste Zeile
-		// spleisst den kompilierten Funktions-Source per toString() in den Webview-Script-String.
+		// restoreCodeBlockPlaceholders (the call site is further below in
+		// parseSimpleMarkdown) -- build-time splice (same pattern as math-script), so that
+		// npm run test:markdown-restore can check the function under Node. The next line
+		// splices the compiled function source via toString() into the webview script string.
 		${restoreCodeBlockPlaceholders.toString()}
 
 		function parseSimpleMarkdown(markdown) {
@@ -4454,14 +4454,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				return placeholder;
 			});
 
-			// #47 (upstream #171): extract $…$ / $$…$$ / \(…\) / \[…\] math segments
+			// LaTeX rendering (upstream #171): extract $…$ / $$…$$ / \(…\) / \[…\] math segments
 			// before any further markdown processing -- the italic regex below would
 			// tear "x_1 … y_2" apart. Same placeholder approach as the code blocks
 			// above, with its own __CCCMATH_<nonce>_<i>__ prefix so the two extraction
 			// passes can't collide.
 			// Phase 4: guarded by claudeCodeChat.ui.renderMath (renderMathEnabled, default
 			// on) -- off skips extraction so the raw "$"/"\(" text falls through exactly
-			// like before #47, instead of being replaced with rendered/fallback HTML.
+			// like before this feature, instead of being replaced with rendered/fallback HTML.
 			let mathExtraction = { text: processedMarkdown, placeholders: [] };
 			if (renderMathEnabled) {
 				mathExtraction = extractMathSegments(processedMarkdown);
@@ -4551,13 +4551,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (inUnorderedList) html += '</ul>';
 			if (inOrderedList) html += '</ol>';
 
-			// Restore math placeholders before the code-block restore below (#47).
+			// Restore math placeholders before the code-block restore below.
 			// Phase 4: guarded the same way as the extraction step above.
 			if (renderMathEnabled) {
 				html = restoreMathSegments(html, mathExtraction.placeholders);
 			}
 
-			// Restore code block placeholders. #55: restoreCodeBlockPlaceholders (spliced
+			// Restore code block placeholders. restoreCodeBlockPlaceholders (spliced
 			// above) uses function-replacement, not html.replace(placeholder, str) --
 			// otherwise "$&"/"$\`"/"$'"/"$$" inside a code block would be interpreted as
 			// String.replace substitution patterns and tear the surrounding HTML apart.
@@ -4894,7 +4894,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
-			// #47 (upstream #171) Phase 4: math rendering toggle
+			// LaTeX rendering (upstream #171) Phase 4: math rendering toggle
 			const renderMath = document.getElementById('render-math').checked;
 
 			// Collect environment variables from key-value UI
@@ -5193,7 +5193,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
-				// #47 (upstream #171) Phase 4: math rendering toggle, default on
+				// LaTeX rendering (upstream #171) Phase 4: math rendering toggle, default on
 				renderMathEnabled = message.data['ui.renderMath'] !== false;
 				document.getElementById('render-math').checked = renderMathEnabled;
 

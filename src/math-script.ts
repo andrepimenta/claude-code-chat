@@ -1,6 +1,6 @@
 import { findMathSegments } from './math-segments';
 
-// Webview-side LaTeX rendering for #47 (upstream #171), injected into script.ts's
+// Webview-side LaTeX rendering (upstream #171), injected into script.ts's
 // getScript() template the same way getSkillsScript()/getPluginsScript() are (see
 // plugins-script.ts). Two different things happen below and they must not be confused:
 //
@@ -15,7 +15,7 @@ import { findMathSegments } from './math-segments';
 //    escaping script.ts's own template literal requires elsewhere -- but if you add code
 //    that does, escape it the same way (see script.ts's parseSimpleMarkdown for examples).
 const getMathScript = () => `
-		// ─── Math (KaTeX, #47) ───
+		// ─── Math (KaTeX) ───
 		${findMathSegments.toString()}
 
 		// Fallback text for renderMathHtml: wraps the escaped source in $ / $$ (display

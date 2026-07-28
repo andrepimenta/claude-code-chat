@@ -1,4 +1,4 @@
-// Unit tests for the #47 LaTeX-rendering scanner (findMathSegments). Pure (no vscode, no
+// Unit tests for the LaTeX-rendering scanner (findMathSegments). Pure (no vscode, no
 // network, no filesystem access), so these run under plain mocha against the compiled
 // out/ output -- same pattern as diff-utils/shell-utils/auto-model-switch. 13 cases match
 // the plan's validated prototype 1:1 (13/13 green); the next 3 cover the additional edge
