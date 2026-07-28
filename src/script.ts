@@ -3711,7 +3711,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Update token totals in real-time
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
-					
+					currentContextTokens = message.data.currentContextTokens || currentContextTokens;
+
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
@@ -3789,6 +3790,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					totalCost = 0;
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					requestCount = 0;
 					updateStatusWithTotals();
 					break;
@@ -3803,6 +3805,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Reset token counts since conversation was compacted
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					updateStatusWithTotals();
 
 					const preTokens = message.data.preTokens ? message.data.preTokens.toLocaleString() : 'unknown';

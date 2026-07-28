@@ -246,6 +246,9 @@ class ClaudeChatProvider {
 	private _totalCost: number = 0;
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
+	// Non-cumulative holder for the most recent turn's context usage (input +
+	// cache read + cache creation tokens), unlike the cumulative counters above (fork-issue-27).
+	private _currentContextTokens: number = 0;
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
 	// Session-usage / weekly-limit snapshot from the undocumented oauth/usage endpoint
@@ -1457,6 +1460,7 @@ class ClaudeChatProvider {
 					// Reset tokens since the conversation is now summarized
 					this._totalTokensInput = 0;
 					this._totalTokensOutput = 0;
+					this._currentContextTokens = 0;
 
 					this._sendAndSaveMessage({
 						type: 'compactBoundary',
@@ -1475,6 +1479,14 @@ class ClaudeChatProvider {
 						this._totalTokensInput += jsonData.message.usage.input_tokens || 0;
 						this._totalTokensOutput += jsonData.message.usage.output_tokens || 0;
 
+						// Non-cumulative context estimate for the current turn: input + cache
+						// read + cache creation tokens are what actually occupies the model's
+						// context window, unlike the cumulative counters above (fork-issue-27).
+						const ctx = (jsonData.message.usage.input_tokens || 0) +
+							(jsonData.message.usage.cache_read_input_tokens || 0) +
+							(jsonData.message.usage.cache_creation_input_tokens || 0);
+						this._currentContextTokens = ctx;
+
 						// Send real-time token update to webview
 						this._sendAndSaveMessage({
 							type: 'updateTokens',
@@ -1484,7 +1496,8 @@ class ClaudeChatProvider {
 								currentInputTokens: jsonData.message.usage.input_tokens || 0,
 								currentOutputTokens: jsonData.message.usage.output_tokens || 0,
 								cacheCreationTokens: jsonData.message.usage.cache_creation_input_tokens || 0,
-								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0
+								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0,
+								currentContextTokens: ctx
 							}
 						});
 					}
@@ -1801,6 +1814,7 @@ class ClaudeChatProvider {
 		this._totalCost = 0;
 		this._totalTokensInput = 0;
 		this._totalTokensOutput = 0;
+		this._currentContextTokens = 0;
 		this._requestCount = 0;
 
 		// Notify webview to clear all messages and reset session
@@ -3481,6 +3495,7 @@ class ClaudeChatProvider {
 			this._totalCost = conversationData.totalCost || 0;
 			this._totalTokensInput = conversationData.totalTokens?.input || 0;
 			this._totalTokensOutput = conversationData.totalTokens?.output || 0;
+			this._currentContextTokens = 0;
 
 			// Clear UI messages first, then send all messages to recreate the conversation
 			setTimeout(() => {
