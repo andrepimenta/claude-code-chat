@@ -158,7 +158,17 @@ function extractDeclaration(source: string, name: string): string {
 // by id lets assertions read back e.g. elements populated by editMCPServer after the call.
 class FakeElement {
 	className = '';
-	value = '';
+	private _value = '';
+	// fork-issue-67: elements tied to a fixed <option> list (currently only #serverScope, wired up in
+	// FakeDocument.getElementById below) validate an assigned .value against it, mirroring a
+	// real <select>'s behaviour: assigning a value with no matching <option> resets .value to ''
+	// (a disabled <option> still counts as a match -- disabled only blocks the interactive
+	// picker, not a script's own .value assignment; see MDN/HTML spec on HTMLSelectElement's
+	// value IDL attribute). undefined (the default, every other element -- inputs/textareas/the
+	// renderDropdown target) means no restriction, same plain passthrough as before.
+	validValues?: Set<string>;
+	get value(): string { return this._value; }
+	set value(v: string) { this._value = (!this.validValues || this.validValues.has(v)) ? v : ''; }
 	disabled = false;
 	style: Record<string, unknown> = {};
 	children: FakeElement[] = [];
@@ -183,6 +193,9 @@ class FakeElement {
 	// listContainer.querySelectorAll(...).forEach(...) -- an empty array is enough here since
 	// none of these PoCs need the click wiring itself, only the innerHTML the sinks produce.
 	querySelectorAll(): FakeElement[] { return []; }
+	// fork-issue-67: installMarketplaceServer()'s final "scroll the form into view" call -- cosmetic only,
+	// same as insertAdjacentHTML/remove above.
+	scrollIntoView(): void { /* cosmetic only */ }
 }
 
 // fork-issue-65 (review): getElementById() used to auto-vivify an element for ANY id, including ids
@@ -204,6 +217,24 @@ const realHtmlIds: Set<string> = (() => {
 	return ids;
 })();
 
+// fork-issue-67: same "derive from the ACTUAL getHtml(...) output" principle as realHtmlIds above, applied
+// to #serverScope's own <option value="..."> list -- lets FakeElement's value setter (above)
+// reproduce a real <select>'s "no matching <option> -> value reads back as ''" behaviour instead
+// of accepting any string unconditionally.
+const realServerScopeOptionValues: Set<string> = (() => {
+	const html = getHtml(false, undefined, undefined, undefined, 'webview-attr-escape.test', '0.0.0');
+	const selectMatch = /<select id="serverScope">([\s\S]*?)<\/select>/.exec(html);
+	const values = new Set<string>();
+	if (selectMatch) {
+		const optionRe = /<option value="([^"]+)"/g;
+		let m: RegExpExecArray | null;
+		while ((m = optionRe.exec(selectMatch[1])) !== null) {
+			values.add(m[1]);
+		}
+	}
+	return values;
+})();
+
 class FakeDocument {
 	elementsById = new Map<string, FakeElement>();
 	getElementById(id: string): FakeElement | null {
@@ -211,7 +242,11 @@ class FakeDocument {
 			return null;
 		}
 		let el = this.elementsById.get(id);
-		if (!el) { el = new FakeElement(); this.elementsById.set(id, el); }
+		if (!el) {
+			el = new FakeElement();
+			if (id === 'serverScope') { el.validValues = realServerScopeOptionValues; }
+			this.elementsById.set(id, el);
+		}
 		return el;
 	}
 	createElement(tag: string): FakeElement {
@@ -230,6 +265,14 @@ interface McpSandbox {
 	// (see saveMCPServer's own hideAddServerForm() call) -- it's what has to undo editMCPServer's
 	// #serverScope lock again for a subsequent "Add manually".
 	hideAddServerForm(): void;
+	// fork-issue-67: showAddServerForm is the entry point the "+ Add manually" buttons and
+	// installMarketplaceServer() call directly (not hideAddServerForm()) -- it has to reset
+	// editingServerName and unlock #serverScope on its own for the same reason.
+	showAddServerForm(): void;
+	// fork-issue-67: saveMCPServer posts the actual vscode message -- resolves the scope from
+	// editingServerName's own config while editing (locked #serverScope is display-only), or
+	// from the select for a fresh add.
+	saveMCPServer(): void;
 	// Test-only inspection shim -- top-level "let" bindings (editingServerName,
 	// mcpServerConfigsByName) live in the vm Script's lexical scope, not as properties on the
 	// sandbox/global object, so they aren't readable from outside via plain property access
@@ -239,9 +282,10 @@ interface McpSandbox {
 	__testState(): { editingServerName: string | null; configsByName: Record<string, unknown> };
 }
 
-function loadMcpSandbox(): { sandbox: McpSandbox; document: FakeDocument } {
+function loadMcpSandbox(): { sandbox: McpSandbox; document: FakeDocument; posted: Record<string, unknown>[] } {
 	const body = getEmittedScriptBody();
 	const document = new FakeDocument();
+	const posted: Record<string, unknown>[] = [];
 	const src = [
 		extractDeclaration(body, 'editingServerName'),
 		extractDeclaration(body, 'mcpServerConfigsByName'),
@@ -250,17 +294,79 @@ function loadMcpSandbox(): { sandbox: McpSandbox; document: FakeDocument } {
 		extractFunction(body, 'updateServerForm'),
 		extractFunction(body, 'displayMCPServers'),
 		extractFunction(body, 'editMCPServer'),
+		// fork-issue-67 (review): resetAddServerFormFields() -- the field-reset helper hideAddServerForm()
+		// and showAddServerForm() both call -- must be loaded too now that they no longer inline it.
+		extractFunction(body, 'resetAddServerFormFields'),
 		extractFunction(body, 'hideAddServerForm'),
+		extractFunction(body, 'showAddServerForm'),
+		extractFunction(body, 'saveMCPServer'),
 		'function __testState() { return { editingServerName: editingServerName, configsByName: mcpServerConfigsByName }; }',
 	].join('\n');
 	// hideAddServerForm() (used only by the fork-issue-65 reset tests below) calls the real loadMCPServers(),
 	// which posts a message to the (non-existent, in this sandbox) vscode API -- stubbed out here,
 	// same technique as the free-variable globals (dropdown/allModelsCache/etc.) elsewhere in this
-	// file, since re-fetching the server list isn't part of what these tests check.
-	const sandbox: Record<string, unknown> = { document, loadMCPServers: () => { /* noop */ } };
+	// file, since re-fetching the server list isn't part of what these tests check. fork-issue-67:
+	// saveMCPServer() also calls sendStats(...) and vscode.postMessage(...) -- sendStats is a
+	// no-op stub (telemetry isn't what these tests check), vscode.postMessage records into
+	// `posted` (a plain host-realm array; the sandbox's postMessage closure can freely reference
+	// it even though it runs inside the vm, same as the loadMCPServers/document stubs).
+	const sandbox: Record<string, unknown> = {
+		document,
+		loadMCPServers: () => { /* noop */ },
+		sendStats: () => { /* noop */ },
+		vscode: { postMessage: (msg: Record<string, unknown>) => { posted.push(msg); } },
+	};
 	vm.createContext(sandbox);
 	new vm.Script(src).runInContext(sandbox);
-	return { sandbox: sandbox as unknown as McpSandbox, document };
+	return { sandbox: sandbox as unknown as McpSandbox, document, posted };
+}
+
+interface McpSandbox2 extends McpSandbox {
+	// fork-issue-67: the marketplace's own "Install" flow, the other real caller of showAddServerForm()
+	// (~script.ts:2500) besides the plain "+ Add manually" buttons already covered by McpSandbox.
+	installMarketplaceServer(serverId: string): void;
+	// var marketplaceDisplayed -- a free variable in script.ts, passed in as a sandbox global
+	// (mutable array reference) the same way loadMarketplaceSandbox() does it above.
+	marketplaceDisplayed: { id: string; name?: string; installConfig: Record<string, unknown> }[];
+}
+
+// Separate loader (rather than folding installMarketplaceServer into loadMcpSandbox() above) --
+// installMarketplaceServer needs the marketplaceDisplayed/marketplaceCache free variables that no
+// other test in this suite cares about, same reasoning as loadMarketplaceSandbox() having its own
+// loader instead of being merged into loadMcpSandbox().
+function loadMcpSandbox2(): { sandbox: McpSandbox2; document: FakeDocument; posted: Record<string, unknown>[] } {
+	const body = getEmittedScriptBody();
+	const document = new FakeDocument();
+	const posted: Record<string, unknown>[] = [];
+	const src = [
+		extractDeclaration(body, 'editingServerName'),
+		extractDeclaration(body, 'mcpServerConfigsByName'),
+		extractFunction(body, 'escapeHtml'),
+		extractFunction(body, 'escapeAttr'),
+		extractFunction(body, 'updateServerForm'),
+		extractFunction(body, 'displayMCPServers'),
+		extractFunction(body, 'editMCPServer'),
+		// fork-issue-67 (review): resetAddServerFormFields() -- the field-reset helper hideAddServerForm()
+		// and showAddServerForm() both call -- must be loaded too now that they no longer inline it.
+		extractFunction(body, 'resetAddServerFormFields'),
+		extractFunction(body, 'hideAddServerForm'),
+		extractFunction(body, 'showAddServerForm'),
+		extractFunction(body, 'saveMCPServer'),
+		extractFunction(body, 'installMarketplaceServer'),
+		'function __testState() { return { editingServerName: editingServerName, configsByName: mcpServerConfigsByName }; }',
+	].join('\n');
+	const marketplaceDisplayed: { id: string; name?: string; installConfig: Record<string, unknown> }[] = [];
+	const sandbox: Record<string, unknown> = {
+		document,
+		loadMCPServers: () => { /* noop */ },
+		sendStats: () => { /* noop */ },
+		vscode: { postMessage: (msg: Record<string, unknown>) => { posted.push(msg); } },
+		marketplaceDisplayed,
+		marketplaceCache: null,
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as McpSandbox2, document, posted };
 }
 
 // Renders `servers` and returns the .mcp-server-item div's innerHTML for the given server name
@@ -1041,7 +1147,7 @@ suite('webview MCP server form: #serverScope locked to the server\'s own scope w
 		assert.strictEqual(scopeEl.disabled, true);
 	});
 
-	test('after editing, hideAddServerForm() (Cancel, or a successful Save) unlocks #serverScope again for the next "Add manually"', () => {
+	test('after editing, hideAddServerForm() (Cancel, or a successful Save) unlocks #serverScope again for the next "Add manually", and resets its value to "project" (review: heals the pre-existing "next add after editing a Global server defaults to Global, not Project" quirk too)', () => {
 		const { sandbox, document } = loadMcpSandbox();
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'global' } });
 		sandbox.editMCPServer('srv');
@@ -1049,6 +1155,7 @@ suite('webview MCP server form: #serverScope locked to the server\'s own scope w
 		assert.strictEqual(scopeEl.disabled, true, 'sanity check: editMCPServer must have locked it first');
 		sandbox.hideAddServerForm();
 		assert.strictEqual(scopeEl.disabled, false, '#serverScope must be free to choose again after hideAddServerForm()');
+		assert.strictEqual(scopeEl.value, 'project', 'review: unlocking alone is not enough -- the SELECTION (left at "global" by editMCPServer()) must also reset to the default, not silently carry over into the next "Add manually"');
 	});
 });
 
@@ -1128,5 +1235,275 @@ suite('webview MCP server list: a non-string config.type no longer aborts the re
 		const serversList = document.getElementById('mcpServersList')!;
 		assert.strictEqual(serversList.children.length, 2, 'expected 1 server item + 1 trailing actions div');
 		assert.strictEqual(textOn(serversList.children[0].innerHTML, 'server-type'), '[OBJECT OBJECT]');
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// fork-issue-67: _getMCPConfigPathForScope('local' -> undefined; 'global'/'project' -> explicit paths;
+// everything else, including '' and 'extension', fell through to a catch-all resolving to the
+// extension's own config) exposed a real bug once combined with how the dispatch actually calls
+// it: #serverScope has no <option value="extension"> (it only lists project/global), so while
+// editMCPServer() (fork-issue-65) already locks the field to config._scope for every scope, an
+// 'extension'-scope server leaves the select showing nothing a real <select> recognises -- its
+// .value reads back as ''. saveMCPServer() then read the scope to POST straight off that same
+// (locked, and for this one scope, blank) select, sending scope: ''. The message dispatch
+// (extension.ts) turns that '' into 'project' via `message.scope || 'project'` BEFORE it ever
+// reaches _getMCPConfigPathForScope (this predates fork-issue-67, kept as-is), so the real pre-fork-issue-67 symptom
+// was a stray duplicate written into the WORKSPACE's own .mcp.json under scope: 'project' -- not,
+// as _getMCPConfigPathForScope's own catch-all might suggest in isolation, into the extension's
+// config.
+//
+// Fix, three parts:
+//  - script.ts (Kern): saveMCPServer() now reads the scope from editingServerName's own config
+//    (mcpServerConfigsByName[editingServerName]._scope) while editing -- the ground truth --
+//    instead of the locked/display-only select; only a fresh "Add manually" (editingServerName
+//    === null) still takes it from the select. showAddServerForm() (the entry point for a fresh
+//    add that installMarketplaceServer() and the "+ Add manually" buttons call directly, not
+//    hideAddServerForm()) now runs the exact same full field reset hideAddServerForm() does
+//    (shared resetAddServerFormFields() helper) -- editingServerName, #serverScope's lock, AND
+//    #serverName/command/args/env/etc. An earlier version of this fix reset only
+//    editingServerName + #serverScope, which opened a DIFFERENT cross-scope duplicate
+//    (review finding): #serverName stayed disabled and pre-filled with the OLD server's name
+//    while #serverScope became pickable again, so "Edit a Global server srv" -> "+ Add manually"
+//    -> pick Project -> Save wrote a second "srv" into .mcp.json under the newly-picked scope --
+//    the exact class of cross-scope duplicate fork-issue-65 closed in the first place.
+//  - ui.ts: #serverScope gets a disabled <option value="extension"> so the locked field shows a
+//    readable label instead of blank while editing (conservative: not a real "Add manually"
+//    choice, same as the CLI-owned 'local' scope is never offered here either).
+//  - extension.ts: _getMCPConfigPathForScope's catch-all becomes an explicit 'extension' branch;
+//    anything else now returns undefined, which the existing _saveMCPServer/_deleteMCPServer error
+//    handling turns into a visible mcpServerError instead of a silent misfile -- defense-in-depth:
+//    after the script.ts fix above, the webview can no longer actually send an empty/unknown
+//    scope for any UI-reachable path.
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview MCP server form: #serverScope has a readable "extension"-scope option, disabled (fork-issue-67)', () => {
+
+	function getServerScopeSelectHtml(): string {
+		const html = getHtml(false, undefined, undefined, undefined, 'webview-attr-escape.test', '0.0.0');
+		const match = /<select id="serverScope">([\s\S]*?)<\/select>/.exec(html);
+		if (!match) { throw new Error('getHtml(...) output does not contain a <select id="serverScope">...</select> block'); }
+		return match[1];
+	}
+
+	test('the emitted HTML has an <option value="extension"> inside #serverScope, and it is disabled', () => {
+		const selectHtml = getServerScopeSelectHtml();
+		const optionMatch = /<option value="extension"([^>]*)>([^<]*)<\/option>/.exec(selectHtml);
+		assert.ok(optionMatch, 'expected an <option value="extension">...</option> inside #serverScope; got: ' + selectHtml);
+		assert.ok(/\bdisabled\b/.test(optionMatch![1]), 'the "extension" option must carry the disabled attribute -- it must not become a pickable choice for a fresh "Add manually" (conservative scope for fork-issue-67); got attrs: "' + optionMatch![1] + '"');
+	});
+
+	test('the "extension" option has a non-empty, readable label naming its actual storage location (not just blank/placeholder text)', () => {
+		const selectHtml = getServerScopeSelectHtml();
+		const optionMatch = /<option value="extension"[^>]*>([^<]*)<\/option>/.exec(selectHtml);
+		assert.ok(optionMatch, 'expected an <option value="extension">...</option> inside #serverScope; got: ' + selectHtml);
+		const label = optionMatch![1].trim();
+		assert.ok(label.length > 0, 'the "extension" option must have a non-empty label; got: "' + label + '"');
+		assert.ok(label.includes('mcp-servers.json'), 'the label should name the extension\'s actual storage file (mcp-servers.json), same style as the existing "Project (.mcp.json)"/"Global (~/.claude.json)" options; got: "' + label + '"');
+	});
+
+	test('the pre-existing "project" and "global" options are still present and unchanged (no functional regression)', () => {
+		const selectHtml = getServerScopeSelectHtml();
+		assert.ok(/<option value="project">[^<]*\(\.mcp\.json\)<\/option>/.test(selectHtml), 'expected the "project" option to still be present with its original label; got: ' + selectHtml);
+		assert.ok(/<option value="global">[^<]*\(~\/\.claude\.json\)<\/option>/.test(selectHtml), 'expected the "global" option to still be present with its original label; got: ' + selectHtml);
+	});
+
+	// 'local' scope (fork-issue-39) is owned by the CLI and never offered here either -- see the next suite
+	// for the evidence that a 'local'-scope server can never reach editMCPServer() in the first
+	// place (displayMCPServers renders a read-only "via CLI" badge for it instead of Edit/Delete).
+	test('no <option value="local"> exists -- local scope is never offered as a display or pick value here', () => {
+		const selectHtml = getServerScopeSelectHtml();
+		assert.ok(!/<option value="local"/.test(selectHtml), 'did not expect a "local" option inside #serverScope; got: ' + selectHtml);
+	});
+});
+
+suite('webview MCP server list: a "local"-scope server never renders an Edit button, so it can never reach editMCPServer() (fork-issue-67 evidence for the ui.ts scope question)', () => {
+
+	test('a "local"-scope server gets the read-only CLI badge, not Edit/Delete buttons', () => {
+		const { html } = renderServerItem({ srv: { type: 'stdio', command: 'echo', _scope: 'local' } }, 'srv');
+		const onclicks = [...html.matchAll(/onclick="([^"]*)"/g)].map(m => m[1]);
+		assert.ok(!onclicks.some(oc => oc.startsWith('editMCPServer')), 'a "local"-scope server must not render an editMCPServer(...) onclick handler anywhere; got: ' + html);
+		assert.ok(html.includes('via CLI'), 'expected the read-only CLI badge text instead; got: ' + html);
+	});
+
+	test('a "project"-scope server (for contrast) does get a real editMCPServer(...) Edit button', () => {
+		const { html } = renderServerItem({ srv: { type: 'stdio', command: 'echo', _scope: 'project' } }, 'srv');
+		const onclick = findAttrOn(html, 'server-edit-btn', 'onclick');
+		assert.ok(onclick, 'expected an onclick attribute on .server-edit-btn; got: ' + html);
+		assert.strictEqual(onclick!.value, 'editMCPServer(this.dataset.serverName)');
+	});
+});
+
+suite('webview MCP server form: saveMCPServer() reads the scope from the edited server\'s own config, not the locked #serverScope select (fork-issue-67)', () => {
+
+	test('editing an "extension"-scope server posts scope: "extension" even when #serverScope\'s own value is blank (the pre-fork-issue-67 real-browser symptom: no matching <option>, .value reads back as \'\')', () => {
+		const { sandbox, document, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv');
+		// Force the exact pre-fork-issue-67 symptom directly, independent of whether ui.ts's new <option>
+		// (Teil B) happens to already prevent it: the locked field is display-only, and
+		// saveMCPServer() must not depend on it holding the right value while editing.
+		document.getElementById('serverScope')!.value = '';
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].type, 'saveMCPServer');
+		assert.strictEqual(posted[0].name, 'srv');
+		assert.strictEqual(posted[0].scope, 'extension', 'must come from the server\'s own _scope, not the (blank) select');
+	});
+
+	test('editMCPServer() alone (Teil B) also already makes #serverScope read back a non-empty "extension" value, now that a matching <option> exists', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.value, 'extension', '#serverScope must not be blank for an extension-scope server now that ui.ts has a matching (disabled) <option> for it');
+		assert.strictEqual(scopeEl.disabled, true, 'sanity check: still locked while editing (fork-issue-65)');
+	});
+
+	test('editing a "global"-scope server still posts scope: "global" (fork-issue-65 regression guard -- was already correct before fork-issue-67, must stay correct)', () => {
+		const { sandbox, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'global' } });
+		sandbox.editMCPServer('srv');
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].scope, 'global');
+	});
+
+	test('editing a "project"-scope server still posts scope: "project" (fork-issue-65 regression guard -- was already correct before fork-issue-67, must stay correct)', () => {
+		const { sandbox, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'project' } });
+		sandbox.editMCPServer('srv');
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].scope, 'project');
+	});
+
+	function prepareValidStdioSave(document: FakeDocument, name: string, command: string): void {
+		document.getElementById('serverName')!.value = name;
+		document.getElementById('serverType')!.value = 'stdio';
+		document.getElementById('serverCommand')!.value = command;
+	}
+
+	test('a fresh "Add manually" (showAddServerForm()) started right after an abandoned edit (no Cancel/Save) takes its scope from the select, not from the previously-edited server, and #serverName is reset too', () => {
+		const { sandbox, document, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv'); // user starts editing an extension-scope server...
+		const nameElBefore = document.getElementById('serverName')!;
+		assert.strictEqual(nameElBefore.value, 'srv');
+		assert.strictEqual(nameElBefore.disabled, true, 'sanity check: editMCPServer must lock #serverName (fork-issue-65)');
+		sandbox.showAddServerForm(); // ...then abandons it and clicks "+ Add manually" instead
+		assert.strictEqual(sandbox.__testState().editingServerName, null, 'editingServerName must be reset by showAddServerForm(), the same way hideAddServerForm() already resets it');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.disabled, false, '#serverScope must be unlocked again for the new add, the same way hideAddServerForm() already unlocks it');
+		assert.strictEqual(scopeEl.value, 'project', 'review: unlocking #serverScope is not enough while its SELECTION is still "extension" (now a real, matching -- if disabled -- <option>, see ui.ts) -- it must reset to "project" too, or a fresh add silently defaults to writing into the extension\'s own config');
+		const nameElAfter = document.getElementById('serverName')!;
+		assert.strictEqual(nameElAfter.value, '', 'review: #serverScope alone being unlocked is not enough -- #serverName must be cleared too, not still "srv"');
+		assert.strictEqual(nameElAfter.disabled, false, 'review: #serverName must be unlocked again for the new add, not still disabled from editMCPServer()');
+		scopeEl.value = 'global'; // user picks a scope for the genuinely new server
+		prepareValidStdioSave(document, 'brand-new-server', 'node');
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].name, 'brand-new-server');
+		assert.strictEqual(posted[0].scope, 'global', 'must be the newly-selected scope, not "extension" inherited from the abandoned edit via a stale editingServerName');
+	});
+
+	// review (2nd round): unlocking #serverScope (disabled = false) is not the same as
+	// resetting its SELECTION -- a disabled <option> only blocks the interactive picker, not the
+	// field from still reading back whatever editMCPServer() last set it to. Once ui.ts has a
+	// real (if disabled) <option value="extension"> (fork-issue-67 Teil B), that selection survives the
+	// unlock -- via EITHER showAddServerForm() OR hideAddServerForm() -- unless explicitly reset.
+	test('after editing an "extension"-scope server, showAddServerForm() resets #serverScope\'s value to "project", not left at "extension"', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.value, 'extension', 'sanity check: editMCPServer must have set it to the server\'s own scope first (fork-issue-65)');
+		sandbox.showAddServerForm();
+		assert.strictEqual(scopeEl.value, 'project', '#serverScope must reset to "project", not silently keep showing "extension" now that a real (disabled) <option> for it exists');
+	});
+
+	test('after editing an "extension"-scope server, hideAddServerForm() (Cancel) also resets #serverScope\'s value to "project", not left at "extension"', () => {
+		const { sandbox, document } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv');
+		const scopeEl = document.getElementById('serverScope')!;
+		assert.strictEqual(scopeEl.value, 'extension', 'sanity check: editMCPServer must have set it to the server\'s own scope first (fork-issue-65)');
+		sandbox.hideAddServerForm();
+		assert.strictEqual(scopeEl.value, 'project', '#serverScope must reset to "project", not silently keep showing "extension" now that a real (disabled) <option> for it exists');
+	});
+
+	// review (2nd round): the exact real-Chrome-reproduced click path for the SELECTION-not-
+	// reset regression -- Cancel (not "+ Add manually") after editing an 'extension'-scope server,
+	// then adding a genuinely new one without touching the scope field, silently wrote it into the
+	// extension's own storage (globalStorage/mcp/mcp-servers.json) instead of the intended
+	// default ('project', i.e. the workspace's .mcp.json) -- invisible and unversioned for the
+	// user, and exactly the click path anyone verifying fork-issue-67 itself would take (edit the
+	// 'extension'-scope server the fix is about).
+	test('review click path: Edit an "extension"-scope server, click Cancel, type a new name + command, and Save -- must default to scope: "project", not silently inherit "extension"', () => {
+		const { sandbox, document, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv'); // 1) Edit
+		sandbox.hideAddServerForm(); // 2) Cancel
+		// 3) user types a new name + command, leaves #serverScope untouched (exactly as shown --
+		// "project" now, not the previous edit's "extension")
+		prepareValidStdioSave(document, 'brand-new', 'node');
+		sandbox.saveMCPServer(); // 4) Add Server
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].name, 'brand-new');
+		assert.strictEqual(posted[0].scope, 'project', 'must default to "project" -- must never silently come out as "extension" here');
+	});
+
+	// review: the exact real-Chrome-reproduced click path that an earlier version of this
+	// fix still allowed through -- resetting editingServerName + #serverScope alone was not
+	// enough. #serverName (and the rest of the form: command/args/env/etc.) stayed locked and
+	// pre-filled from the abandoned edit, so a user who didn't notice/retype the name field
+	// silently wrote a SECOND copy of the ORIGINAL server into the newly-picked scope's config
+	// file -- the exact cross-scope duplicate fork-issue-65 closed, reopened through a different field.
+	test('review click path: Edit a "global"-scope server, click "+ Add manually" (not Cancel), pick a different scope, type a genuinely new name, and Save -- must not silently duplicate the original server under its old name', () => {
+		const { sandbox, document, posted } = loadMcpSandbox();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', args: ['a'], _scope: 'global' } });
+		sandbox.editMCPServer('srv'); // 1) Edit
+		sandbox.showAddServerForm(); // 2) "+ Add manually" instead of Cancel
+		const nameEl = document.getElementById('serverName')!;
+		assert.strictEqual(nameEl.value, '', '#serverName must not still read "srv" here -- that is exactly what let this duplicate happen');
+		// 3)/4) user picks Project and types a genuinely new name (this is what makes it a real,
+		// intentional new server -- the pre-fix bug was reachable even here, since #serverName
+		// silently carried the old value if the user did not think to check/clear it themselves)
+		nameEl.value = 'other-server';
+		document.getElementById('serverScope')!.value = 'project';
+		document.getElementById('serverType')!.value = 'stdio';
+		document.getElementById('serverCommand')!.value = 'node';
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].name, 'other-server', 'must be the newly-typed name -- must never be able to come out as "srv" (the original global server) here');
+		assert.strictEqual(posted[0].scope, 'project');
+	});
+
+	test('installMarketplaceServer(), the other caller of showAddServerForm() (~script.ts:2500), also resets editingServerName -- a marketplace install right after an abandoned edit does not inherit the previously-edited server\'s scope or name either', () => {
+		const { sandbox, document, posted } = loadMcpSandbox2();
+		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
+		sandbox.editMCPServer('srv'); // abandoned edit, same as above
+		// #mcpInstallScope is the marketplace detail view's own scope picker (built dynamically in
+		// script.ts's showMarketplaceDetail(), not a static id in ui.ts) -- installMarketplaceServer()
+		// reads its .value as the scope the user picked there. Set it explicitly (review: an
+		// unset id="mcpInstallScope" auto-vivifies to a blank FakeElement in this harness --
+		// realHtmlIds also picks up ids from the JS STRING LITERALS getScript() embeds, since
+		// getHtml() embeds the full <script> block -- so scopeSelect.value would silently read back
+		// '' instead of throwing/being null; a bare notStrictEqual(..., 'extension') can't tell that
+		// apart from a genuine 'project'/'global', so this pins the value we actually expect).
+		document.getElementById('mcpInstallScope')!.value = 'global';
+		sandbox.marketplaceDisplayed.push({ id: 'mkt1', name: 'MktServer', installConfig: { type: 'stdio', command: 'npx', args: ['-y', 'mkt-server'] } });
+		sandbox.installMarketplaceServer('mkt1');
+		assert.strictEqual(sandbox.__testState().editingServerName, null, 'editingServerName must be reset by installMarketplaceServer() -> showAddServerForm()');
+		// Ordering check (review): installMarketplaceServer() sets #serverName/#serverScope
+		// itself right after calling showAddServerForm() -- confirm THOSE explicit sets are what
+		// actually survive to the posted message, not showAddServerForm()'s own reset (which runs
+		// first and must not be overwriting something installMarketplaceServer() sets afterward,
+		// nor be overwritten in a way that resurrects the abandoned edit's values).
+		assert.strictEqual(document.getElementById('serverName')!.value, 'MktServer', 'installMarketplaceServer() must have set #serverName to the marketplace server\'s own name, not left it blank (from the reset) or stale ("srv", from the abandoned edit)');
+		sandbox.saveMCPServer();
+		assert.strictEqual(posted.length, 1, 'expected exactly one posted message; got: ' + JSON.stringify(posted));
+		assert.strictEqual(posted[0].name, 'MktServer');
+		assert.strictEqual(posted[0].scope, 'global', 'must be exactly the scope picked in #mcpInstallScope -- must not silently come out as "extension" (inherited from the abandoned edit via a stale editingServerName) NOR as "" (a broken read); got: ' + JSON.stringify(posted[0]));
 	});
 });

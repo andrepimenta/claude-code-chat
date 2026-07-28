@@ -202,6 +202,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<select id="serverScope">
 						<option value="project">Project (.mcp.json)</option>
 						<option value="global">Global (~/.claude.json)</option>
+						<!-- fork-issue-67: not a real "Add manually" choice (disabled) -- exists only so an
+						     'extension'-scope server shows a readable value here instead of blank
+						     while editMCPServer() has this field locked (fork-issue-65). -->
+						<option value="extension" disabled>Extension (mcp/mcp-servers.json)</option>
 					</select>
 				</div>
 				<div class="form-group">

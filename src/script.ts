@@ -1453,7 +1453,55 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			vscode.postMessage({ type: 'loadMCPServers' });
 		}
 
+		// fork-issue-67 (review follow-up): shared by showAddServerForm() and hideAddServerForm() --
+		// resets editingServerName plus every field editMCPServer() can have populated/locked
+		// back to a blank "Add manually" state. Both entry points need the exact same reset:
+		// showAddServerForm() is reached not just via Cancel/Save (hideAddServerForm()) but also
+		// directly from "+ Add manually" and installMarketplaceServer() while a previous edit was
+		// still in progress. A half reset here (originally: only editingServerName and
+		// #serverScope) left #serverName still disabled and pre-filled with the OLD server's
+		// name/command/args/env while #serverScope became pickable again -- letting the user save
+		// a "new" scope under the OLD name, silently duplicating that server into a second scope's
+		// config file (the exact cross-scope duplicate fork-issue-65 closed; the #serverScope-only lock
+		// closed the direct route, but not this one via #serverName staying stale). Two
+		// hand-maintained copies of this reset is exactly the failure mode that caused it, so
+		// there's only one now.
+		function resetAddServerFormFields() {
+			editingServerName = null;
+
+			// Reset form title and button
+			const formTitle = document.querySelector('#addServerForm h5');
+			if (formTitle) formTitle.remove();
+
+			const saveBtn = document.querySelector('#addServerForm .btn:not(.outlined)');
+			if (saveBtn) saveBtn.textContent = 'Add Server';
+
+			// Clear form
+			document.getElementById('serverName').value = '';
+			document.getElementById('serverName').disabled = false;
+			// fork-issue-65: undo editMCPServer's scope lock (see there) so a fresh "Add manually" gets a
+			// free choice again.
+			document.getElementById('serverScope').disabled = false;
+			document.getElementById('serverScope').title = '';
+			// fork-issue-67 (review): unlocking alone leaves the SELECTION as editMCPServer() set it --
+			// disabled on an <option> only blocks the user from picking it, not the field from
+			// still reading it back. For an 'extension'-scope server that selection is now a
+			// real, matching (if disabled) <option> (see ui.ts), so it silently survives the
+			// unlock unless reset here too -- a fresh "Add manually" would then default to
+			// "extension" and, since it's picked, is a value a user could easily leave standing.
+			// Reset to the same 'project' default #serverType gets a few lines down.
+			document.getElementById('serverScope').value = 'project';
+			document.getElementById('serverCommand').value = '';
+			document.getElementById('serverUrl').value = '';
+			document.getElementById('serverArgs').value = '';
+			document.getElementById('serverEnv').value = '';
+			document.getElementById('serverHeaders').value = '';
+			document.getElementById('serverType').value = 'http';
+			updateServerForm();
+		}
+
 		function showAddServerForm() {
+			resetAddServerFormFields();
 			document.getElementById('mcpServersList').style.display = 'none';
 			document.getElementById('popularServers').style.display = 'none';
 			document.getElementById('addServerForm').style.display = 'block';
@@ -1464,31 +1512,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			document.getElementById('popularServers').style.display = 'block';
 			document.getElementById('addServerForm').style.display = 'none';
 			loadMCPServers();
-			
-			// Reset editing state
-			editingServerName = null;
-			
-			// Reset form title and button
-			const formTitle = document.querySelector('#addServerForm h5');
-			if (formTitle) formTitle.remove();
-			
-			const saveBtn = document.querySelector('#addServerForm .btn:not(.outlined)');
-			if (saveBtn) saveBtn.textContent = 'Add Server';
-			
-			// Clear form
-			document.getElementById('serverName').value = '';
-			document.getElementById('serverName').disabled = false;
-			// fork-issue-65: undo editMCPServer's scope lock (see there) so a fresh "Add manually" gets a
-			// free choice again.
-			document.getElementById('serverScope').disabled = false;
-			document.getElementById('serverScope').title = '';
-			document.getElementById('serverCommand').value = '';
-			document.getElementById('serverUrl').value = '';
-			document.getElementById('serverArgs').value = '';
-			document.getElementById('serverEnv').value = '';
-			document.getElementById('serverHeaders').value = '';
-			document.getElementById('serverType').value = 'http';
-			updateServerForm();
+
+			resetAddServerFormFields();
 		}
 
 		function updateServerForm() {
@@ -1597,7 +1622,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			var scope = document.getElementById('serverScope') ? document.getElementById('serverScope').value : 'project';
+			// fork-issue-67: #serverScope is locked (disabled, display-only) while editing (fork-issue-65) and has no
+			// <option> for 'extension'-scope servers (see ui.ts), so its .value reads back as ''
+			// for them -- read the actual scope from the server's own config instead when editing.
+			// Only a fresh "Add manually" (editingServerName === null) still takes it from the select.
+			var scope = (editingServerName && mcpServerConfigsByName[editingServerName])
+				? (mcpServerConfigsByName[editingServerName]._scope || 'project')
+				: (document.getElementById('serverScope') ? document.getElementById('serverScope').value : 'project');
 			sendStats('MCP server added', { name: name });
 			vscode.postMessage({
 				type: 'saveMCPServer',
@@ -2070,19 +2101,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var scopeSelect = document.getElementById('mcpInstallScope');
 			var selectedScope = scopeSelect ? scopeSelect.value : 'project';
 
-			// Pre-fill the manual add form with the config
+			// Pre-fill the manual add form with the config. showAddServerForm() (fork-issue-67) already
+			// resets the whole form -- including #serverScope's lock and #serverName's
+			// value/disabled state, in case the user was mid-edit before picking a marketplace
+			// server to install as new -- so only the marketplace-specific values need setting
+			// here, after that reset.
 			showAddServerForm();
 			var formScope = document.getElementById('serverScope');
 			if (formScope) {
 				formScope.value = selectedScope;
-				// fork-issue-65: undo editMCPServer's scope lock in case the user was mid-edit before
-				// picking a marketplace server to install as new -- same reset as
-				// hideAddServerForm(), and the same reason #serverName gets reset right below.
-				formScope.disabled = false;
-				formScope.title = '';
 			}
 			document.getElementById('serverName').value = displayName;
-			document.getElementById('serverName').disabled = false;
 
 			if (cfg.type === 'stdio') {
 				document.getElementById('serverType').value = 'stdio';
