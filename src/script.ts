@@ -1079,7 +1079,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// Builds the "Ctx 12,345 / ~200K (62%)" status-bar fragment, with a warning/
-		// critical class once usage crosses 80%/95% (#27). Empty string when there's no
+		// critical class once usage crosses 80%/95% (fork-issue-27). Empty string when there's no
 		// context reading yet, so the status line looks exactly like before in that case.
 		function getContextIndicatorHtml() {
 			if (!currentContextTokens || currentContextTokens <= 0) return '';
@@ -1104,7 +1104,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show context usage and elapsed time (#27 — the
+					// Regular users: show context usage and elapsed time (fork-issue-27 — the
 					// context indicator replaced the old cumulative token sum here)
 					statusText = \`Processing\${getContextIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
@@ -1139,7 +1139,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show context usage, requests, and usage (#27 — the
+					// Regular users: show context usage, requests, and usage (fork-issue-27 — the
 					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${getContextIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;

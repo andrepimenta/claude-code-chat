@@ -37,7 +37,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const provider = new ClaudeChatProvider(context.extensionUri, context);
 
 	// Extra (non-primary) provider instances opened via "New Claude Chat (Separate)"
-	// (#24). Each gets its own CLI process and a forced-fresh session (no resume),
+	// (fork-issue-24). Each gets its own CLI process and a forced-fresh session (no resume),
 	// since two processes on the same session would fight over the session lock.
 	const extraProviders = new Set<ClaudeChatProvider>();
 
@@ -73,11 +73,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const diffProvider = new DiffContentProvider();
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
 
-	// Restore "New Claude Chat (Separate)" panels across VS Code reloads (#24 phase 3):
+	// Restore "New Claude Chat (Separate)" panels across VS Code reloads (fork-issue-24 phase 3):
 	// each such panel persists a small state blob (kind/filename/sessionId/title) via
 	// webview.vscode.setState(); VS Code hands it back here on restart so it can be
 	// replaced by a freshly created, retained panel owned by a new ClaudeChatProvider
-	// instance (#33). Panels without recognizable state (e.g. leftover from before
+	// instance (fork-issue-33). Panels without recognizable state (e.g. leftover from before
 	// this feature) are simply not restored.
 	context.subscriptions.push(vscode.window.registerWebviewPanelSerializer('claudeChat', {
 		async deserializeWebviewPanel(panel: vscode.WebviewPanel, stateAny: any) {
@@ -85,7 +85,7 @@ export function activate(context: vscode.ExtensionContext) {
 			if (st && st.kind === 'extra') {
 				// Handed panel has no retainContextWhenHidden (readonly, not settable
 				// post-creation) -> would reload its whole conversation on every tab
-				// switch (#33). Discard it while it's still naked (no provider/handlers
+				// switch (fork-issue-33). Discard it while it's still naked (no provider/handlers
 				// bound, so nothing cascades) and let the provider rebuild a retained
 				// panel in the same column.
 				const column = panel.viewColumn ?? vscode.ViewColumn.Active;
@@ -207,7 +207,7 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 
 		// Handle visibility changes: reinitialize only to reconcile with one of two
 		// situations caused by an editor panel sharing the chat provider with the
-		// sidebar (#24 phase 4). The view registration above now keeps this
+		// sidebar (fork-issue-24 phase 4). The view registration above now keeps this
 		// webview's content around across hide/show on its own, so an
 		// unconditional reinit here would re-render/re-fetch state that's already
 		// current.
@@ -239,12 +239,12 @@ class ClaudeChatWebviewProvider implements vscode.WebviewViewProvider {
 class ClaudeChatProvider {
 	// Most recently created or activated chat surface (panel or sidebar).
 	// addSelectionToChat routes here so the selection reaches the chat the
-	// user last worked in instead of always the primary instance (#28).
+	// user last worked in instead of always the primary instance (fork-issue-28).
 	public static lastActive: ClaudeChatProvider | undefined;
 	public _panel: vscode.WebviewPanel | undefined;
 	// Set by callers that track extra (non-primary) provider instances, e.g. the
 	// "New Claude Chat (Separate)" command, so they can clean up their registry
-	// entry when this provider's panel is closed (#24).
+	// entry when this provider's panel is closed (fork-issue-24).
 	public onDidDispose?: () => void;
 	public _webview: vscode.Webview | undefined;
 	private _webviewView: vscode.WebviewView | undefined;
@@ -253,13 +253,13 @@ class ClaudeChatProvider {
 	// Webview the message handler above is currently bound to. The sidebar's
 	// view provider compares this against _webview to detect when a panel stole
 	// the shared handler and was then closed without the sidebar ever getting
-	// it back (#24 phase 4 fix).
+	// it back (fork-issue-24 phase 4 fix).
 	public _messageHandlerWebview: vscode.Webview | undefined;
 	private _totalCost: number = 0;
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
 	// Non-cumulative holder for the most recent turn's context usage (input +
-	// cache read + cache creation tokens), unlike the cumulative counters above (#27).
+	// cache read + cache creation tokens), unlike the cumulative counters above (fork-issue-27).
 	private _currentContextTokens: number = 0;
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
@@ -268,7 +268,7 @@ class ClaudeChatProvider {
 	private _currentSessionId: string | undefined;
 	// Derived title + last-saved filename for extra (non-primary) panels, persisted
 	// via _persistPanelState() so a VS Code reload can restore this panel's own
-	// conversation instead of the project's latest one (#24 phase 3).
+	// conversation instead of the project's latest one (fork-issue-24 phase 3).
 	private _panelTitle: string | undefined;
 	private _lastSavedFilename: string | undefined;
 	private _backupRepoPath: string | undefined;
@@ -301,7 +301,7 @@ class ClaudeChatProvider {
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
-	// Selection block queued while no webview is live yet; flushed in _sendReadyMessage() (#28)
+	// Selection block queued while no webview is live yet; flushed in _sendReadyMessage() (fork-issue-28)
 	private _pendingSelectionContext: string | undefined;
 
 	constructor(
@@ -410,14 +410,14 @@ class ClaudeChatProvider {
 	}
 
 	// Creates a fresh webview panel for a "New Claude Chat (Separate)" instance VS Code
-	// is recreating after a reload (#24 phase 3), then mirrors show()'s post-creation
+	// is recreating after a reload (fork-issue-24 phase 3), then mirrors show()'s post-creation
 	// setup (icon, html, dispose hook, message handler, permissions) and restores THIS
 	// panel's own conversation (via st, from _persistPanelState()) instead of resuming
 	// the project's latest one. The panel handed back by the serializer is discarded
 	// instead of adopted: it has no retainContextWhenHidden (not settable after panel
 	// creation), which forced a reload of the visible history on every tab switch — the
 	// panel created here gets retainContextWhenHidden and is placed in the same
-	// viewColumn instead (#33).
+	// viewColumn instead (fork-issue-33).
 	public async restoreInPanel(column: vscode.ViewColumn, st: any): Promise<void> {
 		this._panel = vscode.window.createWebviewPanel(
 			'claudeChat',
@@ -573,7 +573,7 @@ class ClaudeChatProvider {
 
 	// Pushes this extra panel's identity (filename/sessionId/title) into the
 	// webview's vscode.setState() so VS Code can hand it back to the panel
-	// serializer after a reload (#24 phase 3). Primary instance never persists
+	// serializer after a reload (fork-issue-24 phase 3). Primary instance never persists
 	// panel state — it resumes the project's latest conversation on its own.
 	private _persistPanelState(): void {
 		if (!this._freshSession || !this._panel) { return; }
@@ -650,7 +650,7 @@ class ClaudeChatProvider {
 			});
 		}
 
-		// Deliver a selection block queued while the webview was still initializing (#28)
+		// Deliver a selection block queued while the webview was still initializing (fork-issue-28)
 		if (this._pendingSelectionContext) {
 			this._postMessage({ type: 'insertContext', data: this._pendingSelectionContext });
 			this._pendingSelectionContext = undefined;
@@ -1141,7 +1141,7 @@ class ClaudeChatProvider {
 			data: message
 		});
 
-		// Derive this extra panel's tab title from its first message (#24 phase 3) —
+		// Derive this extra panel's tab title from its first message (fork-issue-24 phase 3) —
 		// only once, so later messages in the same conversation don't rename it.
 		if (this._freshSession && !this._panelTitle && this._panel) {
 			const t = message.trim().replace(/\s+/g, ' ');
@@ -1612,7 +1612,7 @@ class ClaudeChatProvider {
 
 						// Non-cumulative context estimate for the current turn: input + cache
 						// read + cache creation tokens are what actually occupies the model's
-						// context window, unlike the cumulative counters above (#27).
+						// context window, unlike the cumulative counters above (fork-issue-27).
 						const ctx = (jsonData.message.usage.input_tokens || 0) +
 							(jsonData.message.usage.cache_read_input_tokens || 0) +
 							(jsonData.message.usage.cache_creation_input_tokens || 0);
@@ -1812,7 +1812,7 @@ class ClaudeChatProvider {
 						return;
 					}
 
-					// #32: do NOT clear _isProcessing / post setProcessing(false) here.
+					// fork-issue-32: do NOT clear _isProcessing / post setProcessing(false) here.
 					// This 'result' arrives when the main turn finishes, but in the
 					// persistent stream-json process background subagents (Task tool)
 					// can keep running and request permissions after it (see the
@@ -2039,7 +2039,7 @@ class ClaudeChatProvider {
 			const commitMessage = `Before: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
 
 			// Serialize the add/status/commit sequence across panels sharing this
-			// backup repo (#24 phase 2) — otherwise two concurrent commits could
+			// backup repo (fork-issue-24 phase 2) — otherwise two concurrent commits could
 			// interleave (e.g. one's `add -A` racing another's `commit`).
 			const { sha, actualMessage } = await ClaudeChatProvider._runExclusive(ClaudeChatProvider._backupLock, async () => {
 				// Add all files using git-dir and work-tree (excludes .git automatically)
@@ -2120,7 +2120,7 @@ class ClaudeChatProvider {
 			});
 
 			// Restore files directly to workspace using git checkout. Serialized on the
-			// same lock as _createBackupCommit (#24 phase 2) so a concurrent commit from
+			// same lock as _createBackupCommit (fork-issue-24 phase 2) so a concurrent commit from
 			// another panel can't race this checkout.
 			await ClaudeChatProvider._runExclusive(ClaudeChatProvider._backupLock, async () => {
 				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
@@ -3322,7 +3322,7 @@ class ClaudeChatProvider {
 			await this._updateConversationIndex(filename, conversationData);
 
 			// Keep this extra panel's persisted state in sync with the latest save
-			// (#24 phase 3), so a reload restores this exact conversation.
+			// (fork-issue-24 phase 3), so a reload restores this exact conversation.
 			this._lastSavedFilename = filename;
 			this._persistPanelState();
 
@@ -3545,7 +3545,7 @@ class ClaudeChatProvider {
 		};
 
 		// Serialize read-modify-write access to the conversation index across chat
-		// panels (#24 phase 2): re-read the persisted value under the lock (not just
+		// panels (fork-issue-24 phase 2): re-read the persisted value under the lock (not just
 		// the in-memory copy) so a concurrent panel's write isn't clobbered.
 		await ClaudeChatProvider._runExclusive(ClaudeChatProvider._indexLock, async () => {
 			let next = this._context.workspaceState.get('claude.conversationIndex', this._conversationIndex)
@@ -4352,7 +4352,7 @@ class ClaudeChatProvider {
 		}
 
 		// Extra (non-primary) panels have no reopen path, so a still-running CLI
-		// process would otherwise be orphaned on panel close (#24). The primary
+		// process would otherwise be orphaned on panel close (fork-issue-24). The primary
 		// instance intentionally keeps running — reopening reattaches to it.
 		if (this._freshSession) {
 			void this._killClaudeProcess();
