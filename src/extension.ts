@@ -3618,6 +3618,11 @@ class ClaudeChatProvider {
 			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
 			'router.enabled': config.get<boolean>('router.enabled', false),
 			'executable.path': config.get<string>('executable.path', ''),
+			// Correction to the fork-issue-44/fork-issue-42 commit message: this line only adds
+			// the key to the plain settingsData payload _sendCurrentSettings already sends --
+			// there is no claudeCodeChat.advanced entry in any onDidChangeConfiguration /
+			// affectsConfiguration listener (the only one, above in activate(), still filters
+			// on claudeCodeChat.wsl only).
 			'advanced.maxOutputTokens': config.get<number>('advanced.maxOutputTokens', 0),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
