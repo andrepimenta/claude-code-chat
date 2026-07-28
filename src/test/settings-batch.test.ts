@@ -1,8 +1,8 @@
-// Unit tests for the #56 settings-batch fix (applySettingsBatch). Pure (no vscode, no
+// Unit tests for the fork-issue-56 settings-batch fix (applySettingsBatch). Pure (no vscode, no
 // network, no filesystem access), so these run under plain mocha against the compiled
 // out/ output -- same pattern as restore-commit-utils/perm-log-redact/markdown-restore.
 // The first two suites are the actual regression coverage for the bug: a key that
-// throws must not abort the keys after it, unlike the pre-#56 single try/catch loop
+// throws must not abort the keys after it, unlike the pre-fork-issue-56 single try/catch loop
 // (extension.ts's old _updateSettings, which broke out of the whole batch on the first
 // config.update() rejection and only ever recorded that one failure). Run with
 // `npm run test:settings-batch`.
@@ -25,7 +25,7 @@ suite('settings-batch: applySettingsBatch (all keys succeed)', () => {
 	});
 });
 
-suite('settings-batch: applySettingsBatch (#56 -- a failing key must not abort the rest)', () => {
+suite('settings-batch: applySettingsBatch (fork-issue-56 -- a failing key must not abort the rest)', () => {
 
 	test('a key that throws is recorded as a failure, and every key after it is still applied', async () => {
 		const result = await applySettingsBatch(
@@ -37,7 +37,7 @@ suite('settings-batch: applySettingsBatch (#56 -- a failing key must not abort t
 			}
 		);
 		assert.deepStrictEqual(result.applied, ['ui.fontFamily', 'ui.fontSize', 'diff.autoOpen'],
-			'keys after the failing one must still be applied, not silently dropped (the real #56 scenario)');
+			'keys after the failing one must still be applied, not silently dropped (the real fork-issue-56 scenario)');
 		assert.deepStrictEqual(result.failures, [{ key: 'ui.renderMath', message: 'config not registered' }]);
 	});
 

@@ -1,4 +1,4 @@
-// Pure batch-update helper for the #56 fix: extension.ts's _updateSettings used to run
+// Pure batch-update helper for the fork-issue-56 fix: extension.ts's _updateSettings used to run
 // the whole settings batch from the webview through a single loop wrapped in one
 // try/catch -- if config.update() threw for one key (e.g. a setting not yet registered
 // right after a version bump), the loop broke and every subsequent key in the same
@@ -23,7 +23,7 @@ export interface SettingsBatchResult {
 }
 
 // Turns whatever a rejected updateSetting() call threw into a plain string, the same way
-// the pre-#56 code's 'err=' + (error?.message || error) string-concatenation did (Error
+// the pre-fork-issue-56 code's 'err=' + (error?.message || error) string-concatenation did (Error
 // instances and message-bearing objects use .message; anything else -- a thrown string,
 // undefined, a plain object -- coerces the same way String() / template-literal
 // interpolation would), so a caller like extension.ts's _permLog never has to guard
@@ -42,7 +42,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 // Applies every [key, value] pair in settings via updateSetting, one at a time, each in
-// its own try/catch -- unlike the pre-#56 single try/catch around the whole loop, a
+// its own try/catch -- unlike the pre-fork-issue-56 single try/catch around the whole loop, a
 // rejection for one key never stops the remaining keys from being attempted. Keys are
 // attempted in the same order Object.entries(settings) always yields (insertion order
 // for string keys), so applied/failures each preserve that order internally.

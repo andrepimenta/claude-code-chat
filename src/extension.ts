@@ -786,7 +786,7 @@ class ClaudeChatProvider {
 				this._enableYoloMode();
 				return;
 			case 'openMaxOutputTokensSettings':
-				// #42: deep-link into the native Settings UI, filtered on our setting.
+				// fork-issue-42: deep-link into the native Settings UI, filtered on our setting.
 				// No value is set automatically - the user picks the limit themselves.
 				vscode.commands.executeCommand('workbench.action.openSettings', 'claudeCodeChat.advanced.maxOutputTokens');
 				return;
@@ -1124,7 +1124,7 @@ class ClaudeChatProvider {
 			NO_COLOR: '1',
 			...customEnvVars,  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
 			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode',
-			// #42: raise the CLI's response size cap when configured, to work around
+			// fork-issue-42: raise the CLI's response size cap when configured, to work around
 			// "response exceeded the output token maximum" errors (upstream #150)
 			...(Math.floor(maxOutputTokens) > 0 ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxOutputTokens)) } : {})
 		};
@@ -3658,7 +3658,7 @@ class ClaudeChatProvider {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 
 		try {
-			// #56: each key gets its own try/catch (inside applySettingsBatch) so one
+			// fork-issue-56: each key gets its own try/catch (inside applySettingsBatch) so one
 			// rejected config.update() -- e.g. a setting not yet registered right after
 			// a version bump -- no longer silently drops every key that comes after it
 			// in the same batch.
@@ -3676,7 +3676,7 @@ class ClaudeChatProvider {
 				}
 			});
 
-			// #56: must run even when some keys above failed, not just on full success.
+			// fork-issue-56: must run even when some keys above failed, not just on full success.
 			// Re-send settings so webview gets updated isOpenCredits flag, etc.
 			this._sendCurrentSettings();
 

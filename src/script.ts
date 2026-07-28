@@ -189,7 +189,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 			
 			// Check if this is an output token limit error and offer a shortcut to
-			// raise CLAUDE_CODE_MAX_OUTPUT_TOKENS via the setting (#42, upstream #150)
+			// raise CLAUDE_CODE_MAX_OUTPUT_TOKENS via the setting (fork-issue-42, upstream #150)
 			if ((type === 'error' || type === 'claude') && isOutputTokenLimitError(content)) {
 				const tokenLimitSuggestion = document.createElement('div');
 				tokenLimitSuggestion.className = 'yolo-suggestion';
@@ -4926,7 +4926,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const wslClaudePath = document.getElementById('wsl-claude-path').value;
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
-			// #42/#44 settings modal follow-up: keep in sync with the manifest bounds
+			// fork-issue-42/fork-issue-44 settings modal follow-up: keep in sync with the manifest bounds
 			// (advanced.maxOutputTokens >= 0, ui.fontSize 0 or 6-72).
 			let maxOutputTokens = parseInt(document.getElementById('max-output-tokens').value, 10);
 			if (!Number.isFinite(maxOutputTokens) || maxOutputTokens < 0) {
@@ -5246,7 +5246,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Update UI with current settings
 				// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 				document.getElementById('diff-auto-open').checked = message.data['diff.autoOpen'] !== false;
-				// Custom chat font (#44): applied via CSS custom properties only (never
+				// Custom chat font (fork-issue-44): applied via CSS custom properties only (never
 				// string-interpolated into CSS/HTML) so an arbitrary fontFamily value
 				// can't inject markup or styles. Empty/0 removes the property so the
 				// var() fallback in ui-styles.ts restores the editor default.
@@ -5263,7 +5263,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				} else {
 					document.documentElement.style.removeProperty('--chat-font-size');
 				}
-				// #44 settings modal: reflect the persisted values in the Appearance fields
+				// fork-issue-44 settings modal: reflect the persisted values in the Appearance fields
 				// (clamped, so the field always shows the size that is actually applied)
 				document.getElementById('chat-font-family').value = chatFontFamily || '';
 				document.getElementById('chat-font-size').value = clampedChatFontSize;
