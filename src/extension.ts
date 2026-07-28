@@ -4263,8 +4263,9 @@ class ClaudeChatProvider {
 	private async _openTurnDiffFallback(filePath: string, trigger: 'manual' | 'auto', reason: string): Promise<void> {
 		if (trigger === 'auto') {
 			// First line only: git error messages can be multi-line and would break the
-			// one-line-per-entry perm-log format.
-			this._permLog(`[turndiff] auto skip reason=${reason.split('\n')[0]} file=${filePath}`);
+			// one-line-per-entry perm-log format. Basename only -- the perm-log file is
+			// unrotated plaintext, so the full path isn't worth leaking for a diagnostic line.
+			this._permLog(`[turndiff] auto skip reason=${reason.split('\n')[0]} file=${path.basename(filePath)}`);
 			return;
 		}
 		vscode.window.showInformationMessage(`Claude Code Chat: ${reason}; showing the file instead.`);
