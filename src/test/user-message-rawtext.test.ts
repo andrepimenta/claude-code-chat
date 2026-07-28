@@ -445,7 +445,7 @@ function loadExecuteSlashCommandSandbox(): { sandbox: ExecuteSlashCommandSandbox
 		hideSlashCommandsModalSrc,
 		executeSlashCommandSrc,
 		'function runTerminalOpenedCase(message) {\n' + terminalOpenedCaseBody + '\n}',
-		// fork-issue-46's copy-button raw-text store -- addMessage only .set()s into it, never reads it back.
+		// the copy-button raw-text store addMessage populates -- only .set()s into it here, never reads it back.
 		'let messageRawText = new WeakMap();',
 		'function shouldAutoScroll() { return false; }',
 		'function scrollToBottomIfNeeded() { /* no-op */ }',

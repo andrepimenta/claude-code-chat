@@ -204,8 +204,7 @@ class FakeElement {
 // id="..." in the emitted HTML at all) structurally invisible to this harness: it could never go
 // red here, no matter what the real code did. realHtmlIds is parsed from the ACTUAL getHtml(...)
 // output (not hand-maintained) so getElementById below can return null for anything a real
-// browser would too, same as the id="..." set check-webview-syntax.js's own PASS proof runs
-// getHtml(...) with.
+// browser would too, from the same getHtml(...) call this suite already uses.
 const realHtmlIds: Set<string> = (() => {
 	const html = getHtml(false, undefined, undefined, undefined, 'webview-attr-escape.test', '0.0.0');
 	const ids = new Set<string>();
@@ -1407,7 +1406,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 		assert.strictEqual(posted[0].scope, 'global', 'must be the newly-selected scope, not "extension" inherited from the abandoned edit via a stale editingServerName');
 	});
 
-	// review (2nd round): unlocking #serverScope (disabled = false) is not the same as
+	// review: unlocking #serverScope (disabled = false) is not the same as
 	// resetting its SELECTION -- a disabled <option> only blocks the interactive picker, not the
 	// field from still reading back whatever editMCPServer() last set it to. Once ui.ts has a
 	// real (if disabled) <option value="extension"> (fork-issue-67 Part B), that selection survives the
@@ -1432,7 +1431,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 		assert.strictEqual(scopeEl.value, 'project', '#serverScope must reset to "project", not silently keep showing "extension" now that a real (disabled) <option> for it exists');
 	});
 
-	// review (2nd round): the exact real-Chrome-reproduced click path for the SELECTION-not-
+	// review: the exact real-Chrome-reproduced click path for the SELECTION-not-
 	// reset regression -- Cancel (not "+ Add manually") after editing an 'extension'-scope server,
 	// then adding a genuinely new one without touching the scope field, silently wrote it into the
 	// extension's own storage (globalStorage/mcp/mcp-servers.json) instead of the intended

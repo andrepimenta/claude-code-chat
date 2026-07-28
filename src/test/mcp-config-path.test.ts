@@ -1,6 +1,6 @@
 // Unit tests for the fork-issue-69 mcp-config-path extraction (getMCPConfigPathForScope). Pure (no
 // vscode, no filesystem access), so these run under plain mocha against the compiled out/
-// output -- same pattern as settings-batch/restore-commit-utils/perm-log-redact. The
+// output -- same pattern as settings-batch/quote-win-shell-args. The
 // central regression this suite exists for is fork-issue-67's catch-all fix: an unknown/empty scope
 // must resolve to undefined, never fall through to the extension's own config path. Run
 // with `npm run test:mcp-config-path`.

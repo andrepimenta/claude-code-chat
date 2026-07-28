@@ -5,7 +5,7 @@
 // untested and untestable. This module owns only the pure scope -> path decision; every
 // environment value it needs (home dir, workspace folder, extension storage path) is
 // passed in by the caller instead of being read from vscode/process here, so this runs
-// under plain mocha, same pattern as settings-batch/shell-utils/restore-commit-utils. Run
+// under plain mocha, same pattern as settings-batch/shell-utils. Run
 // with `npm run test:mcp-config-path`.
 
 import * as path from 'path';
