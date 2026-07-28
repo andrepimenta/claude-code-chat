@@ -381,3 +381,172 @@ suite('webview code-block restore: "$" substitution patterns cannot corrupt surr
 		assert.strictEqual(textOn(html, 'code-line'), dollarPayload, 'the rendered code line must be the exact literal text; got: ' + html);
 	});
 });
+
+// PoC/regression tests for fork-issue-66 (review follow-up): executeSlashCommand's own addMessage(...)
+// terminal notice was first repaired (correct content/type args), then found to be a pure
+// duplicate of the host's own 'terminalOpened' response (case 'terminalOpened': below, fed by
+// extension.ts's _executeSlashCommand -> this._postMessage({type: 'terminalOpened', data: ...})),
+// which fires for every slash command _executeSlashCommand doesn't return early for -- i.e. every
+// command except /compact (which runs the summarize-and-restart flow via _startCompact() instead
+// and returns before reaching that postMessage) -- exactly the same set of commands the removed
+// client-side call used to cover. Coverage checked directly in _executeSlashCommand's source: the
+// only early return before the terminal-open/postMessage code is the "command === 'compact'"
+// branch; nothing else in that function throws or returns early (no workspace/permission guard,
+// vscode.window.createTerminal/getConfiguration don't throw for a bad shell path -- failures there
+// only surface asynchronously inside the terminal itself). So removing the client-side call left
+// no case uncovered.
+//
+// The client-side call was removed rather than kept alongside the host one (two sources for one
+// fact is one too many). These tests now prove (a) executeSlashCommand itself no longer appends a
+// message for any command, and (b) the host's 'terminalOpened' handler still renders the correct
+// 'system'-typed bubble the removed call used to render. Reuses addMessage/
+// formatMessageTimestamp/hideSlashCommandsModal/executeSlashCommand/extractCaseBlock plumbing from
+// the same real emitted script as the fork-issue-63 suite above (FakeNode, FakeMessagesDiv,
+// assertCleanExtraction, getEmittedScriptBody).
+
+interface ExecuteSlashCommandSandbox {
+	addMessage(content: string, type: string, timestamp?: string, rawText?: string): FakeNode;
+	executeSlashCommand(command: string): void;
+	runTerminalOpenedCase(message: { data: string }): void;
+}
+
+function loadExecuteSlashCommandSandbox(): { sandbox: ExecuteSlashCommandSandbox; messagesDiv: FakeMessagesDiv; postedMessages: unknown[] } {
+	const body = getEmittedScriptBody();
+
+	const addMessageSrc = extractFunction(body, 'addMessage');
+	assertCleanExtraction('addMessage', addMessageSrc, 'function addMessage(');
+
+	const formatTimestampSrc = extractFunction(body, 'formatMessageTimestamp');
+	assertCleanExtraction('formatMessageTimestamp', formatTimestampSrc, 'function formatMessageTimestamp(');
+
+	const hideSlashCommandsModalSrc = extractFunction(body, 'hideSlashCommandsModal');
+	assertCleanExtraction('hideSlashCommandsModal', hideSlashCommandsModalSrc, 'function hideSlashCommandsModal(');
+
+	const executeSlashCommandSrc = extractFunction(body, 'executeSlashCommand');
+	assertCleanExtraction('executeSlashCommand', executeSlashCommandSrc, 'function executeSlashCommand(');
+
+	const terminalOpenedCaseBody = extractCaseBlock(body, 'terminalOpened');
+	assert.ok(terminalOpenedCaseBody.includes('addMessage('), 'case \'terminalOpened\': block does not call addMessage; got: ' + terminalOpenedCaseBody);
+	assert.ok(!/\bbreak\s*;/.test(terminalOpenedCaseBody), 'case \'terminalOpened\': extraction appears to have swallowed more than one case (unexpected nested break;); got: ' + terminalOpenedCaseBody);
+
+	const messagesDiv: FakeMessagesDiv = {
+		scrollTop: 0,
+		scrollHeight: 0,
+		clientHeight: 0,
+		lastAppended: undefined,
+		appendChild(child: FakeNode) { this.lastAppended = child; return child; }
+	};
+	// executeSlashCommand's own dependencies unrelated to fork-issue-66: hides the (unrendered here) slash
+	// commands modal and clears the (unrendered here) message input -- both just plain objects the
+	// real function assigns properties on, never reads back in a way this test cares about.
+	const slashCommandsModalEl = { style: { display: '' } };
+
+	const src = [
+		formatTimestampSrc,
+		addMessageSrc,
+		hideSlashCommandsModalSrc,
+		executeSlashCommandSrc,
+		'function runTerminalOpenedCase(message) {\n' + terminalOpenedCaseBody + '\n}',
+		// fork-issue-46's copy-button raw-text store -- addMessage only .set()s into it, never reads it back.
+		'let messageRawText = new WeakMap();',
+		'function shouldAutoScroll() { return false; }',
+		'function scrollToBottomIfNeeded() { /* no-op */ }',
+		'function moveProcessingIndicatorToLast() { /* no-op */ }',
+		// Only reached for type === "error" (isPermissionError) or "error"/"claude"
+		// (isOutputTokenLimitError) -- never for 'system'.
+		'function isPermissionError() { return false; }',
+		'function isOutputTokenLimitError() { return false; }',
+	].join('\n');
+
+	// review: a regression that empties executeSlashCommand's whole body (losing the
+	// vscode.postMessage dispatch too, not just the removed addMessage notice) would still pass
+	// every "no bubble appended" assertion below -- slash commands would then silently do nothing.
+	// Recording postMessage calls here gives the tests below a positive assertion, not just the
+	// negative "no message appended" ones.
+	const postedMessages: unknown[] = [];
+
+	const sandbox: Record<string, unknown> = {
+		messageInput: { value: 'leftover input' },
+		vscode: { postMessage(msg: unknown) { postedMessages.push(msg); } },
+		document: {
+			getElementById(id: string) {
+				if (id === 'messages') { return messagesDiv; }
+				if (id === 'slashCommandsModal') { return slashCommandsModalEl; }
+				throw new Error('unexpected document.getElementById(' + id + ')');
+			},
+			createElement(tag: string) {
+				if (tag !== 'div' && tag !== 'button' && tag !== 'span' && tag !== 'pre') {
+					throw new Error('unexpected document.createElement(' + tag + ')');
+				}
+				return new FakeNode(tag);
+			}
+		}
+	};
+	vm.createContext(sandbox);
+	new vm.Script(src).runInContext(sandbox);
+	return { sandbox: sandbox as unknown as ExecuteSlashCommandSandbox, messagesDiv, postedMessages };
+}
+
+suite('webview executeSlashCommand terminal notice (fork-issue-66)', () => {
+
+	test('executeSlashCommand itself no longer appends a message, but still dispatches the command to the host (the host\'s terminalOpened response is now the single source of the notice)', () => {
+		const { sandbox, messagesDiv, postedMessages } = loadExecuteSlashCommandSandbox();
+		sandbox.executeSlashCommand('review');
+		assert.strictEqual(
+			messagesDiv.lastAppended,
+			undefined,
+			'expected executeSlashCommand to append no message of its own (fork-issue-66); got: ' + (messagesDiv.lastAppended && messagesDiv.lastAppended.outerHTML)
+		);
+		// Positive guard (review): proves the fix didn't empty the whole function body --
+		// the actual command dispatch to the extension host must still fire with the right
+		// command. Checked field-by-field (not assert.deepStrictEqual on the whole object) since
+		// the posted object was created inside the vm sandbox's own realm -- deepStrictEqual's
+		// strict prototype check would fail even on an otherwise-identical object from a
+		// different vm context.
+		assert.strictEqual(postedMessages.length, 1, 'expected exactly one postMessage call; got: ' + JSON.stringify(postedMessages));
+		assert.strictEqual((postedMessages[0] as { type: string }).type, 'executeSlashCommand', 'expected the executeSlashCommand dispatch type; got: ' + JSON.stringify(postedMessages));
+		assert.strictEqual((postedMessages[0] as { command: string }).command, 'review', 'expected the dispatch to carry the chosen command; got: ' + JSON.stringify(postedMessages));
+	});
+
+	test('/compact shows no terminal notice (unchanged -- compact runs in chat and reports its own status), but still dispatches the command to the host', () => {
+		const { sandbox, messagesDiv, postedMessages } = loadExecuteSlashCommandSandbox();
+		sandbox.executeSlashCommand('compact');
+		assert.strictEqual(
+			messagesDiv.lastAppended,
+			undefined,
+			'expected no message to be appended for /compact; got: ' + (messagesDiv.lastAppended && messagesDiv.lastAppended.outerHTML)
+		);
+		assert.strictEqual(postedMessages.length, 1, 'expected exactly one postMessage call; got: ' + JSON.stringify(postedMessages));
+		assert.strictEqual((postedMessages[0] as { type: string }).type, 'executeSlashCommand', 'expected the executeSlashCommand dispatch type; got: ' + JSON.stringify(postedMessages));
+		assert.strictEqual((postedMessages[0] as { command: string }).command, 'compact', 'expected the dispatch to carry /compact as the command too; got: ' + JSON.stringify(postedMessages));
+	});
+
+	test('the host\'s terminalOpened response still renders a readable system notice -- correct CSS class, correct visible text, no header/copy/collapse button', () => {
+		const { sandbox, messagesDiv } = loadExecuteSlashCommandSandbox();
+		sandbox.runTerminalOpenedCase({ data: 'Executing /review command in terminal. Check the terminal output and return when ready.' });
+
+		if (!messagesDiv.lastAppended) {
+			throw new Error('case \'terminalOpened\' did not append a message');
+		}
+		const html = messagesDiv.lastAppended.outerHTML;
+
+		assert.ok(
+			html.startsWith('<div class="message system">'),
+			'expected the "message system" CSS class; got: ' + html
+		);
+
+		const preMatch = /<pre>([\s\S]*?)<\/pre>/.exec(html);
+		assert.ok(preMatch, 'expected a <pre> element holding the notice text; got: ' + html);
+		assert.strictEqual(
+			preMatch![1],
+			'Executing /review command in terminal. Check the terminal output and return when ready.',
+			'the notice text must be visible in the message content; got: ' + html
+		);
+
+		assert.ok(
+			!html.includes('message-header'),
+			'a system notice must not render a header (no icon/label/copy-button/collapse-button/timestamp); got: ' + html
+		);
+		assert.ok(!tagExists(html, 'button'), 'a system notice must not render a copy or collapse button; got: ' + html);
+	});
+});
