@@ -5233,7 +5233,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				// Update Customize Claude Command settings
 				document.getElementById('executable-path').value = message.data['executable.path'] || '';
-
 				renderEnvVariables(message.data['environment.variables'] || {});
 
 				// Detect OpenCredits and envs disabled state

@@ -127,10 +127,10 @@ export function activate(context: vscode.ExtensionContext) {
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
-	// Register custom content provider for read-only diff views. Wired to the primary
-	// provider's baseline resolver -- extra panels from "New Claude
-	// Chat (Separate)" (fork-issue-24) share the same extension context, so they resolve to the
-	// same backup repo anyway; a claude-diff tab has no panel of its own to route to.
+	// Register custom content provider for read-only diff views. Wired to the single
+	// shared ClaudeChatProvider instance's baseline resolver -- both the panel command
+	// and the sidebar webview use this same instance, so a claude-diff tab always
+	// resolves to the same backup repo regardless of which one opened it.
 	const diffProvider = new DiffContentProvider((sha, relPath) => provider.resolveTurnDiffBaselineForProvider(sha, relPath));
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
 
@@ -1782,7 +1782,6 @@ class ClaudeChatProvider {
 				if (!rateLimitType || rateLimitType === 'five_hour') {
 					this._lastRateLimitResetsAt = jsonData.rate_limit_info?.resetsAt;
 				}
-
 				void this._maybeSendUsageLimits();
 				break;
 			}
