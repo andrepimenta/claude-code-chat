@@ -4548,6 +4548,7 @@ const styles = `
         align-items: center;
         gap: 12px;
         margin-bottom: 14px;
+        flex-wrap: wrap;
     }
 
     .marketplace-detail-icon {
@@ -4558,7 +4559,12 @@ const styles = `
     }
 
     .marketplace-detail-header-info {
-        flex: 1;
+        /* Non-zero flex-basis (content) so this item counts with its real
+           width when the flex container decides whether to wrap -- with the
+           old "flex: 1" (basis 0%) shorthand it was invisible to that
+           decision, so the row never wrapped and the name/scope-select were
+           squeezed onto one line instead, overlapping each other. */
+        flex: 1 1 auto;
         min-width: 0;
     }
 
