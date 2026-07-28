@@ -1,18 +1,18 @@
 // Unit tests for the code-block restore loop (restoreCodeBlockPlaceholders), the
 // __CODEBLOCK_N__ half of parseSimpleMarkdown's placeholder dance. Pure (no vscode, no
 // network, no DOM), so these run under plain mocha against the compiled out/ output --
-// same pattern as diff-utils/shell-utils/auto-model-switch/math-segments/collapse-rules/
-// html-escape. A review found that the loop used html.replace(placeholder, str),
-// a plain STRING as the 2nd argument -- String.replace treats "$&"/"$`"/"$'"/"$$" in a
-// string replacement as substitution patterns, so a code block whose (already-escaped)
-// content happens to contain one of those sequences tears the surrounding HTML apart
-// instead of being reinserted unchanged. restoreMathSegments (math-script.ts) already used
-// function-replacement for exactly this reason when the LaTeX-rendering feature introduced
-// it; this fixes the code-block loop to match. The first suite covers ordinary
-// multi-placeholder restores, the second is the regression suite for each substitution
-// pattern individually plus one combined case, and the third is the splice-sandbox test
-// that proves the function still works with zero module context -- exactly how
-// script.ts's .toString() splice runs it in the webview. Run with `npm run test:markdown-restore`.
+// same pattern as the math-segments unit tests. A review found that the loop used
+// html.replace(placeholder, str), a plain STRING as the 2nd argument -- String.replace
+// treats "$&"/"$`"/"$'"/"$$" in a string replacement as substitution patterns, so a code
+// block whose (already-escaped) content happens to contain one of those sequences tears
+// the surrounding HTML apart instead of being reinserted unchanged. restoreMathSegments
+// (math-script.ts) already used function-replacement for exactly this reason when the
+// LaTeX-rendering feature introduced it; this fixes the code-block loop to match. The
+// first suite covers ordinary multi-placeholder restores, the second is the regression
+// suite for each substitution pattern individually plus one combined case, and the third
+// is the splice-sandbox test that proves the function still works with zero module
+// context -- exactly how script.ts's .toString() splice runs it in the webview. Run with
+// `npm run test:markdown-restore`.
 
 import * as assert from 'assert';
 import { restoreCodeBlockPlaceholders } from '../markdown-restore';

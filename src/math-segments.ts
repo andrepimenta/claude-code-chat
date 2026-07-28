@@ -1,7 +1,7 @@
 // Pure scanner for the LaTeX-rendering feature (upstream #171): finds $…$ / $$…$$ /
 // \(…\) / \[…\] math segments in the raw text parseSimpleMarkdown works on, before
 // escapeHtml or any markdown rule touches it. No vscode import, so this runs under plain
-// mocha like diff-utils/shell-utils/auto-model-switch/model-updater.
+// mocha like model-updater.
 //
 // findMathSegments is never called directly by the webview's copy of this file -- it has
 // none. Instead math-script.ts injects this function's own compiled source via

@@ -1,6 +1,6 @@
 // Unit tests for the LaTeX-rendering scanner (findMathSegments). Pure (no vscode, no
 // network, no filesystem access), so these run under plain mocha against the compiled
-// out/ output -- same pattern as diff-utils/shell-utils/auto-model-switch. The first 13
+// out/ output -- same pattern as the model-updater unit tests. The first 13
 // cases cover the core price-vs-math / delimiter-matching behaviour; the next 3 cover
 // additional edge cases (\$ alone, an empty $$$$ pair, an unbalanced $); the next 5 guard
 // against a __CODEBLOCK_N__ placeholder ending up inside a math body, a "PID trap" (a

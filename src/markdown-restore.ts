@@ -6,7 +6,7 @@
 // (math-script.ts) has had this fix from the start -- this function brings the code-block
 // restore loop up to the same standard (function replacement instead of string
 // replacement). script.ts splices only the compiled function text into the page via
-// .toString() (same pattern as html-escape.ts/collapse-rules.ts) -- that's why this
+// .toString() (same pattern as restoreMathSegments in math-script.ts) -- that's why this
 // function must stay self-contained: no module-level symbol, no import, no helper
 // function outside the body.
 export function restoreCodeBlockPlaceholders(html: string, codeBlockPlaceholders: string[]): string {
