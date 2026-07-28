@@ -860,7 +860,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		// fork-issue-49: attribute escaping -- escapeHtml() leaves " and ' untouched. Build-time splice
-		// (same pattern as math-script/collapse-script) so npm run test:html-escape can
+		// (same pattern as collapse-script) so npm run test:html-escape can
 		// exercise the function under Node. NOTE: this deliberately uses "\${", not "\\\${".
 		${escapeAttr.toString()}
 
@@ -4535,7 +4535,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		updateStatus('Initializing...', 'disconnected');
 
 		// fork-issue-55: restoreCodeBlockPlaceholders (the call site is further down in
-		// parseSimpleMarkdown) -- build-time splice (same pattern as math-script/collapse-script/
+		// parseSimpleMarkdown) -- build-time splice (same pattern as collapse-script/
 		// html-escape) so npm run test:markdown-restore can exercise the function under
 		// Node. The next line splices the compiled function source via toString()
 		// into the webview script string.

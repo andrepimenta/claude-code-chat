@@ -39,7 +39,7 @@ const getCollapseScript = () => `
 			for (var i = 0; i < els.length; i++) { els[i].open = !collapseLongCodeBlocks; }
 		}
 
-		// Phase 2: manual per-message collapse via the caret button in .message-header
+		// Manual per-message collapse via the caret button in .message-header
 		// (script.ts addMessage). Purely a CSS class toggle, no DOM removal -- see
 		// ui-styles.ts's ".message.collapsed" rules.
 		function toggleMessageCollapsed(messageDiv, btn) {
