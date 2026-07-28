@@ -2076,14 +2076,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				let configDisplay = '';
 
 				if (serverType === 'stdio') {
-					configDisplay = \`Command: \${config.command || 'Not specified'}\`;
+					configDisplay = \`Command: \${escapeHtml(config.command || 'Not specified')}\`;
 					if (config.args && Array.isArray(config.args)) {
-						configDisplay += \`<br>Args: \${config.args.join(' ')}\`;
+						configDisplay += \`<br>Args: \${escapeHtml(config.args.join(' '))}\`;
 					}
 				} else if (serverType === 'http' || serverType === 'sse') {
-					configDisplay = \`URL: \${config.url || 'Not specified'}\`;
+					configDisplay = \`URL: \${escapeHtml(config.url || 'Not specified')}\`;
 				} else {
-					configDisplay = \`Type: \${serverType}\`;
+					configDisplay = \`Type: \${escapeHtml(serverType)}\`;
 				}
 
 				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : 'Extension';
