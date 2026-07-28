@@ -400,12 +400,14 @@ suite('webview code-block restore: "$" substitution patterns cannot corrupt surr
 // fact is one too many). These tests now prove (a) executeSlashCommand itself no longer appends a
 // message for any command, and (b) the host's 'terminalOpened' handler still renders the correct
 // 'system'-typed bubble the removed call used to render. Reuses addMessage/
-// formatMessageTimestamp/hideSlashCommandsModal/executeSlashCommand/extractCaseBlock plumbing from
+// hideSlashCommandsModal/executeSlashCommand/extractCaseBlock plumbing from
 // the same real emitted script as the fork-issue-63 suite above (FakeNode, FakeMessagesDiv,
-// assertCleanExtraction, getEmittedScriptBody).
+// assertCleanExtraction, getEmittedScriptBody). No timestamp/formatMessageTimestamp here, same
+// reason as loadUserInputPipelineSandbox above -- addMessage in this branch takes only (content,
+// type).
 
 interface ExecuteSlashCommandSandbox {
-	addMessage(content: string, type: string, timestamp?: string, rawText?: string): FakeNode;
+	addMessage(content: string, type: string): FakeNode;
 	executeSlashCommand(command: string): void;
 	runTerminalOpenedCase(message: { data: string }): void;
 }
@@ -415,9 +417,6 @@ function loadExecuteSlashCommandSandbox(): { sandbox: ExecuteSlashCommandSandbox
 
 	const addMessageSrc = extractFunction(body, 'addMessage');
 	assertCleanExtraction('addMessage', addMessageSrc, 'function addMessage(');
-
-	const formatTimestampSrc = extractFunction(body, 'formatMessageTimestamp');
-	assertCleanExtraction('formatMessageTimestamp', formatTimestampSrc, 'function formatMessageTimestamp(');
 
 	const hideSlashCommandsModalSrc = extractFunction(body, 'hideSlashCommandsModal');
 	assertCleanExtraction('hideSlashCommandsModal', hideSlashCommandsModalSrc, 'function hideSlashCommandsModal(');
@@ -442,7 +441,6 @@ function loadExecuteSlashCommandSandbox(): { sandbox: ExecuteSlashCommandSandbox
 	const slashCommandsModalEl = { style: { display: '' } };
 
 	const src = [
-		formatTimestampSrc,
 		addMessageSrc,
 		hideSlashCommandsModalSrc,
 		executeSlashCommandSrc,
