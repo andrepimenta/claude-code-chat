@@ -758,7 +758,11 @@ interface CodeBlockSandbox {
 // calls it instead of building the placeholder/collapse/copy-button HTML inline.
 function loadCodeBlockSandbox(): CodeBlockSandbox {
 	const body = getEmittedScriptBody();
-	const src = ['escapeHtml', 'escapeAttr', 'normalizeCollapseThreshold', 'evaluateCodeBlockCollapse', 'extractCodeBlocks', 'parseSimpleMarkdown']
+	// restoreCodeBlockPlaceholders (#55): script.ts splices this in via
+	// `${restoreCodeBlockPlaceholders.toString()}` (build-time, see markdown-restore.ts), so it
+	// appears in the emitted body as an ordinary function declaration extractFunction can find,
+	// same as the others below -- parseSimpleMarkdown calls it to restore __CODEBLOCK_N__.
+	const src = ['escapeHtml', 'escapeAttr', 'normalizeCollapseThreshold', 'evaluateCodeBlockCollapse', 'restoreCodeBlockPlaceholders', 'extractCodeBlocks', 'parseSimpleMarkdown']
 		.map(name => extractFunction(body, name))
 		.join('\n');
 	const sandbox: Record<string, unknown> = {

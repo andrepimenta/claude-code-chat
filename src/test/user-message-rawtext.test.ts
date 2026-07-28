@@ -133,6 +133,7 @@ interface FakeMessagesDiv {
 interface UserInputPipelineSandbox {
 	addMessage(content: string, type: string): void;
 	parseSimpleMarkdown(markdown: string): string;
+	renderUserMessageContent(text: string): string;
 	runUserInputCase(message: { data: string; timestamp?: string }): void;
 }
 
@@ -166,6 +167,11 @@ function loadUserInputPipelineSandbox(): { sandbox: UserInputPipelineSandbox; me
 		extractFunction(body, 'escapeAttr'),
 		extractFunction(body, 'normalizeCollapseThreshold'),
 		extractFunction(body, 'evaluateCodeBlockCollapse'),
+		// restoreCodeBlockPlaceholders (#55): script.ts splices this in via
+		// `${restoreCodeBlockPlaceholders.toString()}` (build-time, see markdown-restore.ts), so it
+		// appears in the emitted body as an ordinary function declaration extractFunction can find --
+		// both parseSimpleMarkdownSrc and renderUserMessageContentSrc below call it.
+		extractFunction(body, 'restoreCodeBlockPlaceholders'),
 		extractFunction(body, 'extractCodeBlocks'),
 		parseSimpleMarkdownSrc,
 		renderUserMessageContentSrc,
@@ -326,5 +332,56 @@ suite('webview user-message raw text rendering (#63)', () => {
 		const dataRawCode = findAttrOn(rendered, 'language-js', 'data-raw-code');
 		assert.ok(dataRawCode, 'expected a data-raw-code attribute on the language-js code element; got: ' + rendered);
 		assert.strictEqual(dataRawCode!.value, 'const x = 1;\n', 'data-raw-code must contain the exact fenced code; got: ' + rendered);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Gitea #70 PoC: extractCodeBlocks' per-block HTML (data-raw-code attribute plus escaped
+// code-line divs) does not strip "$"/"`"/"'" characters, so a code block whose content
+// contains one of the String.replace(placeholder, string) substitution sequences
+// ("$&"/"$`"/"$'"/"$$") reaches the placeholder-restore step still intact. Both
+// parseSimpleMarkdown and renderUserMessageContent (#63) restore their __CODEBLOCK_N__
+// placeholders via the shared restoreCodeBlockPlaceholders (#55) -- a FUNCTION replacer,
+// immune to this. These tests exercise the REAL, full pipeline (extractCodeBlocks +
+// escapeHtml/escapeAttr + restoreCodeBlockPlaceholders, not a direct unit call to
+// restoreCodeBlockPlaceholders as in markdown-restore.test.ts) through both entry points and
+// prove the surrounding prose is not corrupted: a plain html.replace(placeholder, codeBlockHtml)
+// here would splice codeBlockHtml's own preceding/following HTML ("$`"/"$'") or a literal "$"
+// duplicate ("$$") into the restored output, which would show up as MARKER_BEFORE/MARKER_AFTER
+// appearing more than once and/or a corrupted data-raw-code value.
+// ─────────────────────────────────────────────────────────────────────────
+
+suite('webview code-block restore: "$" substitution patterns cannot corrupt surrounding HTML (#70, full pipeline)', () => {
+
+	// Covers all four String.replace substitution sequences at once: "$&" (matched substring),
+	// "$`" (pre-match), "$'" (post-match), "$$" (literal "$").
+	const dollarPayload = 'echo $& run; VAR=$`date`; MSG=$\'ok\'; echo $$';
+
+	test('parseSimpleMarkdown: a code block containing "$&"/"$`"/"$\'"/"$$" does not duplicate the surrounding prose and round-trips byte-for-byte', () => {
+		const { sandbox } = loadUserInputPipelineSandbox();
+		const markdown = 'MARKER_BEFORE\n\n```\n' + dollarPayload + '\n```\n\nMARKER_AFTER';
+		const html = sandbox.parseSimpleMarkdown(markdown);
+
+		assert.strictEqual(html.split('MARKER_BEFORE').length - 1, 1, 'MARKER_BEFORE must appear exactly once, not spliced into the code block; got: ' + html);
+		assert.strictEqual(html.split('MARKER_AFTER').length - 1, 1, 'MARKER_AFTER must appear exactly once, not spliced into the code block; got: ' + html);
+
+		const dataRawCode = findAttrOn(html, 'language-plaintext', 'data-raw-code');
+		assert.ok(dataRawCode, 'expected a data-raw-code attribute on the language-plaintext code element; got: ' + html);
+		assert.strictEqual(dataRawCode!.value, dollarPayload + '\n', 'data-raw-code must contain the exact fenced code, dollar sequences untouched; got: ' + html);
+		assert.strictEqual(textOn(html, 'code-line'), dollarPayload, 'the rendered code line must be the exact literal text; got: ' + html);
+	});
+
+	test('renderUserMessageContent: a code block containing "$&"/"$`"/"$\'"/"$$" does not duplicate the surrounding raw-text prose and round-trips byte-for-byte', () => {
+		const { sandbox } = loadUserInputPipelineSandbox();
+		const text = 'MARKER_BEFORE\n```\n' + dollarPayload + '\n```\nMARKER_AFTER';
+		const html = sandbox.renderUserMessageContent(text);
+
+		assert.strictEqual(html.split('MARKER_BEFORE').length - 1, 1, 'MARKER_BEFORE must appear exactly once, not spliced into the code block; got: ' + html);
+		assert.strictEqual(html.split('MARKER_AFTER').length - 1, 1, 'MARKER_AFTER must appear exactly once, not spliced into the code block; got: ' + html);
+
+		const dataRawCode = findAttrOn(html, 'language-plaintext', 'data-raw-code');
+		assert.ok(dataRawCode, 'expected a data-raw-code attribute on the language-plaintext code element; got: ' + html);
+		assert.strictEqual(dataRawCode!.value, dollarPayload + '\n', 'data-raw-code must contain the exact fenced code, dollar sequences untouched; got: ' + html);
+		assert.strictEqual(textOn(html, 'code-line'), dollarPayload, 'the rendered code line must be the exact literal text; got: ' + html);
 	});
 });
