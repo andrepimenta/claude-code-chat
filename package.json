@@ -66,7 +66,8 @@
       {
         "command": "claude-code-chat.openChat",
         "key": "ctrl+shift+c",
-        "mac": "cmd+shift+c"
+        "mac": "cmd+shift+c",
+        "when": "!terminalFocus"
       }
     ],
     "menus": {
@@ -208,6 +209,11 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.ui.compactMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reduce paddings, margins and font sizes for a denser chat layout."
         }
       }
     }

@@ -3,6 +3,7 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
@@ -14,7 +15,23 @@ let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
+// Manual compact (fork-issue-36): the headless CLI has no real /compact, so the compact button
+// asks the running session for a handoff summary instead, then starts the next turn
+// as a fresh session seeded with that summary (see _startCompact/_finishCompact).
+const COMPACT_PROMPT = 'Write a concise handoff summary of this conversation so a fresh session can continue seamlessly, then stop. Include, as compact markdown: (1) the overall task/goal; (2) key decisions, constraints and assumptions; (3) relevant or changed files and paths, each with its role in one line; (4) what is done vs. still open, as concrete next steps; (5) any gotchas or non-obvious context. Do not call any tools or make changes — output only the summary.';
+
+// Prefixes the first user message of a fresh, post-compact session with the previous
+// session's handoff summary so the new (unseen) session has the same context.
+function buildCompactSeedMessage(summary: string, message: string): string {
+	return 'Context summary from the previous (compacted) session — treat as established background, do not re-summarize:\n\n' + summary + '\n\n---\n\nContinuing. My next message:\n' + message;
+}
+
 const exec = util.promisify(cp.exec);
+
+// File target for [perm] diagnostics (fork-issue-15): console.error of an installed
+// extension is only visible in the DevTools console, which makes field
+// debugging of the stdio permission channel impossible — mirror it to a file.
+const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
 
 // Storage for diff content (used by DiffContentProvider)
 const diffContentStore = new Map<string, string>();
@@ -56,6 +73,9 @@ export function activate(context: vscode.ExtensionContext) {
 	const configChangeDisposable = vscode.workspace.onDidChangeConfiguration(event => {
 		if (event.affectsConfiguration('claudeCodeChat.wsl')) {
 			provider.newSessionOnConfigChange();
+		}
+		if (event.affectsConfiguration('claudeCodeChat.ui.compactMode')) {
+			provider.refreshSettingsOnConfigChange();
 		}
 	});
 
@@ -169,6 +189,10 @@ class ClaudeChatProvider {
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
+	// Last filename this provider loaded/saved to — used by loadConversation() to
+	// tell "reloading the same conversation" from "switching to a different one"
+	// (fork-issue-41), so the fork-issue-36 pin/checkpoints are only dropped on an actual switch.
+	private _lastSavedFilename: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
@@ -197,8 +221,27 @@ class ClaudeChatProvider {
 	private _isWslProcess: boolean = false;
 	private _wslDistro: string = 'Ubuntu';
 	private _selectedModel: string = 'default'; // Default model
+	private _selectedMode: string = 'manual';
+	private _selectedEffort: string | undefined = undefined;
 	private _isProcessing: boolean | undefined;
+	// Set once a 'result' message was seen for the current process. Gates the
+	// deferred stdin close so we never tear down the stdio control channel while
+	// a permission round-trip is still pending (would surface as "Stream closed").
+	private _resultSeen: boolean = false;
 	private _draftMessage: string = '';
+	// Manual compact (fork-issue-36): true while the summarize turn started by _startCompact()
+	// is in flight. _pendingCompactSummary holds its result once seen, consumed as the
+	// seed for the next fresh session. _forceFreshSession is a one-shot override that
+	// skips --resume on the very next _sendMessageToClaude() call. _pinnedConversationFilename
+	// keeps saving to the same conversation file across the CLI-session swap, since the
+	// new session gets its own session_id (which the filename would otherwise follow).
+	private _compactInProgress = false;
+	private _pendingCompactSummary: string | undefined;
+	private _forceFreshSession = false;
+	private _pinnedConversationFilename: string | undefined;
+	// CLI-session resume (fork-issue-37): guards against a double-click interleaving two
+	// preview loads once the first call yields at an await.
+	private _cliResumeInProgress = false;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -214,6 +257,10 @@ class ClaudeChatProvider {
 
 		// Load saved model preference
 		this._selectedModel = this._context.workspaceState.get('claude.selectedModel', 'default');
+
+		// Load saved mode/effort preference
+		this._selectedMode = this._context.workspaceState.get('claude.selectedMode', 'manual');
+		this._selectedEffort = this._context.workspaceState.get('claude.selectedEffort', undefined);
 
 		// Load cached subscription type (will be refreshed on first message)
 		this._subscriptionType = this._context.globalState.get('claude.subscriptionType');
@@ -393,6 +440,16 @@ class ClaudeChatProvider {
 			model: this._selectedModel
 		});
 
+		// Send current mode/effort to webview
+		this._postMessage({
+			type: 'modeSelected',
+			mode: this._selectedMode
+		});
+		this._postMessage({
+			type: 'effortSelected',
+			effort: this._selectedEffort
+		});
+
 		// Send cached subscription type to webview (will be refreshed on first message)
 		if (this._subscriptionType) {
 			this._postMessage({
@@ -426,16 +483,20 @@ class ClaudeChatProvider {
 	private async _handleWebviewMessage(message: any) {
 		switch (message.type) {
 			case 'sendMessage':
-				this._sendMessageToClaude(message.text, message.planMode, message.thinkingMode, message.images);
+				this._sendMessageToClaude(message.text, message.images);
 				return;
 			case 'newSession':
 				this._newSession();
+				return;
+			case 'startCompact':
+				this._startCompact();
 				return;
 			case 'restoreCommit':
 				this._restoreToCommit(message.commitSha);
 				return;
 			case 'getConversationList':
 				this._sendConversationList();
+				void this._sendCliSessionList();
 				return;
 			case 'getWorkspaceFiles':
 				this._sendWorkspaceFiles(message.searchTerm);
@@ -445,6 +506,12 @@ class ClaudeChatProvider {
 				return;
 			case 'loadConversation':
 				this.loadConversation(message.filename);
+				return;
+			case 'resumeCliSession':
+				this._resumeCliSession(message.sessionId);
+				return;
+			case 'exportConversation':
+				this._exportConversation(message.filename);
 				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
@@ -469,6 +536,12 @@ class ClaudeChatProvider {
 				return;
 			case 'selectModel':
 				this._setSelectedModel(message.model, message.tierModels);
+				return;
+			case 'setMode':
+				this._setSelectedMode(message.mode);
+				return;
+			case 'setEffort':
+				this._setSelectedEffort(message.effort);
 				return;
 			case 'openModelTerminal':
 				this._openModelTerminal();
@@ -859,36 +932,33 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _sendMessageToClaude(message: string, planMode?: boolean, thinkingMode?: boolean, images?: string[]) {
+	private async _sendMessageToClaude(message: string, images?: string[], opts?: { compact?: boolean }) {
+		// Re-entrancy guard: a Claude process is already running for this session.
+		// Spawning a second overlapping process (same --resume session) closes the
+		// first one's stdio control channel and fights over the session lock, which
+		// surfaces as "AbortError: Stream closed" on every permission request.
+		// Reject the new send instead (covers sendMessage, slash-command and
+		// plan-file-save entry points, which all funnel through here).
+		if (this._isProcessing || this._currentClaudeProcess) {
+			console.error(`[perm] rejected re-entrant send (guard hit) processing=${this._isProcessing} pid=${this._currentClaudeProcess?.pid}`);
+			this._postMessage({
+				type: 'error',
+				data: '⏳ Claude is still working on the previous message. Please wait for it to finish or press Stop.'
+			});
+			return;
+		}
+
 		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
 		const cwd = workspaceFolder ? workspaceFolder.uri.fsPath : process.cwd();
 
-		// Get thinking intensity setting
-		const configThink = vscode.workspace.getConfiguration('claudeCodeChat');
-		const thinkingIntensity = configThink.get<string>('thinking.intensity', 'think');
-
-		// Prepend thinking mode instructions if enabled
 		let actualMessage = message;
-		if (thinkingMode) {
-			let thinkingPrompt = '';
-			const thinkingMesssage = ' THROUGH THIS STEP BY STEP: \n'
-			switch (thinkingIntensity) {
-				case 'think':
-					thinkingPrompt = 'THINK';
-					break;
-				case 'think-hard':
-					thinkingPrompt = 'THINK HARD';
-					break;
-				case 'think-harder':
-					thinkingPrompt = 'THINK HARDER';
-					break;
-				case 'ultrathink':
-					thinkingPrompt = 'ULTRATHINK';
-					break;
-				default:
-					thinkingPrompt = 'THINK';
-			}
-			actualMessage = thinkingPrompt + thinkingMesssage + actualMessage;
+
+		// Manual compact (fork-issue-36): seed the first real message of a fresh, post-compact
+		// session with the previous session's handoff summary. Consumed once — later
+		// messages in the same (new) session go through unmodified.
+		if (!opts?.compact && this._pendingCompactSummary) {
+			actualMessage = buildCompactSeedMessage(this._pendingCompactSummary, message);
+			this._pendingCompactSummary = undefined;
 		}
 
 		this._isProcessing = true;
@@ -896,11 +966,17 @@ class ClaudeChatProvider {
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
 
-		// Show original user input in chat and save to conversation (without mode prefixes)
-		this._sendAndSaveMessage({
-			type: 'userInput',
-			data: message
-		});
+		if (opts?.compact) {
+			// Summarize turn for the compact button (fork-issue-36): no user-visible echo — show
+			// the compacting indicator instead.
+			this._postMessage({ type: 'compacting', data: { isCompacting: true } });
+		} else {
+			// Show original user input in chat and save to conversation (without mode prefixes)
+			this._sendAndSaveMessage({
+				type: 'userInput',
+				data: message
+			});
+		}
 
 		// Set processing state to true
 		this._postMessage({
@@ -908,12 +984,15 @@ class ClaudeChatProvider {
 			data: { isProcessing: true }
 		});
 
-		// Create backup commit before Claude makes changes
-		try {
-			await this._createBackupCommit(message);
-		}
-		catch (e) {
-			console.error("error", e);
+		// Create backup commit before Claude makes changes (skipped for the internal
+		// compact summarize turn — fork-issue-36)
+		if (!opts?.compact) {
+			try {
+				await this._createBackupCommit(message);
+			}
+			catch (e) {
+				console.error("error", e);
+			}
 		}
 
 		// Show loading indicator
@@ -954,9 +1033,13 @@ class ClaudeChatProvider {
 			}
 		}
 
-		// Add plan mode if enabled
-		if (planMode) {
-			args.push('--permission-mode', 'plan');
+		// Add permission mode / effort based on the selected mode (manual = no flag,
+		// i.e. byte-identical to the previous default spawn) (fork-issue-31)
+		if (this._selectedMode && this._selectedMode !== 'manual') {
+			args.push('--permission-mode', this._selectedMode);
+		}
+		if (this._selectedEffort) {
+			args.push('--effort', this._selectedEffort);
 		}
 
 		// Add model selection for Claude models only (opus, sonnet)
@@ -966,9 +1049,19 @@ class ClaudeChatProvider {
 			args.push('--model', this._selectedModel);
 		}
 
-		// Add session resume if we have a current session
-		if (this._currentSessionId) {
-			args.push('--resume', this._currentSessionId);
+		// Add session resume if we have a current session. Skipped once right after a
+		// compact (fork-issue-36): _forceFreshSession forces a session-less spawn so the CLI
+		// starts clean instead of resuming the (now summarized-away) old session.
+		// Snapshotted before being consumed below so the spawn log (fork-issue-41) can report
+		// what this spawn actually did — _forceFreshSession is false again and
+		// _currentSessionId still holds the old id by the time the log line runs.
+		const forcedFresh = this._forceFreshSession;
+		const resumeSessionId = (this._currentSessionId && !forcedFresh) ? this._currentSessionId : undefined;
+		if (resumeSessionId) {
+			args.push('--resume', resumeSessionId);
+		}
+		if (this._forceFreshSession) {
+			this._forceFreshSession = false;
 		}
 
 		const wslEnabled = config.get<boolean>('wsl.enabled', false);
@@ -1073,6 +1166,19 @@ class ClaudeChatProvider {
 
 		// Store process reference for potential termination
 		this._currentClaudeProcess = claudeProcess;
+		// New process = new turn: no 'result' seen yet, so the deferred stdin
+		// close stays armed until this turn actually completes.
+		this._resultSeen = false;
+		this._permLog(`spawned claude pid=${claudeProcess.pid} session=${resumeSessionId ?? '(new)'} forceFresh=${forcedFresh}`);
+
+		// stdin lifecycle tracing (fork-issue-15): record every way the control channel can
+		// die, so a field "Stream closed" can be attributed to a concrete event.
+		claudeProcess.stdin?.on('close', () => {
+			this._permLog(`stdin CLOSE event pid=${claudeProcess.pid} current=${this._currentClaudeProcess?.pid ?? 'none'}`);
+		});
+		claudeProcess.stdin?.on('error', (err) => {
+			this._permLog(`stdin ERROR event pid=${claudeProcess.pid}: ${err.message}`);
+		});
 
 		// Send the message to Claude's stdin as JSON (stream-json input format)
 		// Don't end stdin yet - we need to keep it open for permission responses
@@ -1177,6 +1283,11 @@ class ClaudeChatProvider {
 
 		if (claudeProcess.stdout) {
 			claudeProcess.stdout.on('data', (data) => {
+				// Stale-guard (fork-issue-41): a killed process's reference is cleared before its
+				// stdio actually tears down, so late data from a superseded process must
+				// not mutate state (e.g. _currentSessionId) for whichever process is
+				// current now.
+				if (claudeProcess !== this._currentClaudeProcess) { return; }
 				rawOutput += data.toString();
 
 				// Process JSON stream line by line
@@ -1202,11 +1313,17 @@ class ClaudeChatProvider {
 								continue;
 							}
 
-							// Handle result message - end stdin when done
+							// Handle result message - end stdin when the turn is truly done.
+							// Do NOT close immediately: closing stdin tears down the shared
+							// stdio control channel, so any permission request still pending
+							// (or a late can_use_tool arriving right after 'result') aborts with
+							// "Stream closed". Defer via _maybeEndClaudeStdin, which only closes
+							// once no permission round-trip is in flight (plus a short grace
+							// window for a trailing can_use_tool).
 							if (jsonData.type === 'result') {
-								if (claudeProcess.stdin && !claudeProcess.stdin.destroyed) {
-									claudeProcess.stdin.end();
-								}
+								this._resultSeen = true;
+								this._permLog(`result subtype=${jsonData.subtype} pending=${this._pendingPermissionRequests.size} pid=${claudeProcess.pid}`);
+								setTimeout(() => this._maybeEndClaudeStdin(claudeProcess), 500);
 							}
 
 							this._processJsonStreamData(jsonData);
@@ -1225,6 +1342,11 @@ class ClaudeChatProvider {
 		}
 
 		claudeProcess.on('close', (code) => {
+
+			// Manual compact (fork-issue-36): captured before any of the branches below run, so
+			// _finishCompact() below always sees whether THIS turn was the summarize
+			// turn, regardless of exit code.
+			const wasCompact = this._compactInProgress;
 
 			if (!this._currentClaudeProcess) {
 				return;
@@ -1257,13 +1379,20 @@ class ClaudeChatProvider {
 						type: 'showInstallModal',
 						installAttempted: !!this._context.globalState.get('installAttempted')
 					});
-				} else {
-					// Error with output
+				} else if (!wasCompact) {
+					// Error with output. Suppressed for the compact summarize turn (fork-issue-36) —
+					// _finishCompact's own compactSeparator message explains the failure.
 					this._sendAndSaveMessage({
 						type: 'error',
 						data: errorOutput.trim()
 					});
 				}
+			}
+
+			// Manual compact (fork-issue-36): resolve the pending compaction (seed captured or not)
+			// before the queue drains, regardless of exit code.
+			if (wasCompact) {
+				this._finishCompact(code === 0);
 			}
 		});
 
@@ -1556,6 +1685,13 @@ class ClaudeChatProvider {
 
 					this._isProcessing = false;
 
+					// Manual compact (fork-issue-36): capture the summarize turn's own result text
+					// as the seed for the next (fresh) session. Just capture it here —
+					// _finishCompact (driven by the close handler) does the state transition.
+					if (this._compactInProgress && typeof jsonData.result === 'string') {
+						this._pendingCompactSummary = jsonData.result.trim() || undefined;
+					}
+
 					// Capture session ID from final result
 					if (jsonData.session_id) {
 
@@ -1637,6 +1773,13 @@ class ClaudeChatProvider {
 		// Clear current session
 		this._currentSessionId = undefined;
 
+		// Manual compact (fork-issue-36): clear any in-flight/pending compaction state so the new
+		// session starts clean.
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
+		this._pinnedConversationFilename = undefined;
+
 		// Clear commits and conversation
 		this._commits = [];
 		this._currentConversation = [];
@@ -1652,6 +1795,11 @@ class ClaudeChatProvider {
 		this._postMessage({
 			type: 'sessionCleared'
 		});
+	}
+
+	public refreshSettingsOnConfigChange() {
+		// Push current settings (e.g. ui.compactMode) to the webview without a reload
+		this._sendCurrentSettings();
 	}
 
 	public newSessionOnConfigChange() {
@@ -1966,6 +2114,47 @@ class ClaudeChatProvider {
 	}
 
 	/**
+	 * [perm] diagnostics (fork-issue-15): mirror to console AND a temp file, because the
+	 * console of an installed extension host is not persisted anywhere readable.
+	 * Logging must never break the extension — swallow all fs errors.
+	 */
+	private _permLog(msg: string): void {
+		const line = `${new Date().toISOString()} [perm] ${msg}`;
+		console.error(line);
+		try {
+			fs.appendFileSync(PERM_LOG_FILE, line + '\n');
+		} catch {
+			// ignore — diagnostics only
+		}
+	}
+
+	/**
+	 * fork-issue-15: end stdin only once a result arrived AND no permission request is
+	 * pending. Known limitation (perm-log evidence 2026-07-22): background
+	 * subagents can request permissions AFTER the turn's result, which this
+	 * close still kills — but simply suppressing the close is worse: the CLI
+	 * runs in persistent stream-json mode and the whole turn lifecycle
+	 * (fork-issue-16 queue flush, fork-issue-17 notify, _currentClaudeProcess reset) hangs on the
+	 * process 'close' event, so never ending stdin risks a frozen chat. The
+	 * real fix is a lifecycle rework (keep channel open, detach on next user
+	 * message); until that lands, this stays the reviewed 2f1ae0d behavior.
+	 */
+	private _maybeEndClaudeStdin(claudeProcess: cp.ChildProcess): void {
+		if (!claudeProcess.stdin || claudeProcess.stdin.destroyed) {
+			return;
+		}
+		if (!this._resultSeen) {
+			return;
+		}
+		if (this._pendingPermissionRequests.size > 0) {
+			this._permLog(`stdin.end deferred: ${this._pendingPermissionRequests.size} pending pid=${claudeProcess.pid}`);
+			return;
+		}
+		this._permLog(`stdin.end (turn done, no pending) pid=${claudeProcess.pid} stack=${new Error().stack?.split('\n').slice(2, 5).join(' | ')}`);
+		claudeProcess.stdin.end();
+	}
+
+	/**
 	 * Handle control_request messages from Claude CLI via stdio
 	 * This is the new permission flow that replaces the MCP file-based approach
 	 */
@@ -1977,6 +2166,9 @@ class ClaudeChatProvider {
 		if (request?.subtype !== 'can_use_tool') {
 			return;
 		}
+
+		const curStdin = this._currentClaudeProcess?.stdin;
+		this._permLog(`can_use_tool received tool=${request.tool_name} reqId=${requestId} resultSeen=${this._resultSeen} pid=${this._currentClaudeProcess?.pid} stdin.destroyed=${curStdin?.destroyed} stdin.writableEnded=${curStdin?.writableEnded}`);
 
 		const toolName = request.tool_name || 'Unknown Tool';
 		const input = request.input || {};
@@ -2055,6 +2247,7 @@ class ClaudeChatProvider {
 			console.error('Cannot send permission response: stdin not available');
 			return;
 		}
+		this._permLog(`sending response reqId=${requestId} approved=${approved} -> pid=${this._currentClaudeProcess.pid} stdin.writableEnded=${this._currentClaudeProcess.stdin?.writableEnded}`);
 
 		let response: any;
 		if (approved) {
@@ -2127,6 +2320,13 @@ class ClaudeChatProvider {
 		if (alwaysAllow && approved) {
 			void this._saveLocalPermission(pendingRequest.toolName, pendingRequest.input);
 		}
+
+		// If 'result' already arrived while this prompt was still open, the stdin
+		// close was deferred — now that the last pending request is answered, close
+		// it so the process terminates cleanly.
+		if (this._currentClaudeProcess) {
+			this._maybeEndClaudeStdin(this._currentClaudeProcess);
+		}
 	}
 
 	/**
@@ -2188,8 +2388,13 @@ class ClaudeChatProvider {
 			}
 		};
 
+		this._permLog(`sending askUserQuestion response reqId=${requestId} -> pid=${this._currentClaudeProcess.pid} stdin.writableEnded=${this._currentClaudeProcess.stdin?.writableEnded}`);
 		const responseJson = JSON.stringify(response) + '\n';
 		this._currentClaudeProcess.stdin.write(responseJson);
+
+		// If 'result' already arrived while this prompt was open, the stdin close
+		// was deferred — close it now that the last pending request is answered.
+		this._maybeEndClaudeStdin(this._currentClaudeProcess);
 
 		// Update the saved conversation message to reflect answered status
 		const savedMsg = this._currentConversation.find(
@@ -2989,29 +3194,41 @@ class ClaudeChatProvider {
 		void this._saveCurrentConversation();
 	}
 
+	// Derives the conversation's JSON filename from its first user message and start
+	// time. Shared by the normal save path and _finishCompact's pinning (fork-issue-36), which
+	// snapshots it before a compact-triggered session swap changes _currentSessionId
+	// out from under it.
+	private _deriveConversationFilename(): string {
+		const firstUserMessage = this._currentConversation.find(m => m.messageType === 'userInput');
+		const firstMessage = firstUserMessage ? firstUserMessage.data : 'conversation';
+		const startTime = this._conversationStartTime || new Date().toISOString();
+
+		// Clean and truncate first message for filename
+		const cleanMessage = firstMessage
+			.replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
+			.replace(/\s+/g, '-') // Replace spaces with dashes
+			.substring(0, 50) // Limit length
+			.toLowerCase();
+
+		const datePrefix = startTime.substring(0, 16).replace('T', '_').replace(/:/g, '-');
+		return `${datePrefix}_${cleanMessage}.json`;
+	}
+
 	private async _saveCurrentConversation(): Promise<void> {
 		if (!this._conversationsPath || this._currentConversation.length === 0) { return; }
 		if (!this._currentSessionId) { return; }
 
 		try {
-			// Create filename from first user message and timestamp
-			const firstUserMessage = this._currentConversation.find(m => m.messageType === 'userInput');
-			const firstMessage = firstUserMessage ? firstUserMessage.data : 'conversation';
-			const startTime = this._conversationStartTime || new Date().toISOString();
-			const sessionId = this._currentSessionId || 'unknown';
-
-			// Clean and truncate first message for filename
-			const cleanMessage = firstMessage
-				.replace(/[^a-zA-Z0-9\s]/g, '') // Remove special chars
-				.replace(/\s+/g, '-') // Replace spaces with dashes
-				.substring(0, 50) // Limit length
-				.toLowerCase();
-
-			const datePrefix = startTime.substring(0, 16).replace('T', '_').replace(/:/g, '-');
-			const filename = `${datePrefix}_${cleanMessage}.json`;
+			// Filename is normally re-derived every save; pinned once a compact (fork-issue-36)
+			// has swapped in a new session, so the conversation keeps saving to the same
+			// file instead of splitting when _currentSessionId changes underneath it.
+			let filename = this._deriveConversationFilename();
+			if (this._pinnedConversationFilename) {
+				filename = this._pinnedConversationFilename;
+			}
 
 			const conversationData: ConversationData = {
-				sessionId: sessionId,
+				sessionId: this._currentSessionId || 'unknown',
 				startTime: this._conversationStartTime,
 				endTime: new Date().toISOString(),
 				messageCount: this._currentConversation.length,
@@ -3047,6 +3264,306 @@ class ClaudeChatProvider {
 			type: 'conversationList',
 			data: this._conversationIndex
 		});
+	}
+
+	// Resolve the on-disk directory holding this workspace's CLI session transcripts
+	// (~/.claude/projects/<slug>/*.jsonl), so the "CLI Sessions" list can surface
+	// conversations started directly from a `claude` terminal instead of this
+	// extension (fork-issue-37). Skipped for WSL workspaces — those transcripts live inside the
+	// WSL filesystem, not under the Windows home directory this runs against.
+	private async _getCliProjectsDirs(): Promise<string[]> {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		if (config.get<boolean>('wsl.enabled', false)) { return []; }
+
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) { return []; }
+
+		const expected = workspaceFolder.uri.fsPath.replace(/[^a-zA-Z0-9]/g, '-');
+		const base = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+		const projectsDir = path.join(base, 'projects');
+
+		try {
+			const entries = await fs.promises.readdir(projectsDir, { withFileTypes: true });
+			return entries
+				.filter(entry => entry.isDirectory() && entry.name.toLowerCase() === expected.toLowerCase())
+				.map(entry => path.join(projectsDir, entry.name));
+		} catch {
+			return [];
+		}
+	}
+
+	// Send the "CLI Sessions" list for the History panel (fork-issue-37): sessions found on disk
+	// for this workspace that aren't already tracked in this extension's own
+	// _conversationIndex (or the currently active session). Read-only and best-effort
+	// throughout — the JSONL format is CLI-internal and unstable, so any failure here
+	// must never break the extension's own conversation list.
+	private async _sendCliSessionList(): Promise<void> {
+		try {
+			const dirs = await this._getCliProjectsDirs();
+			if (dirs.length === 0) { return; }
+
+			const known = new Set(this._conversationIndex.map(entry => entry.sessionId));
+			if (this._currentSessionId) { known.add(this._currentSessionId); }
+
+			const bySid = new Map<string, { sid: string; fullPath: string; mtime: number }>();
+			for (const dir of dirs) {
+				let entries: fs.Dirent[];
+				try {
+					entries = await fs.promises.readdir(dir, { withFileTypes: true });
+				} catch {
+					continue;
+				}
+				for (const entry of entries) {
+					if (!entry.isFile() || !entry.name.endsWith('.jsonl')) { continue; }
+					const sid = entry.name.slice(0, -6);
+					if (known.has(sid)) { continue; }
+					const fullPath = path.join(dir, entry.name);
+					try {
+						const stat = await fs.promises.stat(fullPath);
+						bySid.set(sid, { sid, fullPath, mtime: stat.mtimeMs });
+					} catch {
+						// Unreadable entry — skip it
+					}
+				}
+			}
+
+			const items = Array.from(bySid.values())
+				.sort((a, b) => b.mtime - a.mtime)
+				.slice(0, 25);
+
+			const data = await Promise.all(items.map(async item => ({
+				sessionId: item.sid,
+				title: await this._readCliSessionTitle(item.fullPath),
+				mtime: item.mtime
+			})));
+
+			this._postMessage({ type: 'cliSessionList', data });
+		} catch (error) {
+			console.error('Failed to list CLI sessions:', error);
+		}
+	}
+
+	// Best-effort title for a CLI session: the text of its first non-sidechain user
+	// message, read from just the first 64KB of the file (titles live at the start;
+	// no need to read a potentially large transcript in full).
+	private async _readCliSessionTitle(filePath: string): Promise<string> {
+		const fallback = 'CLI session';
+		let fh: fs.promises.FileHandle | undefined;
+		try {
+			fh = await fs.promises.open(filePath, 'r');
+			const buf = Buffer.alloc(65536);
+			const { bytesRead } = await fh.read(buf, 0, 65536, 0);
+			const chunkText = buf.toString('utf8', 0, bytesRead);
+			const lines = chunkText.split('\n');
+			// The last line may be a partial line cut off by the 64KB window — drop it.
+			lines.pop();
+
+			for (const line of lines) {
+				if (!line.trim()) { continue; }
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (obj?.type === 'user' && obj?.isSidechain !== true) {
+					const messageText = this._extractCliText(obj.message?.content);
+					if (messageText) {
+						return messageText.replace(/\r?\n+/g, ' ').slice(0, 80);
+					}
+				}
+			}
+			return fallback;
+		} catch {
+			return fallback;
+		} finally {
+			try {
+				await fh?.close();
+			} catch {
+				// Ignore close errors
+			}
+		}
+	}
+
+	// Extract the plain-text portion of a CLI transcript message's `content` field,
+	// which is either a plain string or an array of content blocks (only `text`
+	// blocks are relevant for a preview/title — tool_use/tool_result are skipped).
+	private _extractCliText(content: unknown): string {
+		if (typeof content === 'string') { return content.trim(); }
+		if (Array.isArray(content)) {
+			return content
+				.filter((block: any) => block?.type === 'text')
+				.map((block: any) => block.text)
+				.join(' ')
+				.trim();
+		}
+		return '';
+	}
+
+	// Best-effort preview of the last ~20 user/assistant messages in a CLI session,
+	// for display only when resuming one (fork-issue-37) — read from just the last 512KB of the
+	// file so a long-running CLI session doesn't require loading its full transcript.
+	private async _readCliSessionPreview(filePath: string): Promise<Array<{ role: 'user' | 'assistant', text: string }>> {
+		const collected: Array<{ role: 'user' | 'assistant', text: string }> = [];
+		let fh: fs.promises.FileHandle | undefined;
+		try {
+			const stat = await fs.promises.stat(filePath);
+			const start = Math.max(0, stat.size - 512 * 1024);
+			const length = stat.size - start;
+			if (length <= 0) { return collected; }
+
+			fh = await fs.promises.open(filePath, 'r');
+			const buf = Buffer.alloc(length);
+			const { bytesRead } = await fh.read(buf, 0, length, start);
+			const chunkText = buf.toString('utf8', 0, bytesRead);
+			const lines = chunkText.split('\n');
+			// When the window starts mid-file, the first line is a partial line — drop it.
+			if (start > 0) { lines.shift(); }
+
+			for (const line of lines) {
+				if (!line.trim()) { continue; }
+				let obj: any;
+				try {
+					obj = JSON.parse(line);
+				} catch {
+					continue;
+				}
+				if (obj?.type !== 'user' && obj?.type !== 'assistant') { continue; }
+				if (obj?.isSidechain === true) { continue; }
+				const role = obj.message?.role ?? obj.type;
+				if (role !== 'user' && role !== 'assistant') { continue; }
+				const messageText = this._extractCliText(obj.message?.content);
+				if (messageText) {
+					collected.push({ role, text: messageText });
+				}
+			}
+			return collected.slice(-20);
+		} catch {
+			return collected;
+		} finally {
+			try {
+				await fh?.close();
+			} catch {
+				// Ignore close errors
+			}
+		}
+	}
+
+	// Resume a CLI session (~/.claude/projects/<slug>/<sid>.jsonl) picked from the
+	// "CLI Sessions" list (fork-issue-37). Mirrors the state reset in _newSession(), minus the
+	// process kill — there's nothing to kill, since a CLI session was never spawned
+	// by this extension. Only sets _currentSessionId so the next real message resumes
+	// it via the unchanged --resume send path; the preview posted below is display-only
+	// and never touches _currentConversation, so it can't leak into a save.
+	private async _resumeCliSession(sessionId: unknown): Promise<void> {
+		if (typeof sessionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{7,127}$/.test(sessionId)) {
+			return;
+		}
+
+		if (this._isProcessing || this._currentClaudeProcess) {
+			vscode.window.showInformationMessage('Stop the current turn before resuming a CLI session.');
+			return;
+		}
+
+		if (this._cliResumeInProgress) {
+			return;
+		}
+		this._cliResumeInProgress = true;
+
+		// Clear current session (mirrors _newSession(), minus _killClaudeProcess())
+		this._currentConversation = [];
+		this._conversationStartTime = undefined;
+
+		// Reset counters
+		this._totalCost = 0;
+		this._totalTokensInput = 0;
+		this._totalTokensOutput = 0;
+		this._requestCount = 0;
+
+		// Manual compact (fork-issue-36): clear any in-flight/pending compaction state so the
+		// resumed session starts clean.
+		this._commits = [];
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
+		this._pinnedConversationFilename = undefined;
+
+		this._currentSessionId = sessionId;
+
+		this._postMessage({ type: 'sessionCleared' });
+
+		// Best-effort display-only preview of the last ~20 messages.
+		try {
+			const dirs = await this._getCliProjectsDirs();
+			for (const dir of dirs) {
+				const p = path.join(dir, sessionId + '.jsonl');
+				const resolvedDir = path.resolve(dir) + path.sep;
+				if (!path.resolve(p).startsWith(resolvedDir)) { continue; }
+
+				try {
+					await fs.promises.stat(p);
+				} catch {
+					continue;
+				}
+
+				const preview = await this._readCliSessionPreview(p);
+				for (const entry of preview) {
+					this._postMessage({
+						type: entry.role === 'user' ? 'userInput' : 'output',
+						data: entry.text
+					});
+				}
+				break;
+			}
+		} catch (error) {
+			console.error('Failed to load CLI session preview:', error);
+		} finally {
+			this._cliResumeInProgress = false;
+		}
+
+		this._postMessage({
+			type: 'cliResumeInfo',
+			data: '📎 Continuing a CLI session — the messages above are a preview; from your next message on, this conversation is saved normally.'
+		});
+	}
+
+	// Downloads if it exists, otherwise the current workspace folder, otherwise home.
+	private async _getExportDefaultDir(): Promise<string> {
+		const downloadsDir = path.join(os.homedir(), 'Downloads');
+		try {
+			const stat = await vscode.workspace.fs.stat(vscode.Uri.file(downloadsDir));
+			if ((stat.type & vscode.FileType.Directory) !== 0) {
+				return downloadsDir;
+			}
+		} catch {
+			// Downloads directory doesn't exist, fall through to workspace/home
+		}
+		return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || os.homedir();
+	}
+
+	private async _exportConversation(filename: string): Promise<void> {
+		if (path.basename(filename) !== filename || !this._conversationIndex.some(entry => entry.filename === filename)) {
+			return;
+		}
+		if (!this._conversationsPath) { return; }
+
+		try {
+			const filePath = path.join(this._conversationsPath, filename);
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath));
+
+			const defaultDir = await this._getExportDefaultDir();
+			const saveUri = await vscode.window.showSaveDialog({
+				defaultUri: vscode.Uri.file(path.join(defaultDir, filename)),
+				filters: { 'JSON': ['json'] }
+			});
+			if (!saveUri) { return; }
+
+			await vscode.workspace.fs.writeFile(saveUri, content);
+			vscode.window.showInformationMessage(`Conversation exported to ${saveUri.fsPath}`);
+		} catch (error: any) {
+			console.error('Failed to export conversation:', error.message);
+			vscode.window.showErrorMessage(`Failed to export conversation: ${error.message}`);
+		}
 	}
 
 	private async _sendWorkspaceFiles(searchTerm?: string): Promise<void> {
@@ -3167,6 +3684,16 @@ class ClaudeChatProvider {
 	private async _killClaudeProcess(): Promise<void> {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
+		this._permLog(`killClaudeProcess pid=${pid} current=${this._currentClaudeProcess?.pid}`);
+
+		// Manual compact (fork-issue-36): a kill always ends any in-flight summarize turn. The
+		// seed must go too — after a completed compaction it is consumed before the
+		// next spawn, so the only state where it can still be set here is a stop
+		// mid-summarize (result already parsed, close not yet fired). Leaving it
+		// would prefix the summary onto a resumed, still-full session.
+		this._compactInProgress = false;
+		this._pendingCompactSummary = undefined;
+		this._forceFreshSession = false;
 
 		// 1. Abort via controller (clean API)
 		this._abortController?.abort();
@@ -3290,6 +3817,46 @@ class ClaudeChatProvider {
 			this._totalTokensInput = conversationData.totalTokens?.input || 0;
 			this._totalTokensOutput = conversationData.totalTokens?.output || 0;
 
+			// Resume this conversation's own CLI session instead of leaving _currentSessionId
+			// pointing at whatever conversation was active before this one was opened (fork-issue-41) —
+			// otherwise the next turn resumes the wrong session, and the following save
+			// overwrites it with this conversation's messages. Only trusted if its transcript
+			// file still exists (case-insensitive slug dirs, same check _resumeCliSession uses
+			// above), so a stale/deleted session doesn't hard-fail --resume; left alone when
+			// unverifiable (e.g. WSL, where _getCliProjectsDirs() can't see the WSL filesystem).
+			let resumedSessionId: string | undefined = conversationData.sessionId || undefined;
+			if (resumedSessionId) {
+				const dirs = await this._getCliProjectsDirs();
+				if (dirs.length > 0) {
+					let stillExists = false;
+					for (const dir of dirs) {
+						const p = path.join(dir, resumedSessionId + '.jsonl');
+						const resolvedDir = path.resolve(dir) + path.sep;
+						if (!path.resolve(p).startsWith(resolvedDir)) { continue; }
+						try {
+							await fs.promises.stat(p);
+							stillExists = true;
+							break;
+						} catch {
+							continue;
+						}
+					}
+					if (!stillExists) { resumedSessionId = undefined; }
+				}
+			}
+			this._currentSessionId = resumedSessionId;
+			// A fork-issue-36 pin only belongs to the conversation it was created for — drop it
+			// (and the checkpoint SHAs) when switching to a different saved conversation,
+			// keep it when re-loading the same one.
+			if (this._lastSavedFilename !== filename) {
+				this._pinnedConversationFilename = undefined;
+				// Same conditional: re-loading the open conversation keeps its checkpoint
+				// SHAs restorable; only switching conversations drops them (fork-issue-41).
+				this._commits = [];
+			}
+			this._lastSavedFilename = filename;
+			this._requestCount = 0;
+
 			// Clear UI messages first, then send all messages to recreate the conversation
 			setTimeout(() => {
 				// Clear existing messages
@@ -3400,6 +3967,7 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'ui.compactMode': config.get<boolean>('ui.compactMode', false),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
@@ -3477,6 +4045,20 @@ class ClaudeChatProvider {
 		} catch (error) {
 			console.error('Failed to read clipboard:', error);
 		}
+	}
+
+	private async _setSelectedMode(mode: string): Promise<void> {
+		this._selectedMode = mode;
+
+		// Store the mode preference in workspace state
+		this._context.workspaceState.update('claude.selectedMode', mode);
+	}
+
+	private async _setSelectedEffort(effort: string | undefined): Promise<void> {
+		this._selectedEffort = effort;
+
+		// Store the effort preference in workspace state
+		this._context.workspaceState.update('claude.selectedEffort', effort);
 	}
 
 	private async _setSelectedModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
@@ -3808,9 +4390,10 @@ class ClaudeChatProvider {
 	}
 
 	private _executeSlashCommand(command: string): void {
-		// Handle /compact in chat instead of spawning a terminal
+		// Handle /compact via the summarize-and-restart flow (fork-issue-36) instead of sending a
+		// literal "/compact" to the CLI — the headless CLI has no real /compact.
 		if (command === 'compact') {
-			this._sendMessageToClaude(`/${command}`);
+			this._startCompact();
 			return;
 		}
 
@@ -3841,6 +4424,55 @@ class ClaudeChatProvider {
 			type: 'terminalOpened',
 			data: `Executing /${command} command in terminal. Check the terminal output and return when ready.`,
 		});
+	}
+
+	// Manual compact (fork-issue-36): kicks off the summarize turn on the current (full-context)
+	// session. The actual state transition happens in _finishCompact, driven by the
+	// close handler once that turn's process exits.
+	private _startCompact(): void {
+		if (this._isProcessing || this._currentClaudeProcess) {
+			vscode.window.showInformationMessage('Finish the current turn before compacting.');
+			return;
+		}
+		if (!this._currentSessionId) {
+			vscode.window.showInformationMessage('No active conversation to compact.');
+			return;
+		}
+		if (this._pendingCompactSummary || this._forceFreshSession) {
+			vscode.window.showInformationMessage('A compaction is already pending — send a message to continue.');
+			return;
+		}
+		this._compactInProgress = true;
+		this._sendMessageToClaude(COMPACT_PROMPT, undefined, { compact: true });
+	}
+
+	// Manual compact (fork-issue-36): called once the summarize turn's process has exited
+	// (success or not). Pins the conversation filename and arms a forced-fresh-session
+	// for the next _sendMessageToClaude() call regardless of outcome — a failed
+	// summarize (e.g. a context-limit error) still needs a guaranteed way out of a
+	// dead/over-full session, just without a seed.
+	private _finishCompact(success: boolean): void {
+		this._compactInProgress = false;
+		const ok = success && !!this._pendingCompactSummary;
+		if (!ok) {
+			this._pendingCompactSummary = undefined;
+		}
+		this._pinnedConversationFilename = this._deriveConversationFilename();
+		this._forceFreshSession = true;
+
+		// Reset token counters exactly like the native compact_boundary handler does
+		// (~1855-1857) — the next session starts with an empty context window.
+		this._totalTokensInput = 0;
+		this._totalTokensOutput = 0;
+		this._postMessage({
+			type: 'updateTokens',
+			data: {
+				totalTokensInput: 0,
+				totalTokensOutput: 0
+			}
+		});
+
+		this._sendAndSaveMessage({ type: 'compactSeparator', data: { ok } });
 	}
 
 	private _sendPlatformInfo() {

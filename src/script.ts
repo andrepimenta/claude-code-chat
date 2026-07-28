@@ -76,12 +76,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isProcessRunning = false;
 		let filteredFiles = [];
 		let selectedFileIndex = -1;
-		let planModeEnabled = false;
-		let thinkingModeEnabled = false;
+		let currentMode = 'manual';
+		let currentEffort = null;
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
+
+		// fork-issue-46 (upstream #98): raw text handed to parseSimpleMarkdown for each
+		// rendered claude/user message, keyed by that message's root div. The
+		// copy button (copyMessageContent) reads from here instead of the
+		// rendered DOM, so Markdown render artifacts — e.g. <ol>/<li> letting
+		// the browser regenerate list numbers, which can drop/duplicate the
+		// original "1. 2. 3." digits — never leak into the clipboard.
+		const messageRawText = new WeakMap();
 
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
@@ -115,7 +123,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		}
 
-		function addMessage(content, type = 'claude') {
+		function addMessage(content, type = 'claude', rawText) {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
@@ -192,6 +200,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			messagesDiv.appendChild(messageDiv);
 			moveProcessingIndicatorToLast();
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
+
+			// fork-issue-46: remember the raw source text for the copy button, when given.
+			if (rawText !== undefined) {
+				messageRawText.set(messageDiv, rawText);
+			}
 		}
 
 
@@ -937,9 +950,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (text || attachedImages.length > 0) {
 				const msg = {
 					type: 'sendMessage',
-					text: text,
-					planMode: planModeEnabled,
-					thinkingMode: thinkingModeEnabled
+					text: text
 				};
 				if (attachedImages.length > 0) {
 					msg.images = attachedImages.map(img => img.filePath);
@@ -949,43 +960,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				messageInput.value = '';
 				attachedImages = [];
 				renderImagePreviews();
-			}
-		}
-
-		function togglePlanMode() {
-			planModeEnabled = !planModeEnabled;
-			const switchElement = document.getElementById('planModeSwitch');
-			if (planModeEnabled) {
-				switchElement.classList.add('active');
-			} else {
-				switchElement.classList.remove('active');
-			}
-		}
-
-		function toggleThinkingMode() {
-			thinkingModeEnabled = !thinkingModeEnabled;
-			sendStats('Thinking mode toggled', { enabled: thinkingModeEnabled });
-
-			var switchElement = document.getElementById('thinkingModeSwitch');
-			var toggleLabel = document.getElementById('thinkingModeLabel');
-			var thinkBtn = document.getElementById('thinkToggleBtn');
-			if (thinkingModeEnabled) {
-				if (switchElement) switchElement.classList.add('active');
-				if (thinkBtn) thinkBtn.classList.add('active');
-				if (toggleLabel) toggleLabel.textContent = 'Ultrathink Mode';
-				// Set ultrathink intensity directly
-				vscode.postMessage({
-					type: 'updateSettings',
-					settings: { 'thinking.intensity': 'ultrathink' }
-				});
-				vscode.postMessage({
-					type: 'showInfoMessage',
-					message: 'Ultrathink enabled \u2014 deep reasoning for complex tasks.'
-				});
-			} else {
-				if (switchElement) switchElement.classList.remove('active');
-				if (thinkBtn) thinkBtn.classList.remove('active');
-				if (toggleLabel) toggleLabel.textContent = 'Thinking Mode';
 			}
 		}
 
@@ -1007,21 +981,66 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
-		function cyclePlanMode() {
-			planModeEnabled = !planModeEnabled;
-			sendStats('Plan mode toggled', { enabled: planModeEnabled });
-			var switchElement = document.getElementById('planModeSwitch');
-			var toggleBtn = document.getElementById('planToggleBtn');
-			if (planModeEnabled) {
-				if (switchElement) switchElement.classList.add('active');
-				if (toggleBtn) toggleBtn.classList.add('active');
+		var modeLabels = {
+			manual: 'Manual',
+			acceptEdits: 'Edit automatically',
+			plan: 'Plan',
+			auto: 'Auto'
+		};
+		var modeOrder = ['manual', 'acceptEdits', 'plan', 'auto'];
+		var effortLevels = ['low', 'medium', 'high', 'xhigh', 'max'];
+		var effortLevelLabels = ['Low', 'Medium', 'High', 'Extra high', 'Max'];
+
+		function toggleModesPopup() {
+			var popup = document.getElementById('modesPopup');
+			if (!popup) return;
+			popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
+		}
+
+		function hideModesPopup() {
+			var popup = document.getElementById('modesPopup');
+			if (popup) popup.style.display = 'none';
+		}
+
+		// Close modes popup when clicking outside
+		document.addEventListener('click', function(e) {
+			if (!e.target.closest('.modes-dropdown-wrapper')) {
+				hideModesPopup();
+			}
+		});
+
+		function selectMode(mode, silent) {
+			currentMode = mode;
+			document.querySelectorAll('.mode-option').forEach(function(opt) {
+				opt.classList.toggle('active', opt.getAttribute('data-mode') === mode);
+			});
+			var label = document.getElementById('modesBtnLabel');
+			if (label) label.textContent = modeLabels[mode] || 'Manual';
+			if (!silent) {
+				hideModesPopup();
+				sendStats('Mode selected', { mode: mode });
+				vscode.postMessage({ type: 'setMode', mode: mode });
 				vscode.postMessage({
 					type: 'showInfoMessage',
-					message: 'Plan mode enabled \u2014 Claude will plan before making changes.'
+					message: 'Mode switched to: ' + (modeLabels[mode] || mode)
 				});
-			} else {
-				if (switchElement) switchElement.classList.remove('active');
-				if (toggleBtn) toggleBtn.classList.remove('active');
+			}
+		}
+
+		function setEffort(idx, silent) {
+			var index = parseInt(idx, 10);
+			if (isNaN(index) || index < 0 || index >= effortLevels.length) return;
+			currentEffort = effortLevels[index];
+			var slider = document.getElementById('effortSlider');
+			if (slider) slider.value = index;
+			document.querySelectorAll('.modes-effort-section .slider-label').forEach(function(lbl, i) {
+				lbl.classList.toggle('active', i === index);
+			});
+			var label = document.getElementById('effortLabel');
+			if (label) label.textContent = 'Effort (' + effortLevelLabels[index] + ')';
+			if (!silent) {
+				sendStats('Effort selected', { effort: currentEffort });
+				vscode.postMessage({ type: 'setEffort', effort: currentEffort });
 			}
 		}
 
@@ -1241,6 +1260,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						}
 					}, 50);
 				}, 0);
+			} else if (e.key === 'Tab' && e.shiftKey) {
+				e.preventDefault();
+				var currentIndex = modeOrder.indexOf(currentMode);
+				var nextMode = modeOrder[(currentIndex + 1) % modeOrder.length];
+				selectMode(nextMode);
 			}
 		});
 
@@ -3473,11 +3497,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function stopRequest() {
 			sendStats('Stop request');
-			
+
 			vscode.postMessage({
 				type: 'stopRequest'
 			});
 			hideStopButton();
+		}
+
+		function startCompact() {
+			vscode.postMessage({ type: 'startCompact' });
 		}
 
 		// Disable/enable buttons during processing
@@ -3495,9 +3523,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyMessageContent(messageDiv) {
 			const contentDiv = messageDiv.querySelector('.message-content');
 			if (contentDiv) {
-				// Get text content, preserving line breaks
-				const text = contentDiv.innerText || contentDiv.textContent;
-				
+				// fork-issue-46 (upstream #98): prefer the raw source text the message was
+				// rendered from over the rendered DOM. contentDiv.innerText re-derives
+				// list numbering etc. from the live <ol>/<li> markup, which can
+				// mismatch or duplicate the original Markdown digits. Falls back to
+				// the old DOM-text behavior when no raw text was recorded (e.g.
+				// system/tool/error messages, which never go through
+				// parseSimpleMarkdown in the first place).
+				const rawText = messageRawText.get(messageDiv);
+				const text = rawText !== undefined ? rawText : (contentDiv.innerText || contentDiv.textContent);
+
 				// Copy to clipboard
 				navigator.clipboard.writeText(text).then(() => {
 					// Show brief feedback
@@ -3587,14 +3622,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							displayData = displayData.replace(usageLimitMatch[0], \`Claude AI usage limit reached: \${readableDate}\`);
 						}
 						
-						addMessage(parseSimpleMarkdown(displayData), 'claude');
+						addMessage(parseSimpleMarkdown(displayData), 'claude', displayData);
 					}
 					updateStatusWithTotals();
 					break;
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						addMessage(parseSimpleMarkdown(message.data), 'user');
+						addMessage(parseSimpleMarkdown(message.data), 'user', message.data);
 					}
 					break;
 					
@@ -3767,6 +3802,21 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					}
 					break;
 
+				case 'compactSeparator':
+					// Manual compact (fork-issue-36): the backend already reset its own token
+					// counters; mirror that here so the status bar doesn't linger at
+					// the pre-compact value.
+					totalTokensInput = 0;
+					totalTokensOutput = 0;
+					updateStatusWithTotals();
+
+					if (message.data.ok) {
+						addMessage('────  📦 Context compacted — your next message starts a fresh, lean session (seeded by the summary above)  ────', 'system');
+					} else {
+						addMessage('────  ⚠️ Compact could not summarize (context-limit error). Your next message starts a fresh session WITHOUT summary; earlier messages remain above.  ────', 'system');
+					}
+					break;
+
 				case 'compactBoundary':
 					// Reset token counts since conversation was compacted
 					totalTokensInput = 0;
@@ -3853,6 +3903,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				case 'conversationList':
 					displayConversationList(message.data);
 					break;
+				case 'cliSessionList':
+					displayCliSessionList(message.data);
+					break;
+				case 'cliResumeInfo':
+					addMessage(message.data, 'system');
+					break;
 				case 'clipboardText':
 					handleClipboardText(message.data);
 					break;
@@ -3860,6 +3916,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Update the UI with the current model
 					currentModel = message.model;
 					selectModel(message.model, true);
+					break;
+				case 'modeSelected':
+					selectMode(message.mode, true);
+					break;
+				case 'effortSelected':
+					if (message.effort) {
+						var effortIndex = effortLevels.indexOf(message.effort);
+						if (effortIndex !== -1) setEffort(effortIndex, true);
+					}
 					break;
 				case 'terminalOpened':
 					// Display notification about checking the terminal
@@ -4569,6 +4634,23 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			toggleConversationHistory();
 		}
 
+		function resumeCliSession(sessionId) {
+			vscode.postMessage({
+				type: 'resumeCliSession',
+				sessionId: sessionId
+			});
+
+			// Hide conversation history and show chat
+			toggleConversationHistory();
+		}
+
+		function exportConversation(filename) {
+			vscode.postMessage({
+				type: 'exportConversation',
+				filename: filename
+			});
+		}
+
 		// File picker functions
 		function showFilePicker() {
 			// Request initial file list from VS Code
@@ -4758,11 +4840,43 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				item.innerHTML = \`
 					<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+					<button class="conversation-export-btn" title="Export conversation as JSON" data-filename="\${escapeHtml(conv.filename)}" onclick="event.stopPropagation(); exportConversation(this.dataset.filename)">⬇</button>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
 					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
 				\`;
 
 				listDiv.appendChild(item);
+			});
+		}
+
+		function displayCliSessionList(sessions) {
+			const section = document.getElementById('cliSessionSection');
+			const list = document.getElementById('cliSessionList');
+			list.innerHTML = '';
+
+			if (!sessions || sessions.length === 0) {
+				section.style.display = 'none';
+				return;
+			}
+			section.style.display = 'block';
+
+			sessions.forEach(s => {
+				const date = new Date(s.mtime).toLocaleDateString();
+				const time = new Date(s.mtime).toLocaleTimeString();
+
+				list.insertAdjacentHTML('beforeend', \`
+					<div class="conversation-item">
+						<div class="conversation-item-top">
+							<div class="conversation-title">\${escapeHtml(s.title)} <span class="cli-badge">CLI</span></div>
+						</div>
+						<div class="conversation-meta">\${date} at \${time}</div>
+					</div>
+				\`);
+				// Set via dataset (not the HTML template) so the session id can never
+				// break out of an attribute, regardless of the characters it contains.
+				const el = list.lastElementChild;
+				el.dataset.sessionId = s.sessionId;
+				el.onclick = () => resumeCliSession(el.dataset.sessionId);
 			});
 		}
 
@@ -4863,6 +4977,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			const compactMode = document.getElementById('compact-mode').checked;
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +5017,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'ui.compactMode': compactMode
 				}
 			});
 		}
@@ -5159,6 +5275,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				document.body.classList.toggle('compact-mode', !!message.data['ui.compactMode']);
+				document.getElementById('compact-mode').checked = !!message.data['ui.compactMode'];
+
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);

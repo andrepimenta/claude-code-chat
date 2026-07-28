@@ -2177,6 +2177,82 @@ const styles = `
         flex-shrink: 0;
     }
 
+    .modes-dropdown-wrapper {
+        position: relative;
+    }
+
+    .modes-popup {
+        min-width: 320px;
+    }
+
+    .mode-option {
+        display: flex;
+        flex-direction: column;
+        padding: 8px 14px;
+        cursor: pointer;
+        transition: background-color 0.1s ease;
+    }
+
+    .mode-option:hover {
+        background-color: var(--vscode-list-hoverBackground);
+    }
+
+    .mode-option-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 13px;
+        color: var(--vscode-foreground);
+    }
+
+    .mode-option-check {
+        visibility: hidden;
+    }
+
+    .mode-option.active .mode-option-check {
+        visibility: visible;
+    }
+
+    .mode-option-desc {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        margin-top: 2px;
+    }
+
+    .modes-effort-section {
+        padding: 10px 14px 6px;
+        margin-top: 4px;
+        border-top: 1px solid var(--vscode-menu-border);
+        font-size: 12px;
+        color: var(--vscode-descriptionForeground);
+    }
+
+    .modes-effort-section .slider-labels {
+        padding: 0;
+    }
+
+    .modes-effort-section .slider-label {
+        width: auto;
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
+    .modes-effort-section .slider-label:first-child {
+        margin-left: 0;
+    }
+
+    .modes-effort-section .slider-label:last-child {
+        margin-right: 0;
+    }
+
+    .modes-popup-footer {
+        padding: 6px 14px 2px;
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.7;
+    }
+
     .slash-btn,
     .at-btn {
         background-color: transparent;
@@ -2193,6 +2269,12 @@ const styles = `
     .slash-btn:hover,
     .at-btn:hover {
         background-color: var(--vscode-list-hoverBackground);
+    }
+
+    /* Compact suggested (fork-issue-36) once context usage crosses the same 85%+ range the
+       Ctx indicator starts warning at — a subtle nudge, no animation. */
+    .slash-btn.compact-suggested {
+        box-shadow: 0 0 0 1px var(--vscode-inputValidation-warningBorder);
     }
 
     .image-btn {
@@ -3893,11 +3975,31 @@ const styles = `
         margin-bottom: 4px;
     }
 
+    .conversation-export-btn {
+        flex-shrink: 0;
+        border: none;
+        background: transparent;
+        color: var(--vscode-descriptionForeground);
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 12px;
+        line-height: 1;
+    }
+
+    .conversation-export-btn:hover {
+        color: var(--vscode-foreground);
+        background-color: var(--vscode-list-hoverBackground);
+    }
+
     .conversation-meta {
         font-size: 12px;
         color: var(--vscode-descriptionForeground);
         margin-bottom: 4px;
     }
+
+    .cli-badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+    .cli-session-header { margin: 12px 4px 4px; font-size: 12px; color: var(--vscode-descriptionForeground); }
 
     .conversation-preview {
         font-size: 11px;
@@ -5047,6 +5149,66 @@ const styles = `
     .opencredits-balance {
         background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(5, 150, 105, 0.15)) !important;
         color: #10b981 !important;
+    }
+
+    /* Compact mode (fork-issue-18) */
+    body.compact-mode .messages {
+        padding: 5px;
+        font-size: calc(var(--vscode-editor-font-size) - 1px);
+        line-height: 1.3;
+    }
+
+    body.compact-mode .message {
+        margin-bottom: 5px;
+        padding: 4px;
+    }
+
+    body.compact-mode .message-header {
+        margin-bottom: 4px;
+        padding-bottom: 3px;
+    }
+
+    body.compact-mode .message-content {
+        padding-left: 3px;
+    }
+
+    body.compact-mode .message p {
+        margin: 0.3em 0;
+        line-height: 1.4;
+    }
+
+    body.compact-mode .message li {
+        margin: 0.15em 0;
+    }
+
+    body.compact-mode .tool-header {
+        margin-bottom: 6px;
+        padding-bottom: 4px;
+    }
+
+    body.compact-mode .tool-input {
+        padding: 3px;
+    }
+
+    body.compact-mode .message-content pre.code-block {
+        padding: 6px;
+        margin: 4px 0;
+    }
+
+    body.compact-mode .code-block-container {
+        margin: 4px 0;
+    }
+
+    body.compact-mode .code-block-header {
+        padding: 2px 3px;
+    }
+
+    body.compact-mode .diff-header {
+        padding: 3px 6px;
+    }
+
+    body.compact-mode .diff-line {
+        padding: 1px 6px;
     }
 
 </style>`

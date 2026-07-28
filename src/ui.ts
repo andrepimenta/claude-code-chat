@@ -43,6 +43,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 		<div id="conversationList" class="conversation-list">
 			<!-- Conversations will be loaded here -->
 		</div>
+		<div id="cliSessionSection" style="display: none;">
+			<h4 class="cli-session-header">CLI Sessions</h4>
+			<div id="cliSessionList" class="conversation-list"></div>
+		</div>
 	</div>
 
 	<div class="chat-container" id="chatContainer">
@@ -104,10 +108,58 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 									</button>
 								</div>
 							</div>
-							<button class="input-toggle-btn" id="planToggleBtn" onclick="cyclePlanMode()">Plan</button>
-							<button class="input-toggle-btn" id="thinkToggleBtn" onclick="toggleThinkingMode()">Ultrathink</button>
+							<div class="modes-dropdown-wrapper">
+								<button class="input-toggle-btn" id="modesBtn" onclick="toggleModesPopup()">
+									<span id="modesBtnLabel">Manual</span>
+									<svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><path d="M1 2.5l3 3 3-3"></path></svg>
+								</button>
+								<div class="connect-menu modes-popup" id="modesPopup" style="display: none;">
+									<div class="connect-menu-header">Modes</div>
+									<div class="mode-option active" data-mode="manual" onclick="selectMode('manual')">
+										<div class="mode-option-title">
+											<span>Manual</span>
+											<span class="mode-option-check">✓</span>
+										</div>
+										<div class="mode-option-desc">Claude will ask for approval before making each edit</div>
+									</div>
+									<div class="mode-option" data-mode="acceptEdits" onclick="selectMode('acceptEdits')">
+										<div class="mode-option-title">
+											<span>Edit automatically</span>
+											<span class="mode-option-check">✓</span>
+										</div>
+										<div class="mode-option-desc">Claude will edit files without asking for approval</div>
+									</div>
+									<div class="mode-option" data-mode="plan" onclick="selectMode('plan')">
+										<div class="mode-option-title">
+											<span>Plan</span>
+											<span class="mode-option-check">✓</span>
+										</div>
+										<div class="mode-option-desc">Claude will explore the code and present a plan before editing</div>
+									</div>
+									<div class="mode-option" data-mode="auto" onclick="selectMode('auto')">
+										<div class="mode-option-title">
+											<span>Auto</span>
+											<span class="mode-option-check">✓</span>
+										</div>
+										<div class="mode-option-desc">Claude will approve actions that pass a safety check and pause for anything risky</div>
+									</div>
+									<div class="modes-effort-section">
+										<span id="effortLabel">Effort</span>
+										<input type="range" min="0" max="4" value="2" step="1" class="thinking-slider" id="effortSlider" oninput="setEffort(this.value)">
+										<div class="slider-labels">
+											<div class="slider-label" id="effort-label-0">Low</div>
+											<div class="slider-label" id="effort-label-1">Medium</div>
+											<div class="slider-label" id="effort-label-2">High</div>
+											<div class="slider-label" id="effort-label-3">Extra high</div>
+											<div class="slider-label" id="effort-label-4">Max</div>
+										</div>
+									</div>
+									<div class="modes-popup-footer">⇧+tab to switch</div>
+								</div>
+							</div>
 						</div>
 						<div class="right-controls">
+							<button class="slash-btn" id="compactBtn" onclick="startCompact()" title="Compact conversation — summarize & start a fresh, lean session">📦</button>
 							<button class="slash-btn" onclick="showSlashCommandsModal()" title="Slash commands">/</button>
 							<button class="at-btn" onclick="showFilePicker()" title="Reference files">@</button>
 							<button class="image-btn" id="imageBtn" onclick="selectImage()" title="Attach images">
@@ -412,6 +464,14 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<p id="providerExclusionHint" style="display: none; font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 24px;">
 						When enabled, requests are routed only through US and EU-based infrastructure providers.
 					</p>
+				</div>
+
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Appearance</h3>
+				<div class="settings-group">
+					<div class="tool-item">
+						<input type="checkbox" id="compact-mode" onchange="updateSettings()">
+						<label for="compact-mode">Compact chat UI</label>
+					</div>
 				</div>
 
 			</div>

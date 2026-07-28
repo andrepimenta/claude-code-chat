@@ -228,6 +228,8 @@ If you want to revert these changes, just click "Restore Checkpoint" to go back 
 | `@` | Open file picker |
 | `/` | Open slash commands modal |
 
+The default `Ctrl+Shift+C` (`Cmd+Shift+C` on Mac) doesn't fire while a terminal has focus, so it no longer clashes with the terminal's "Copy Selection" shortcut. To rebind or disable it, open **Preferences: Open Keyboard Shortcuts** (`Ctrl+K Ctrl+S`) and search for `Claude Code Chat: Open Claude Code Chat`.
+
 ### WSL Configuration (Windows Users)
 If you're using Claude Code through WSL (Windows Subsystem for Linux), you can configure the extension to use WSL:
 
