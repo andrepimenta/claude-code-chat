@@ -30,22 +30,22 @@ export function findMathSegments(text: string): MathSegment[] {
 	// $9.99$ price-trap guard: reject a body that's only digits/./,/. whitespace -- real
 	// math almost always has a letter, operator or backslash command in it.
 	const isNumericOnly = (s: string) => /^[0-9.,\s]+$/.test(s);
-	// Review fix (W2a): a blind indexOf to the closing delimiter can walk straight over a
-	// __CODEBLOCK_N__ placeholder without ever landing on it (the top-level placeholder
-	// skip below only protects the scan *position*, not a body a closer search reaches
-	// across it) -- reject any candidate whose body contains one instead of rendering the
-	// placeholder text itself as "math".
+	// Guard against a __CODEBLOCK_N__ placeholder ending up inside a math body: a blind
+	// indexOf to the closing delimiter can walk straight over the placeholder without ever
+	// landing on it (the top-level placeholder skip below only protects the scan
+	// *position*, not a body a closer search reaches across it) -- reject any candidate
+	// whose body contains one instead of rendering the placeholder text itself as "math".
 	const containsCodeBlockPlaceholder = (s: string) => s.indexOf('__CODEBLOCK_') !== -1;
-	// Review fix (W2b, "PID trap"): a shell/regex aside like "the PID is in $$. The
+	// Guard against a "PID trap": a shell/regex aside like "the PID is in $$. The
 	// formula is:\n\n$$E=mc^2$$" must not have its first "$$...$$" swallow the prose up to
 	// the real formula. A blank line ends math mode in real LaTeX too, so reject a display
-	// body that contains one (checked for $$, \[...\] and, since the round-2 review's N1
-	// fix, \(...\) too -- see the call sites below).
+	// body that contains one (checked for $$, \[...\] and \(...\) too -- see the call
+	// sites below).
 	const hasBlankLine = (s: string) => /\n\s*\n/.test(s);
-	// Review fix (round 2, P1): a candidate whose body contains a raw ` must be rejected --
-	// an inline code span like `$HOME` puts its own "$" inside backticks, and letting that
-	// "$" close a math candidate here would corrupt the eventual <code> replacement around
-	// what should have stayed a plain, unrendered code span.
+	// Guard against a raw backtick inside the body: an inline code span like `$HOME` puts
+	// its own "$" inside backticks, and letting that "$" close a math candidate here would
+	// corrupt the eventual <code> replacement around what should have stayed a plain,
+	// unrendered code span.
 	const containsBacktick = (s: string) => s.indexOf('`') !== -1;
 
 	let i = 0;
@@ -83,15 +83,15 @@ export function findMathSegments(text: string): MathSegment[] {
 		}
 
 		// Display math $$...$$ -- checked before single-$ so a pair isn't read as two
-		// empty inline segments. Resync on a rejected candidate depends on WHY it failed
-		// (round-2 review's P2 fix): an empty/numeric/placeholder/backtick body means the
-		// failed closer was a real "$$" delimiter that simply didn't belong to OUR opener,
-		// so we resync past IT -- otherwise "$$100$$ Euro ... $$E=mc^2$$" would have its
-		// first, numeric-only pair's closer misread as the next candidate's opener and
-		// never reach the real formula. A blank-line reject is the one exception: there
-		// the failed closer is prose swallowed by a runaway search (the PID trap below),
-		// so that case still only advances past the OPENER, letting a real "$$...$$" pair
-		// further along the text get found on a later pass through this same branch.
+		// empty inline segments. Resync on a rejected candidate depends on WHY it failed:
+		// an empty/numeric/placeholder/backtick body means the failed closer was a real "$$"
+		// delimiter that simply didn't belong to OUR opener, so we resync past IT --
+		// otherwise "$$100$$ Euro ... $$E=mc^2$$" would have its first, numeric-only pair's
+		// closer misread as the next candidate's opener and never reach the real formula. A
+		// blank-line reject is the one exception: there the failed closer is prose swallowed
+		// by a runaway search (the PID trap below), so that case still only advances past the
+		// OPENER, letting a real "$$...$$" pair further along the text get found on a later
+		// pass through this same branch.
 		if (c === '$' && next === '$') {
 			const close = text.indexOf('$$', i + 2);
 			if (close !== -1) {
@@ -111,7 +111,7 @@ export function findMathSegments(text: string): MathSegment[] {
 		}
 
 		// Display math \[...\] -- same resync rule as $$...$$ above: past the failed
-		// CLOSER on an empty/placeholder/backtick reject (P2), past the OPENER only on a
+		// CLOSER on an empty/placeholder/backtick reject, past the OPENER only on a
 		// blank-line reject (unchanged, same PID-trap-style reasoning).
 		if (c === '\\' && next === '[') {
 			const close = text.indexOf('\\]', i + 2);
@@ -131,13 +131,13 @@ export function findMathSegments(text: string): MathSegment[] {
 			continue;
 		}
 
-		// Inline math \(...\) -- same body guards as \[...\] above, added by the round-2
-		// review's N1/N2 fixes: this form used to skip the blank-line and empty-body
-		// checks, which let a prose-spanning "\(...\)" swallow a real pair further down
-		// the text the same way the PID trap did for $$ (see hasBlankLine above). Resync
-		// on reject still just advances past this OPENER, unlike the two display forms --
-		// this delimiter isn't in scope for the P2 closer-end resync fix, and the simpler
-		// behaviour is exactly what the N1 blank-line fix itself relies on.
+		// Inline math \(...\) -- same body guards as \[...\] above: this form must also
+		// reject an empty or blank-line-spanning body, otherwise a prose-spanning "\(...\)"
+		// could swallow a real pair further down the text the same way the PID trap does for
+		// $$ (see hasBlankLine above). Resync on reject still just advances past this OPENER,
+		// unlike the two display forms -- this delimiter isn't in scope for the $$/\[...\]
+		// closer-end resync above, and the simpler behaviour is exactly what the blank-line
+		// guard itself relies on.
 		if (c === '\\' && next === '(') {
 			const close = text.indexOf('\\)', i + 2);
 			if (close !== -1) {
@@ -152,11 +152,10 @@ export function findMathSegments(text: string): MathSegment[] {
 			continue;
 		}
 
-		// Inline math $...$, with the price-vs-math guard rules from the plan: no
-		// whitespace right after the opener or right before the closer, no digit right
-		// after the closer (adjacent "$5$10" style money), single line, body not purely
-		// numeric, and (round-2 review's P1 fix) not containing a backtick -- an inline
-		// code span's own "$" must not be read as this delimiter's closer.
+		// Inline math $...$, with price-vs-math guards: no whitespace right after the opener
+		// or right before the closer, no digit right after the closer (adjacent "$5$10"
+		// style money), single line, body not purely numeric, and not containing a backtick
+		// -- an inline code span's own "$" must not be read as this delimiter's closer.
 		if (c === '$') {
 			if (next === undefined || isSpace(next)) {
 				i++;
@@ -166,10 +165,10 @@ export function findMathSegments(text: string): MathSegment[] {
 			let close = -1;
 			while (j < text.length) {
 				if (text[j] === '\\') {
-					// Review fix (N2): "\" followed by a real line break must end the
-					// candidate like a bare "\n" would -- blindly jumping 2 chars here
-					// let a backslash-newline pair smuggle a multi-line body past the
-					// single-line rule below.
+					// Guard against a backslash-newline pair smuggling a multi-line body past
+					// the single-line rule below: "\" followed by a real line break must end
+					// the candidate like a bare "\n" would -- blindly jumping 2 chars here
+					// would miss that.
 					if (text[j + 1] === '\n') {
 						break;
 					}

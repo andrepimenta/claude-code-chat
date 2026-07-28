@@ -1197,9 +1197,8 @@ const styles = `
         white-space: pre;
     }
 
-    /* KaTeX: display formulas can be wider than the sidebar; overflow-y/padding
-       (plan original) keep a tall formula (e.g. a matrix) from adding a vertical
-       scrollbar of its own. */
+    /* KaTeX: display formulas can be wider than the sidebar; overflow-y/padding here
+       keep a tall formula (e.g. a matrix) from adding a vertical scrollbar of its own. */
     .katex-display {
         overflow-x: auto;
         overflow-y: hidden;
