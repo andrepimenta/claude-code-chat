@@ -24,7 +24,7 @@ export function mapWslPathToWindows(filePath: string): string {
 // case-insensitive on Windows, where the filesystem is case-insensitive but tool
 // input paths and the workspace folder path aren't guaranteed to agree on casing.
 // Returns undefined when filePath isn't inside workspaceRoot ("not mappable"), which
-// also covers filePath being the workspace root itself (review FIX 4: a
+// also covers filePath being the workspace root itself (a
 // directory has no checkpointed blob to diff against, so treat it the same as
 // "outside the workspace" instead of handing callers a '' relPath).
 export function toWorkspaceRelativePath(filePath: string, workspaceRoot: string): string | undefined {
@@ -88,7 +88,7 @@ export function buildTurnDiffUriParts(sha: string, relPath: string): TurnDiffUri
 	};
 }
 
-// Inverse of buildTurnDiffUriParts (review FIX 3): recovers (sha, relPath) from
+// Inverse of buildTurnDiffUriParts: recovers (sha, relPath) from
 // a claude-diff URI's own (path, query), so DiffContentProvider can resolve a cache
 // miss -- a tab restored via "Reopen Closed Editor" or a VS Code restart, after the
 // in-memory diffContentStore is gone -- without needing any other state. vscode.Uri

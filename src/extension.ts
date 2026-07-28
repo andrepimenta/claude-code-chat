@@ -42,7 +42,7 @@ const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
 
 // Storage for diff content (used by DiffContentProvider). Keyed by turnDiffCacheKey()
 // (path+query) so two turns diffing the same relPath under different checkpoint SHAs
-// don't collide on the same entry. Bounded (review FIX 3): entries used to be
+// don't collide on the same entry. Bounded: entries used to be
 // removed by an onDidCloseTextDocument listener, which neither fired for every tab
 // lifecycle (e.g. vscode.diff throwing after the entry was already stored) nor could
 // ever help resolve a cache miss -- a tab restored via "Reopen Closed Editor" or a VS
@@ -67,7 +67,7 @@ function cacheTurnDiffContent(key: string, content: string): void {
 // the pre-turn checkpoint content as the left/baseline side of vscode.diff). Content
 // is normally already cached (written by _openTurnDiff right before vscode.diff is
 // invoked), but a cache miss -- e.g. a claude-diff tab restored via "Reopen Closed
-// Editor" or after a VS Code restart, see review FIX 3 -- is resolved on demand
+// Editor" or after a VS Code restart -- is resolved on demand
 // through the injected resolver, using only the (sha, relPath) already baked into the
 // URI itself (see parseTurnDiffUriParts), so the provider needs no other state.
 class DiffContentProvider implements vscode.TextDocumentContentProvider {
@@ -128,7 +128,7 @@ export function activate(context: vscode.ExtensionContext) {
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
 	// Register custom content provider for read-only diff views. Wired to the primary
-	// provider's baseline resolver (review FIX 3) -- extra panels from "New Claude
+	// provider's baseline resolver -- extra panels from "New Claude
 	// Chat (Separate)" (fork-issue-24) share the same extension context, so they resolve to the
 	// same backup repo anyway; a claude-diff tab has no panel of its own to route to.
 	const diffProvider = new DiffContentProvider((sha, relPath) => provider.resolveTurnDiffBaselineForProvider(sha, relPath));
@@ -1674,7 +1674,7 @@ class ClaudeChatProvider {
 							// once per file per turn (see _autoOpenedDiffFilesThisTurn reset in
 							// _sendMessageToClaude). Manual "Open Diff" clicks go through the same
 							// _openTurnDiff but aren't gated by the setting or this dedup set.
-							// trigger: 'auto' (review FIX 1) -- Claude sessions routinely edit
+							// trigger: 'auto' -- Claude sessions routinely edit
 							// files outside the workspace (scratchpad, ~/.claude memory, etc.), so
 							// _openTurnDiff failing here is the ordinary case, not something to
 							// interrupt the user with a toast/focus-stealing showTextDocument for.
@@ -4253,8 +4253,8 @@ class ClaudeChatProvider {
 	// Shared failure path for every way _openTurnDiff can come up short (no checkpoint,
 	// git error, file outside the workspace/not WSL-mappable, too large/binary baseline):
 	// never fail silently for a real user click -- tell them why there's no diff and
-	// open the real file instead so a click is never a dead end. `trigger` (opus
-	// review FIX 1) tells 'manual' (webview "Open Diff" button, a deliberate user
+	// open the real file instead so a click is never a dead end. `trigger`
+	// tells 'manual' (webview "Open Diff" button, a deliberate user
 	// action -- toast + focus is fine) apart from 'auto' (post tool_result auto-open,
 	// see the Edit/MultiEdit/Write handler above): Claude sessions routinely edit files
 	// outside the workspace (scratchpad, ~/.claude memory, etc.), so failing here is
@@ -4275,7 +4275,7 @@ class ClaudeChatProvider {
 		}
 	}
 
-	// review FIX 2: distinguishes a genuinely new file (nothing existed at the
+	// Distinguishes a genuinely new file (nothing existed at the
 	// checkpoint yet) from a file that's simply gitignored in the shadow backup repo
 	// (_createBackupCommit's `add -A` silently skips ignored paths) -- both produce the
 	// identical `does not exist in <tree>` from `git show`, but only the first should
@@ -4288,7 +4288,7 @@ class ClaudeChatProvider {
 			// cwd pinned to the work tree: git resolves the relative path against the
 			// process cwd's prefix inside the work tree, so an unpinned cwd would make
 			// anchored .gitignore entries (like /out/) match or miss depending on where
-			// the extension host happens to run (opus delta-review).
+			// the extension host happens to run.
 			await execFile('git', ['--git-dir', backupRepoPath, '--work-tree', workTreePath, 'check-ignore', '-q', '--', relPath], { cwd: workTreePath });
 			return true;
 		} catch (error: any) {
@@ -4305,9 +4305,9 @@ class ClaudeChatProvider {
 	// returns it as a UTF-8 string, or throws when there's nothing sane to show. Shared
 	// by _openTurnDiff (manual/auto "open diff", already knows workspaceFolder/sha from
 	// the live call) and resolveTurnDiffBaselineForProvider (a DiffContentProvider
-	// cache miss, review FIX 3) so both go through the identical git-show +
-	// classification + guards, and BOM-stripping only has to happen in one place
-	// (review FIX 5). Never returns a silently-wrong baseline -- callers each
+	// cache miss) so both go through the identical git-show +
+	// classification + guards, and BOM-stripping only has to happen in one place.
+	// Never returns a silently-wrong baseline -- callers each
 	// decide what "failure" means for their UI (fallback toast/permLog vs. a generic
 	// VS Code tab error).
 	private async _resolveTurnDiffBaseline(backupRepoPath: string, workTreePath: string, sha: string, relPath: string): Promise<string> {
@@ -4321,7 +4321,7 @@ class ClaudeChatProvider {
 			content = stdout;
 		} catch (error: any) {
 			const stderrText = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr || error?.message || '');
-			// review FIX 2: `exists on disk, but not in <tree>` is deliberately NOT
+			// `exists on disk, but not in <tree>` is deliberately NOT
 			// treated as "new file" below. Best effort only: whether git emits that
 			// message (vs. plain `does not exist in`) depends on the process cwd seeing
 			// the on-disk file, so e.g. a case-only mismatch (Src/ vs src/) is not
@@ -4350,12 +4350,12 @@ class ClaudeChatProvider {
 		}
 
 		// VS Code strips the BOM from the real file's text model, keep both sides
-		// consistent (review FIX 5).
+		// consistent.
 		return content.toString('utf8').replace(/^\uFEFF/, '');
 	}
 
-	// Public seam for DiffContentProvider's injected resolver (review FIX 3,
-	// wired up in activate()) -- reuses the same backup-repo baseline lookup
+	// Public seam for DiffContentProvider's injected resolver (wired up in
+	// activate()) -- reuses the same backup-repo baseline lookup
 	// _openTurnDiff uses, keyed only by the (sha, relPath) already encoded in a
 	// claude-diff tab's own URI, so a tab restored via "Reopen Closed Editor" or a VS
 	// Code restart can resolve itself without any per-turn state. Errors are left for
@@ -4373,8 +4373,7 @@ class ClaudeChatProvider {
 	// DiffContentProvider) against the actual file on disk (right, live/editable, so
 	// later edits in the same turn keep showing up in the same tab). Shared by the
 	// manual "Open Diff" button and the auto-open after a successful tool_result;
-	// `trigger` picks which of the two _openTurnDiffFallback behaves as (review
-	// FIX 1).
+	// `trigger` picks which of the two _openTurnDiffFallback behaves as.
 	private async _openTurnDiff(filePath: string, messageIndex: number, trigger: 'manual' | 'auto'): Promise<void> {
 		const resolvedPath = mapWslPathToWindows(filePath);
 
@@ -4391,7 +4390,7 @@ class ClaudeChatProvider {
 		}
 
 		// toWorkspaceRelativePath also returns undefined when resolvedPath IS the
-		// workspace root itself (review FIX 4) -- a directory has no checkpointed
+		// workspace root itself -- a directory has no checkpointed
 		// blob to diff against, so it's handled the same as "outside the workspace".
 		const relPath = toWorkspaceRelativePath(resolvedPath, workspaceFolder.uri.fsPath);
 		if (relPath === undefined) {
