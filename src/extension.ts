@@ -3386,7 +3386,7 @@ class ClaudeChatProvider {
 	private _getHtmlForWebview(webview: vscode.Webview): string {
 		// out/katex/ (copy-assets.js, see assets/katex/VERSION.md) served through
 		// the webview's own resource URI scheme -- localResourceRoots already covers the
-		// whole extension folder at all three call sites below.
+		// whole extension folder at both call sites above.
 		const katexBaseUri = webview.asWebviewUri(vscode.Uri.joinPath(this._extensionUri, 'out', 'katex')).toString();
 		return getHtml(vscode.env?.isTelemetryEnabled, OPENCREDITS_API_URL, OPENCREDITS_WEB_URL, OPENCREDITS_PUBLISHABLE_KEY, vscode.env?.appName, this._context?.extension?.packageJSON?.version, katexBaseUri);
 	}
