@@ -1,12 +1,12 @@
-// Attribut-Escaping fuer die Webview (#49). script.ts' escapeHtml() serialisiert ueber
-// textContent->innerHTML und laesst " und ' deshalb STEHEN -- fuer title="..."/data-*="..."
-// reicht das nicht (Attribut-Ausbruch). Diese Funktion wird NICHT hier aufgerufen: script.ts
-// spleisst per .toString() nur ihren eigenen kompilierten Text in die Seite (Muster
-// math-segments.ts/collapse-rules.ts). Deshalb MUSS sie self-contained bleiben -- kein
-// Modul-Level-Symbol, kein Import, keine Hilfsfunktion ausserhalb des Bodys.
+// Attribute escaping for the webview (#49). script.ts' escapeHtml() serializes via
+// textContent->innerHTML and therefore leaves " and ' UNTOUCHED -- for title="..."/data-*="..."
+// that isn't enough (attribute breakout). This function is NOT called here: script.ts
+// splices only its own compiled text into the page via .toString() (same pattern as
+// math-segments.ts/collapse-rules.ts). So it MUST stay self-contained -- no
+// module-level symbol, no import, no helper function outside the body.
 export function escapeAttr(value: unknown): string {
 	const s = value === null || value === undefined ? '' : String(value);
-	// '&' zwingend zuerst, sonst werden die eigenen Entities nachtraeglich zerlegt.
+	// '&' must come first, otherwise the entities we just produced get re-decoded afterwards.
 	return s
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
@@ -15,20 +15,20 @@ export function escapeAttr(value: unknown): string {
 		.replace(/'/g, '&#39;');
 }
 
-// #61: escapeAttr() macht href=/src= ausbruchsicher, prueft aber kein Schema -- ein
-// javascript:-Link aus Fremddaten (MCP-Registry-Eintrag) bleibt damit klickbar/wirksam.
-// safeHttpUrl() laesst nur http:/https: durch, sonst leerer String (Aufrufer laesst das
-// Attribut/den Link dann ganz weg statt ein totes Attribut zu rendern). Die Bereinigung vor
-// dem Schema-Check spiegelt die ersten Schritte des WHATWG-URL-Parsers: Tab/Newline/CR werden
-// ueberall im String entfernt (faengt "java\tscript:"), fuehrende/nachfolgende C0-Steuerzeichen
-// und Leerzeichen werden abgeschnitten -- beides Tricks, mit denen Browser eine Schema-Pruefung
-// per String-Vergleich sonst umgehen wuerden. Gleiche Selbstgenuegsamkeits-Regel wie escapeAttr:
-// kein Modul-Level-Symbol, kein Import, keine Hilfsfunktion ausserhalb des Bodys.
-// ACHTUNG (opus-Review): faellt bewusst fail-closed auch bei relativen ("/icons/x.png",
-// "icon.png") und protokollrelativen ("//cdn.example/i.png") URLs auf '' -- ein Schema ist
-// hier zwingend Voraussetzung, kein Sonderfall dafuer. Sollte eine Datenquelle kuenftig
-// relative/protokollrelative Icon-URLs liefern, faellt das Icon still auf den Placeholder
-// zurueck statt zu laden -- kein Bug, aber eine Verhaltensaenderung, die man sich merken sollte.
+// #61: escapeAttr() makes href=/src= breakout-safe but doesn't check the scheme -- a
+// javascript:-link from third-party data (an MCP registry entry) stays clickable/live.
+// safeHttpUrl() only lets http:/https: through, otherwise an empty string (the caller then
+// omits the attribute/link entirely instead of rendering a dead attribute). The cleanup before
+// the scheme check mirrors the first steps of the WHATWG URL parser: tab/newline/CR are
+// stripped everywhere in the string (catches "java\tscript:"), leading/trailing C0 control
+// characters and spaces are trimmed -- both are tricks browsers would otherwise let bypass a
+// scheme check done via plain string comparison. Same self-containment rule as escapeAttr:
+// no module-level symbol, no import, no helper function outside the body.
+// NOTE: this is deliberately fail-closed even for relative ("/icons/x.png",
+// "icon.png") and protocol-relative ("//cdn.example/i.png") URLs, which resolve to '' -- a
+// scheme is a hard requirement here, no special case for those. Should a data source ever
+// start supplying relative/protocol-relative icon URLs, the icon will silently fall back to
+// the placeholder instead of loading -- not a bug, but a behavior change worth remembering.
 export function safeHttpUrl(value: unknown): string {
 	let s = value === null || value === undefined ? '' : String(value);
 	s = s.replace(/[\t\n\r]/g, '');

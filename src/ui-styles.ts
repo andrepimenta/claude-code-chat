@@ -1156,10 +1156,10 @@ const styles = `
     }
     .message:hover .message-collapse-btn { opacity: 0.8; }
     .message-collapse-btn:hover { opacity: 1; background-color: var(--vscode-list-hoverBackground); }
-    /* Eingeklappt bleibt der Griff dauerhaft sichtbar, sonst findet ihn niemand wieder. */
+    /* While collapsed, the handle stays permanently visible, otherwise nobody would find it again. */
     .message.collapsed .message-collapse-btn { opacity: 0.9; }
-    /* Alles ausser dem Header verbergen -- deckt .message-content UND Zusatzbloecke
-       wie .yolo-suggestion mit ab. */
+    /* Hide everything except the header -- this also covers .message-content AND extra
+       blocks like .yolo-suggestion. */
     .message.collapsed > *:not(.message-header) { display: none; }
     .message.collapsed .message-header { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
 
@@ -1210,7 +1210,7 @@ const styles = `
        URLs) from overflowing. line-height: 1.6 matches .message p's (ui-styles.ts, ~line 4045),
        which no longer applies here since the prose text isn't wrapped in <p> anymore -- without
        this, user messages would fall back to .messages' line-height: 1.4 and look tighter than
-       before #63 (opus-Review finding). Code blocks inside a user message keep their own
+       before #63 (a review finding). Code blocks inside a user message keep their own
        .message-content pre.code-block { white-space: pre } untouched -- that rule targets the
        <pre> element directly, which always wins over inherited pre-wrap from this ancestor. */
     .message.user .message-content {
@@ -1298,9 +1298,9 @@ const styles = `
         background: none;
     }
 
-    /* Collapsible long code blocks (#48, upstream #151). Die <summary> behaelt die
-       Klasse .code-block-header, damit alle Bestands- und Compact-Mode-Regeln
-       unveraendert greifen; nur Marker/Cursor/Flow kommen dazu. */
+    /* Collapsible long code blocks (#48, upstream #151). The <summary> keeps the
+       .code-block-header class so all existing and compact-mode rules still
+       apply unchanged; only marker/cursor/flow styling is added. */
     details.code-block-container > summary.code-block-header {
         cursor: pointer;
         list-style: none;

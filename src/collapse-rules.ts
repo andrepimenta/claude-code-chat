@@ -13,9 +13,9 @@
 export interface CodeBlockCollapseInfo { lineCount: number; collapse: boolean; maxLines: number; }
 
 export function normalizeCollapseThreshold(value: unknown): number {
-	// Defaults/Grenzen MUESSEN im Funktionskoerper stehen: .toString() liefert nur den
-	// Text dieser Funktion, kein Modul-Level-Symbol.
-	const DEFAULT_LINES = 20; // in sync mit claudeCodeChat.ui.collapseCodeBlockLines (package.json)
+	// Defaults/limits MUST live inside the function body: .toString() only returns
+	// this function's own text, not any module-level symbol.
+	const DEFAULT_LINES = 20; // kept in sync with claudeCodeChat.ui.collapseCodeBlockLines (package.json)
 	const MIN_LINES = 5;
 	const MAX_LINES = 500;
 	const n = typeof value === 'number' ? value : Number(value);
@@ -29,8 +29,8 @@ export function normalizeCollapseThreshold(value: unknown): number {
 export function evaluateCodeBlockCollapse(code: string, configuredMaxLines: unknown): CodeBlockCollapseInfo {
 	const maxLines = normalizeCollapseThreshold(configuredMaxLines);
 	const text = typeof code === 'string' ? code : '';
-	// Die Fence-Regex in parseSimpleMarkdown faengt das Newline VOR der schliessenden
-	// Fence mit: "a\nb\nc\n" sind 3 Zeilen, nicht 4. CRLF vorher normalisieren.
+	// The fence regex in parseSimpleMarkdown captures the newline BEFORE the closing
+	// fence: "a\nb\nc\n" is 3 lines, not 4. Normalize CRLF beforehand.
 	const normalized = text.replace(/\r\n/g, '\n').replace(/\n$/, '');
 	const lineCount = normalized === '' ? 0 : normalized.split('\n').length;
 	return { lineCount: lineCount, collapse: lineCount > maxLines, maxLines: maxLines };

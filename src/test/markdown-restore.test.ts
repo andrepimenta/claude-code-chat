@@ -2,7 +2,7 @@
 // __CODEBLOCK_N__ half of parseSimpleMarkdown's placeholder dance. Pure (no vscode, no
 // network, no DOM), so these run under plain mocha against the compiled out/ output --
 // same pattern as diff-utils/shell-utils/auto-model-switch/math-segments/collapse-rules/
-// html-escape. #47's opus review found that the loop used html.replace(placeholder, str),
+// html-escape. #47's review found that the loop used html.replace(placeholder, str),
 // a plain STRING as the 2nd argument -- String.replace treats "$&"/"$`"/"$'"/"$$" in a
 // string replacement as substitution patterns, so a code block whose (already-escaped)
 // content happens to contain one of those sequences tears the surrounding HTML apart

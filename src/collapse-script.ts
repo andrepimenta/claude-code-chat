@@ -24,12 +24,12 @@ const getCollapseScript = () => `
 		// R2/R3: bound to the <summary>'s synchronous onclick, never the <details>'s
 		// ontoggle -- toggle fires asynchronously and also for a programmatic .open
 		// assignment, which would make applyCodeBlockCollapseDefaults() below unable to
-		// tell a real user click from its own nachzieh pass after the first run.
+		// tell a real user click from its own catch-up pass after the first run.
 		function markCodeBlockToggled(summaryEl) {
 			summaryEl.parentElement.setAttribute('data-user-toggled', '1');
 		}
 
-		// Nachzieh-Pass (R1): settingsData arrives AFTER the history replay
+		// Catch-up pass (R1): settingsData arrives AFTER the history replay
 		// (extension.ts _loadConversationHistory -> _sendReadyMessage -> _sendCurrentSettings),
 		// so blocks rendered from history always start out using the webview's hardcoded
 		// default. This re-applies the real collapseLongCodeBlocks setting to every block the

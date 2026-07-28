@@ -85,8 +85,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		// #48 (upstream #151): claudeCodeChat.ui.collapseLongCodeBlocks / .collapseCodeBlockLines.
-		// Muss hier oben stehen (let ist nicht gehoisted), obwohl der Rest der Logik
-		// unten per \${getCollapseScript()} eingehaengt wird.
+		// Must sit up here (let isn't hoisted), even though the rest of the logic
+		// is spliced in further down via \${getCollapseScript()}.
 		let collapseLongCodeBlocks = true;
 		let collapseCodeBlockLines = 20;
 		let attachedImages = []; // Array of { filePath, previewUri }
@@ -176,9 +176,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				headerDiv.appendChild(labelDiv);
 				headerDiv.appendChild(copyBtn);
 
-				// #48 (upstream #151): manuelles Klappen einer ganzen Nachricht.
-				// Bewusst NACH dem Copy-Button eingehaengt, weil .copy-btn per
-				// margin-left:auto beide nach rechts schiebt (ui-styles.ts:1152).
+				// #48 (upstream #151): manual collapse of an entire message.
+				// Deliberately inserted AFTER the copy button, because .copy-btn's
+				// margin-left:auto pushes both to the right (ui-styles.ts:1152).
 				const collapseBtn = document.createElement('button');
 				collapseBtn.className = 'message-collapse-btn';
 				collapseBtn.title = 'Collapse message';
@@ -271,7 +271,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							todo.status === 'in_progress' ? '🔄' : '⏳';
 						todoHtml += '\\n' + status + ' ' + todo.content;
 					}
-					// #49: reiner Text, kein Markup -- .tool-input hat white-space: pre-line
+					// #49: plain text, no markup -- .tool-input has white-space: pre-line
 					contentDiv.textContent = todoHtml;
 				} else {
 					// Format raw input with expandable content for long values
@@ -859,13 +859,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return div.innerHTML;
 		}
 
-		// #49: Attribut-Escaping -- escapeHtml() laesst " und ' stehen. Build-Zeit-Splice
-		// (Muster math-script/collapse-script), damit npm run test:html-escape die Funktion
-		// unter Node pruefen kann. ACHTUNG: hier steht bewusst "\${", nicht "\\\${".
+		// #49: attribute escaping -- escapeHtml() leaves " and ' untouched. Build-time splice
+		// (same pattern as math-script/collapse-script) so npm run test:html-escape can
+		// exercise the function under Node. NOTE: this deliberately uses "\${", not "\\\${".
 		${escapeAttr.toString()}
 
-		// #61: Schema-Guard fuer href=/src= -- escapeAttr() allein laesst javascript:-Links
-		// unangetastet durch. Gleicher Build-Zeit-Splice wie escapeAttr direkt darueber.
+		// #61: schema guard for href=/src= -- escapeAttr() alone lets javascript:-links
+		// through untouched. Same build-time splice as escapeAttr directly above.
 		${safeHttpUrl.toString()}
 
 		function openFileInEditor(filePath) {
@@ -922,8 +922,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		function toggleExpand(button) {
 			const key = button.getAttribute('data-key') || '';
-			// #49: getAttribute() liefert bereits dekodierte Werte -- die frueher hier
-			// stehende manuelle &quot;/&#39;-Ruecknahme war eine ZWEITE Dekodierung.
+			// #49: getAttribute() already returns decoded values -- the manual
+			// &quot;/&#39; unescaping that used to be here was a SECOND decode.
 			const value = button.getAttribute('data-value') || '';
 
 			// Find the container that holds just this key-value pair
@@ -2220,7 +2220,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (moreBtn) moreBtn.style.display = '';
 			if (modelDropdown) modelDropdown.style.display = 'none';
 
-			// #61 follow-up (opus-Review): openCreditsModels is the same third-party-sourced
+			// #61 follow-up: openCreditsModels is the same third-party-sourced
 			// data as renderOpenCreditsModelCards()'s model-card sink below -- this function is
 			// safe not because of the data source but because it never builds an HTML string:
 			// setAttribute()/textContent/a real function assigned to .onclick all treat their
@@ -2291,7 +2291,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					}
 				}
 
-				// #61 follow-up (opus-Review): openCreditsModels is overwritten wholesale by
+				// #61 follow-up: openCreditsModels is overwritten wholesale by
 				// resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models')
 				// -- the same third-party endpoint as renderDropdown/renderAllModels -- and
 				// renderOpenCreditsModelCards() runs unconditionally on that update, with no
@@ -4534,11 +4534,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		updateStatus('Initializing...', 'disconnected');
 
-		// #55: restoreCodeBlockPlaceholders (der Aufruf steht weiter unten in
-		// parseSimpleMarkdown) -- Build-Zeit-Splice (Muster math-script/collapse-script/
-		// html-escape), damit npm run test:markdown-restore die Funktion unter Node pruefen
-		// kann. Die naechste Zeile spleisst den kompilierten Funktions-Source per toString()
-		// in den Webview-Script-String.
+		// #55: restoreCodeBlockPlaceholders (the call site is further down in
+		// parseSimpleMarkdown) -- build-time splice (same pattern as math-script/collapse-script/
+		// html-escape) so npm run test:markdown-restore can exercise the function under
+		// Node. The next line splices the compiled function source via toString()
+		// into the webview script string.
 		${restoreCodeBlockPlaceholders.toString()}
 
 		// Extracts fenced triple-backtick code blocks from markdown text, replacing each with a
@@ -4574,8 +4574,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// "'" unescaped) for the data-raw-code attribute below.
 				const escapedCode = escapeAttr(code);
 
-				// #48 (upstream #151): Bloecke ueber dem Schwellwert werden zu <details>;
-				// kuerzere bleiben Zeichen fuer Zeichen wie vorher.
+				// #48 (upstream #151): blocks over the threshold become <details>;
+				// shorter ones stay character-for-character as before.
 				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
 				const copyGuard = collapseInfo.collapse ? 'event.preventDefault();event.stopPropagation();' : '';
 				const copyBtnHtml = '<button class="code-copy-btn" onclick="' + copyGuard + 'copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>';
@@ -4709,11 +4709,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return html;
 		}
 
-		// #63 (revised per opus-Review): user messages stay raw text -- "**", "_", "#" lines,
+		// #63 (revised after further review): user messages stay raw text -- "**", "_", "#" lines,
 		// single backticks, paths like src/_test_.ts must show up exactly as typed -- EXCEPT
 		// fenced triple-backtick code blocks, which keep the #48 collapse/copy-button/
 		// language-label treatment (the plain textContent-only approach also flattened those,
-		// which Roman didn't want). Reuses extractCodeBlocks() -- the exact same function
+		// which was intentionally excluded from this behavior). Reuses extractCodeBlocks() -- the exact same function
 		// parseSimpleMarkdown calls above -- so the code-block HTML (incl. #62's
 		// data-raw-code via escapeAttr) is only ever built in one place. The remaining
 		// prose is only escapeHtml()'d, never markdown-parsed, so it's set via
@@ -5359,10 +5359,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
-				// #48 (upstream #151): Defaults nachziehen. settingsData trifft NACH dem
-				// History-Replay ein (extension.ts _loadConversationHistory -> _sendReadyMessage),
-				// deshalb wird der Default hier rueckwirkend auf alle noch nicht vom Nutzer
-				// angefassten Bloecke angewandt.
+				// #48 (upstream #151): reconcile defaults. settingsData arrives AFTER the
+				// history replay (extension.ts _loadConversationHistory -> _sendReadyMessage),
+				// so the default is applied retroactively here to every block the user
+				// hasn't touched yet.
 				collapseLongCodeBlocks = message.data['ui.collapseLongCodeBlocks'] !== false;
 				collapseCodeBlockLines = normalizeCollapseThreshold(message.data['ui.collapseCodeBlockLines']);
 				document.getElementById('collapse-long-code').checked = collapseLongCodeBlocks;

@@ -469,7 +469,7 @@ suite('webview attribute escaping: renderAllModels "all models" modal (#61 Part 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// #61 Part A follow-up (opus-Review): openCreditsModels is overwritten wholesale by
+// #61 Part A follow-up: openCreditsModels is overwritten wholesale by
 // resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models') -- the SAME
 // third-party endpoint as renderDropdown/renderAllModels above, just reached indirectly via
 // extension.ts's 'updateRecommendedModels' postMessage -- and renderOpenCreditsModelCards()
@@ -507,7 +507,7 @@ function loadModelCardsSandbox(openCreditsModels: unknown[]): { sandbox: ModelCa
 
 suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (#61 Part A follow-up PoC)', () => {
 
-	test('an <img onerror> payload in model.name renders as inert text, not a live element (the opus-Review finding)', () => {
+	test('an <img onerror> payload in model.name renders as inert text, not a live element (the review finding)', () => {
 		const payload = '<img src=x onerror="alert(document.domain)">';
 		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-9.9', name: payload, provider: 'openai' }]);
 		sandbox.renderOpenCreditsModelCards();

@@ -3,12 +3,12 @@
 // mentioning a path like src/_test_.ts -- got silently reinterpreted as formatting instead of
 // showing up exactly as typed).
 //
-// Fix, revised per opus-Review: the case 'userInput' handler now calls renderUserMessageContent
+// Fix, revised after further review: the case 'userInput' handler now calls renderUserMessageContent
 // instead of parseSimpleMarkdown. renderUserMessageContent keeps prose completely raw (only
 // escapeHtml, never markdown-parsed) but still runs fenced ``` code blocks through the same
 // extractCodeBlocks() machinery parseSimpleMarkdown itself uses -- an earlier, plain-
 // textContent-only version of this fix also flattened code blocks (lost the #48
-// collapse/copy-button/language-label treatment and #62's data-raw-code), which Roman didn't want.
+// collapse/copy-button/language-label treatment and #62's data-raw-code), which was intentionally excluded from this behavior.
 // Claude's/thinking's own messages are unchanged (parseSimpleMarkdown + innerHTML).
 //
 // These tests exercise the REAL case 'userInput': block's exact source text (extracted from the
@@ -241,7 +241,7 @@ function renderUserInputMessage(payload: string): string {
 suite('webview user-message raw text rendering (#63)', () => {
 
 	test('a markdown-looking payload with no code fence renders as exactly that text -- no <strong>/<em>/<code> elements', () => {
-		const payload = 'Bitte prüfe **src/_test_.ts** und `foo_bar`';
+		const payload = 'Please check **src/_test_.ts** and `foo_bar`';
 		const html = renderUserInputMessage(payload);
 		assert.strictEqual(textOn(html, 'message-content'), payload, 'message-content must contain the exact raw text; got: ' + html);
 		assert.ok(!tagExists(html, 'strong'), 'must not render a <strong> element; got: ' + html);
@@ -270,17 +270,17 @@ suite('webview user-message raw text rendering (#63)', () => {
 	});
 
 	test('a fenced code block still renders as a real code-block-container (language label, copy button, exact data-raw-code), while the surrounding markdown-looking prose stays raw', () => {
-		const payload = 'Bitte **teste** das:\n```js\nconst x = 1;\n```\nDanke `dir`';
+		const payload = 'Please **test** this:\n```js\nconst x = 1;\n```\nThanks `dir`';
 		const html = renderUserInputMessage(payload);
 
 		// The fence itself is consumed by the real code-block element; the prose on either side
 		// stays exactly as typed (including its own "**"/backtick markdown-looking syntax).
 		assert.strictEqual(
 			textOn(html, 'message-content'),
-			'Bitte **teste** das:\n\nDanke `dir`',
+			'Please **test** this:\n\nThanks `dir`',
 			'prose around the code block must stay raw and unwrapped; got: ' + html
 		);
-		assert.ok(!tagExists(html, 'strong'), 'the prose\'s own "**teste**" must not become a <strong> element; got: ' + html);
+		assert.ok(!tagExists(html, 'strong'), 'the prose\'s own "**test**" must not become a <strong> element; got: ' + html);
 		assert.ok(!tagExists(html, 'em'), 'must not render an <em> element; got: ' + html);
 
 		assert.ok(!findAttrOn(html, 'message-content', 'onerror'), 'sanity: message-content itself must not carry an onerror attribute; got: ' + html);
@@ -312,7 +312,7 @@ suite('webview user-message raw text rendering (#63)', () => {
 	test('Claude\'s own messages are unaffected -- addMessage still renders pre-built HTML via innerHTML for type "claude"', () => {
 		const { sandbox, messagesDiv } = loadUserInputPipelineSandbox();
 		sandbox.addMessage(
-			'<p>Bitte prüfe <strong>src/_test_.ts</strong></p>',
+			'<p>Please check <strong>src/_test_.ts</strong></p>',
 			'claude'
 		);
 		if (!messagesDiv.lastAppended) {
@@ -325,10 +325,10 @@ suite('webview user-message raw text rendering (#63)', () => {
 
 	test('Claude\'s own fenced code blocks (via the real parseSimpleMarkdown) still render correctly after the extractCodeBlocks refactor', () => {
 		const { sandbox } = loadUserInputPipelineSandbox();
-		const rendered = sandbox.parseSimpleMarkdown('Bitte **teste** das:\n```js\nconst x = 1;\n```\nDanke');
-		// Claude's own prose IS markdown-parsed -- "**teste**" becomes a real <strong>, unlike the
+		const rendered = sandbox.parseSimpleMarkdown('Please **test** this:\n```js\nconst x = 1;\n```\nThanks');
+		// Claude's own prose IS markdown-parsed -- "**test**" becomes a real <strong>, unlike the
 		// user-message tests above.
-		assert.ok(tagExists(rendered, 'strong'), 'parseSimpleMarkdown must still render "**teste**" as <strong> for Claude messages; got: ' + rendered);
+		assert.ok(tagExists(rendered, 'strong'), 'parseSimpleMarkdown must still render "**test**" as <strong> for Claude messages; got: ' + rendered);
 		const dataRawCode = findAttrOn(rendered, 'language-js', 'data-raw-code');
 		assert.ok(dataRawCode, 'expected a data-raw-code attribute on the language-js code element; got: ' + rendered);
 		assert.strictEqual(dataRawCode!.value, 'const x = 1;\n', 'data-raw-code must contain the exact fenced code; got: ' + rendered);
@@ -336,7 +336,7 @@ suite('webview user-message raw text rendering (#63)', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Gitea #70 PoC: extractCodeBlocks' per-block HTML (data-raw-code attribute plus escaped
+// PoC for the code-block restore fix: extractCodeBlocks' per-block HTML (data-raw-code attribute plus escaped
 // code-line divs) does not strip "$"/"`"/"'" characters, so a code block whose content
 // contains one of the String.replace(placeholder, string) substitution sequences
 // ("$&"/"$`"/"$'"/"$$") reaches the placeholder-restore step still intact. Both
