@@ -387,10 +387,11 @@ suite('webview code-block restore: "$" substitution patterns cannot corrupt surr
 // duplicate of the host's own 'terminalOpened' response (case 'terminalOpened': below, fed by
 // extension.ts's _executeSlashCommand -> this._postMessage({type: 'terminalOpened', data: ...})),
 // which fires for every slash command _executeSlashCommand doesn't return early for -- i.e. every
-// command except /compact (which runs the summarize-and-restart flow via _startCompact() instead
-// and returns before reaching that postMessage) -- exactly the same set of commands the removed
-// client-side call used to cover. Coverage checked directly in _executeSlashCommand's source: the
-// only early return before the terminal-open/postMessage code is the "command === 'compact'"
+// command except /compact (which _executeSlashCommand hands off to _sendMessageToClaude() as a
+// plain chat message instead, returning before reaching that postMessage) -- exactly the same set
+// of commands the removed client-side call used to cover. Coverage checked directly in
+// _executeSlashCommand's source: the only early return before the terminal-open/postMessage
+// code is the "command === 'compact'"
 // branch; nothing else in that function throws or returns early (no workspace/permission guard,
 // vscode.window.createTerminal/getConfiguration don't throw for a bad shell path -- failures there
 // only surface asynchronously inside the terminal itself). So removing the client-side call left

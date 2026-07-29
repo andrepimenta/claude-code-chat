@@ -647,7 +647,7 @@ function loadModelCardsSandbox(openCreditsModels: unknown[]): { sandbox: ModelCa
 
 suite('webview attribute escaping: renderOpenCreditsModelCards model-card grid (fork-issue-61 Part A follow-up PoC)', () => {
 
-	test('an <img onerror> payload in model.name renders as inert text, not a live element (the review finding)', () => {
+	test('an <img onerror> payload in model.name renders as inert text, not a live element', () => {
 		const payload = '<img src=x onerror="alert(document.domain)">';
 		const { sandbox, document } = loadModelCardsSandbox([{ id: 'openai/gpt-9.9', name: payload, provider: 'openai' }]);
 		sandbox.renderOpenCreditsModelCards();
@@ -1100,7 +1100,7 @@ suite('extractFunction: regex literals containing a quote no longer desync extra
 // real getHtml(...) output (see realHtmlIds above), same as a real browser.
 // ─────────────────────────────────────────────────────────────────────────
 
-suite('webview MCP server form: editMCPServer() does not throw on the (real, id-less) "+ Add manually" button (fork-issue-65 review PoC)', () => {
+suite('webview MCP server form: editMCPServer() does not throw on the (real, id-less) "+ Add manually" button (fork-issue-65)', () => {
 
 	test('editMCPServer() does not throw even though #addServerBtn does not exist in the real HTML, and actually shows the form', () => {
 		const { sandbox, document } = loadMcpSandbox();
@@ -1146,7 +1146,7 @@ suite('webview MCP server form: #serverScope locked to the server\'s own scope w
 		assert.strictEqual(scopeEl.disabled, true);
 	});
 
-	test('after editing, hideAddServerForm() (Cancel, or a successful Save) unlocks #serverScope again for the next "Add manually", and resets its value to "project" (review: heals the pre-existing "next add after editing a Global server defaults to Global, not Project" quirk too)', () => {
+	test('after editing, hideAddServerForm() (Cancel, or a successful Save) unlocks #serverScope again for the next "Add manually", and resets its value to "project" (heals the pre-existing "next add after editing a Global server defaults to Global, not Project" quirk too)', () => {
 		const { sandbox, document } = loadMcpSandbox();
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'global' } });
 		sandbox.editMCPServer('srv');
@@ -1438,7 +1438,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 	// default ('project', i.e. the workspace's .mcp.json) -- invisible and unversioned for the
 	// user, and exactly the click path anyone verifying fork-issue-67 itself would take (edit the
 	// 'extension'-scope server the fix is about).
-	test('review click path: Edit an "extension"-scope server, click Cancel, type a new name + command, and Save -- must default to scope: "project", not silently inherit "extension"', () => {
+	test('Edit an "extension"-scope server, click Cancel, type a new name + command, and Save -- must default to scope: "project", not silently inherit "extension"', () => {
 		const { sandbox, document, posted } = loadMcpSandbox();
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', _scope: 'extension' } });
 		sandbox.editMCPServer('srv'); // 1) Edit
@@ -1458,7 +1458,7 @@ suite('webview MCP server form: saveMCPServer() reads the scope from the edited 
 	// pre-filled from the abandoned edit, so a user who didn't notice/retype the name field
 	// silently wrote a SECOND copy of the ORIGINAL server into the newly-picked scope's config
 	// file -- the exact cross-scope duplicate fork-issue-65 closed, reopened through a different field.
-	test('review click path: Edit a "global"-scope server, click "+ Add manually" (not Cancel), pick a different scope, type a genuinely new name, and Save -- must not silently duplicate the original server under its old name', () => {
+	test('Edit a "global"-scope server, click "+ Add manually" (not Cancel), pick a different scope, type a genuinely new name, and Save -- must not silently duplicate the original server under its old name', () => {
 		const { sandbox, document, posted } = loadMcpSandbox();
 		sandbox.displayMCPServers({ srv: { type: 'stdio', command: 'echo', args: ['a'], _scope: 'global' } });
 		sandbox.editMCPServer('srv'); // 1) Edit

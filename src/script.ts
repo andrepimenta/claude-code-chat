@@ -3318,10 +3318,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// fork-issue-66: this used to render a notice message here that duplicated the host's own
 			// terminalOpened response, handled further down in this file's message-handler
 			// switch -- that host message is tied to the terminal having actually been opened
-			// (and, like this removed client-side notice, is skipped for /compact, which runs
-			// in chat via _startCompact() and never sends a terminalOpened message). Do not
-			// re-add a message call here; the message-handler switch is the single source for
-			// this notice.
+			// (and, like this removed client-side notice, is skipped for /compact, which
+			// extension.ts's _executeSlashCommand hands off to _sendMessageToClaude() as a plain
+			// chat message instead of spawning a terminal, so no terminalOpened message is sent).
+			// Do not re-add a message call here; the message-handler switch is the single source
+			// for this notice.
 		}
 
 		function handleCustomCommandKeydown(event) {

@@ -1,7 +1,7 @@
 // Unit tests for the fork-issue-69 mcp-config-path extraction (getMCPConfigPathForScope). Pure (no
 // vscode, no filesystem access), so these run under plain mocha against the compiled out/
 // output -- same pattern as settings-batch/quote-win-shell-args. The
-// central regression this suite exists for is fork-issue-67's catch-all fix: an unknown/empty scope
+// central regression this suite exists for is fork-issue-69's catch-all fix: an unknown/empty scope
 // must resolve to undefined, never fall through to the extension's own config path. Run
 // with `npm run test:mcp-config-path`.
 
@@ -86,13 +86,13 @@ suite('mcp-config-path: getMCPConfigPathForScope (missing env value per scope)',
 	});
 });
 
-// fork-issue-67: the catch-all this suite guards against. Before fork-issue-67, an unknown/empty scope fell
+// fork-issue-69: the catch-all this suite guards against. Before fork-issue-69, an unknown/empty scope fell
 // through to the extension's own config path (the old `default:`/final `return
 // this._getExtensionMCPConfigPath();` branch) -- a stray write into the extension's own
 // mcp-servers.json for a scope nobody asked for. These tests use an env where
 // extensionStoragePath IS present, so a reintroduced catch-all would produce a real path
 // here, not just skip past an already-undefined branch.
-suite("mcp-config-path: getMCPConfigPathForScope (fork-issue-67 catch-all -- unknown/empty scope must be undefined, never the extension's own config)", () => {
+suite("mcp-config-path: getMCPConfigPathForScope (fork-issue-69 catch-all -- unknown/empty scope must be undefined, never the extension's own config)", () => {
 
 	test('an unknown scope string resolves to undefined, not the extension config path', () => {
 		assert.strictEqual(getMCPConfigPathForScope('bogus', FULL_ENV), undefined);

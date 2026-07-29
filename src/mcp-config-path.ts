@@ -1,6 +1,6 @@
 // Pure scope-to-config-path resolver behind the fork-issue-69 fix. extension.ts's
 // _getMCPConfigPathForScope used to be a private method on the vscode-dependent
-// ClaudeChatProvider class, which made the fork-issue-67 hardening (an unknown/empty scope must
+// ClaudeChatProvider class, which made the fork-issue-69 hardening (an unknown/empty scope must
 // resolve to undefined, not silently fall through to the extension's own config) both
 // untested and untestable. This module owns only the pure scope -> path decision; every
 // environment value it needs (home dir, workspace folder, extension storage path) is
@@ -17,8 +17,12 @@ export interface MCPConfigPathEnv {
 }
 
 // Resolves an MCP scope to the config file path the extension reads/writes for it.
-// Behaviour is carried over unchanged from extension.ts's pre-extraction
-// _getMCPConfigPathForScope (fork-issue-67) -- this is an extraction, not a redesign.
+// Extracted from extension.ts's pre-extraction _getMCPConfigPathForScope
+// (fork-issue-69), with one deliberate behaviour change: that method's catch-all
+// branch used to resolve anything that wasn't 'local'/'global'/'project' -- including
+// an unknown or empty scope -- to the extension's own config path; here only
+// 'extension' resolves to that path, and any other/unknown scope resolves to
+// undefined instead (see the fork-issue-69 note below).
 export function getMCPConfigPathForScope(scope: string, env: MCPConfigPathEnv): string | undefined {
 	// Local scope (fork-issue-39) is owned by the CLI (~/.claude.json → projects);
 	// the extension never writes it. Guard against a future caller falling
@@ -33,7 +37,7 @@ export function getMCPConfigPathForScope(scope: string, env: MCPConfigPathEnv): 
 	if (scope === 'extension') {
 		return env.extensionStoragePath ? path.join(env.extensionStoragePath, 'mcp', 'mcp-servers.json') : undefined;
 	}
-	// fork-issue-67: an unknown/empty scope must fail loud via the caller's mcpServerError, not
+	// fork-issue-69: an unknown/empty scope must fail loud via the caller's mcpServerError, not
 	// silently resolve to the extension's own config -- this function's own previous
 	// catch-all behaviour. Note that an empty scope was never actually reaching this
 	// function in practice: extension.ts's message dispatch (`case 'saveMCPServer':`)
