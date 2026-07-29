@@ -48,7 +48,7 @@ Ditch the command line and experience Claude Code like never before. This extens
 
 ### 📝 **Inline Diff Viewer**
 - **Full Diff Display** - See complete file changes directly in Edit, MultiEdit, and Write messages
-- **Open in VS Code Diff** - One-click button to open VS Code's native side-by-side diff editor
+- **Open in VS Code Diff** - One-click button opens a real VS Code diff comparing the checkpoint from before the current turn against the live, editable file; it stays available after the edit completes and after reloading a saved conversation, and can auto-open after every successful edit (configurable in settings)
 - **Smart Truncation** - Long diffs are truncated with an expand button for better readability
 - **Syntax Highlighting** - Proper code highlighting in diff views
 - **Visual Change Indicators** - Clear green/red highlighting for additions and deletions

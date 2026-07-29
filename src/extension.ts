@@ -3,29 +3,109 @@ import * as cp from 'child_process';
 import * as util from 'util';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
+import { mapWslPathToWindows, toWorkspaceRelativePath, isBinaryContent, buildTurnDiffUriParts, parseTurnDiffUriParts, turnDiffCacheKey } from './diff-utils';
+import { isValidCommitSha, findRehydratedCommitInfo } from './restore-commit-utils';
+import { applySettingsBatch } from './settings-batch';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
 let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
-const exec = util.promisify(cp.exec);
+// Undocumented endpoint for session-usage / weekly-limit percentages (fork-issue-35). The
+// server responds 429 to requests without a recognized User-Agent, hence pinning
+// one that matches a real claude-code CLI release.
+const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
+const USAGE_USER_AGENT = 'claude-code/2.1.218';
 
-// Storage for diff content (used by DiffContentProvider)
+// Base URL substrings that identify a known first-party endpoint (OpenCredits/router)
+const KNOWN_ENDPOINT_MARKERS = ['opencredits.ai', 'localhost:8787'];
+
+const exec = util.promisify(cp.exec);
+// Used only for the fork-issue-38 turn-diff `git show` call: relPath is derived from a tool's
+// file_path (Claude-controlled), so it goes through execFile's argv array instead of
+// exec's shell string -- no shell means embedded quotes/metacharacters in a path can't
+// break out into a second command, unlike the pre-existing exec() checkpoint calls
+// below (untouched, out of scope here) which only ever see either a fixed argv, a sha
+// git already produced itself, or this._backupRepoPath/workspacePath.
+const execFile = util.promisify(cp.execFile);
+
+// File target for [perm] diagnostics (fork-issue-15): console.error of an installed
+// extension is only visible in the DevTools console, which makes field
+// debugging of the stdio permission channel impossible — mirror it to a file.
+const PERM_LOG_FILE = path.join(os.tmpdir(), 'claude-code-chat-perm.log');
+
+// Storage for diff content (used by DiffContentProvider). Keyed by turnDiffCacheKey()
+// (path+query) so two turns diffing the same relPath under different checkpoint SHAs
+// don't collide on the same entry. Bounded: entries used to be
+// removed by an onDidCloseTextDocument listener, which neither fired for every tab
+// lifecycle (e.g. vscode.diff throwing after the entry was already stored) nor could
+// ever help resolve a cache miss -- a tab restored via "Reopen Closed Editor" or a VS
+// Code restart starts with an empty store no listener could have populated. Since
+// DiffContentProvider now resolves misses itself instead (see below), there's nothing
+// left that needs a close-time delete; FIFO eviction here just caps how much stale
+// baseline text can pile up from an unlucky sequence of turns.
+const TURN_DIFF_CACHE_MAX_ENTRIES = 32;
 const diffContentStore = new Map<string, string>();
 
-// Custom TextDocumentContentProvider for read-only diff views
+function cacheTurnDiffContent(key: string, content: string): void {
+	if (diffContentStore.size >= TURN_DIFF_CACHE_MAX_ENTRIES) {
+		const oldestKey = diffContentStore.keys().next().value;
+		if (oldestKey !== undefined) {
+			diffContentStore.delete(oldestKey);
+		}
+	}
+	diffContentStore.set(key, content);
+}
+
+// Custom TextDocumentContentProvider for read-only diff views (fork-issue-38 turn diff: serves
+// the pre-turn checkpoint content as the left/baseline side of vscode.diff). Content
+// is normally already cached (written by _openTurnDiff right before vscode.diff is
+// invoked), but a cache miss -- e.g. a claude-diff tab restored via "Reopen Closed
+// Editor" or after a VS Code restart -- is resolved on demand
+// through the injected resolver, using only the (sha, relPath) already baked into the
+// URI itself (see parseTurnDiffUriParts), so the provider needs no other state.
 class DiffContentProvider implements vscode.TextDocumentContentProvider {
-	provideTextDocumentContent(uri: vscode.Uri): string {
-		const content = diffContentStore.get(uri.path);
-		return content || '';
+	constructor(private readonly _resolveBaseline: (sha: string, relPath: string) => Promise<string>) { }
+
+	async provideTextDocumentContent(uri: vscode.Uri): Promise<string> {
+		const key = turnDiffCacheKey({ path: uri.path, query: uri.query });
+		const cached = diffContentStore.get(key);
+		if (cached !== undefined) {
+			return cached;
+		}
+
+		const parts = parseTurnDiffUriParts({ path: uri.path, query: uri.query });
+		if (!parts) {
+			throw new Error('Claude turn baseline unavailable for this tab');
+		}
+		try {
+			const content = await this._resolveBaseline(parts.sha, parts.relPath);
+			cacheTurnDiffContent(key, content);
+			return content;
+		} catch {
+			// Reason (git error, guard, no workspace/checkpoint repo) is intentionally
+			// not surfaced here -- VS Code just needs an honest "this tab has no
+			// content" error instead of a silent empty page; _openTurnDiff's own
+			// fallback path (manual toast / auto permLog) is what actually explains
+			// failures for the live open-diff flow.
+			throw new Error('Claude turn baseline unavailable for this tab');
+		}
 	}
 }
+
+// fork-issue-38 turn diff guards: `git show` is capped at a generous hard limit so a huge
+// checkpointed file can't hang/OOM the exec call, but anything still over the much
+// smaller display limit (or binary) falls back to opening the file directly instead
+// of stuffing megabytes of text into a virtual document.
+const TURN_DIFF_MAX_DISPLAY_BYTES = 2 * 1024 * 1024;
+const TURN_DIFF_MAX_EXEC_BYTES = 16 * 1024 * 1024;
 
 export function activate(context: vscode.ExtensionContext) {
 
@@ -48,8 +128,11 @@ export function activate(context: vscode.ExtensionContext) {
 	const webviewProvider = new ClaudeChatWebviewProvider(context.extensionUri, provider);
 	vscode.window.registerWebviewViewProvider('claude-code-chat.chat', webviewProvider);
 
-	// Register custom content provider for read-only diff views
-	const diffProvider = new DiffContentProvider();
+	// Register custom content provider for read-only diff views. Wired to the single
+	// shared ClaudeChatProvider instance's baseline resolver -- both the panel command
+	// and the sidebar webview use this same instance, so a claude-diff tab always
+	// resolves to the same backup repo regardless of which one opened it.
+	const diffProvider = new DiffContentProvider((sha, relPath) => provider.resolveTurnDiffBaselineForProvider(sha, relPath));
 	context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('claude-diff', diffProvider));
 
 	// Listen for configuration changes
@@ -164,13 +247,30 @@ class ClaudeChatProvider {
 	private _totalCost: number = 0;
 	private _totalTokensInput: number = 0;
 	private _totalTokensOutput: number = 0;
+	// Non-cumulative holder for the most recent turn's context usage (input +
+	// cache read + cache creation tokens), unlike the cumulative counters above (fork-issue-27).
+	private _currentContextTokens: number = 0;
 	private _requestCount: number = 0;
 	private _subscriptionType: string | undefined;  // 'pro', 'max', or undefined for API users
+	// Session-usage / weekly-limit snapshot from the undocumented oauth/usage endpoint
+	// (fork-issue-35), shown next to the fork-issue-27 context indicator. Account-wide, not session-scoped
+	// — deliberately not reset in _newSession()/sessionCleared. sevenDayOpus/
+	// sevenDaySonnet are the per-model-tier weekly buckets (CLI schema names, not
+	// display labels).
+	private _usageLimits: { fiveHour?: { pct: number; resetsAt?: number }, week?: { pct: number; resetsAt?: number }, sevenDayOpus?: { pct: number; resetsAt?: number }, sevenDaySonnet?: { pct: number; resetsAt?: number } } | undefined = undefined;
+	private _usageLastFetchMs = 0;
+	// Fallback resetsAt for the five-hour window, learned from the CLI's own
+	// stream-json rate-limit events when the usage endpoint's resets_at is absent.
+	private _lastRateLimitResetsAt: number | undefined;
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
+	// fork-issue-38 turn diff auto-open: files already auto-diffed in the current turn, so
+	// repeated edits to the same file don't keep reopening/refocusing the tab. Reset
+	// at the start of every turn in _sendMessageToClaude.
+	private _autoOpenedDiffFilesThisTurn: Set<string> = new Set();
 	private _conversationsPath: string | undefined;
 	// Pending permission requests from stdio control_request messages
 	private _pendingPermissionRequests: Map<string, {
@@ -221,6 +321,21 @@ class ClaudeChatProvider {
 		// Resume session from latest conversation
 		const latestConversation = this._getLatestConversation();
 		this._currentSessionId = latestConversation?.sessionId;
+	}
+
+	/**
+	 * [perm] diagnostics (fork-issue-15): mirror to console AND a temp file, because the
+	 * console of an installed extension host is not persisted anywhere readable.
+	 * Logging must never break the extension — swallow all fs errors.
+	 */
+	private _permLog(msg: string): void {
+		const line = `${new Date().toISOString()} [perm] ${msg}`;
+		console.error(line);
+		try {
+			fs.appendFileSync(PERM_LOG_FILE, line + '\n');
+		} catch {
+			// ignore — diagnostics only
+		}
 	}
 
 	public show(column: vscode.ViewColumn | vscode.Uri = vscode.ViewColumn.Two) {
@@ -290,7 +405,7 @@ class ClaudeChatProvider {
 		}
 		const envVars = config.get<Record<string, string>>('environment.variables', {});
 		const baseUrl = envVars['ANTHROPIC_BASE_URL'] || '';
-		return baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787');
+		return KNOWN_ENDPOINT_MARKERS.some(marker => baseUrl.includes(marker));
 	}
 
 	private async _setEnvsDisabled(disabled: boolean): Promise<void> {
@@ -402,6 +517,9 @@ class ClaudeChatProvider {
 				}
 			});
 		}
+
+		// Send (possibly cached) session-usage / weekly-limit percentages (fork-issue-35)
+		void this._maybeSendUsageLimits();
 
 		// Send platform information to webview
 		this._sendPlatformInfo();
@@ -595,11 +713,8 @@ class ClaudeChatProvider {
 			case 'openFile':
 				this._openFileInEditor(message.filePath);
 				return;
-			case 'openDiff':
-				this._openDiffEditor(message.oldContent, message.newContent, message.filePath);
-				return;
-			case 'openDiffByIndex':
-				this._openDiffByMessageIndex(message.messageIndex);
+			case 'openTurnDiff':
+				this._openTurnDiff(message.filePath, message.messageIndex, 'manual');
 				return;
 			case 'createImageFile':
 				this._createImageFile(message.imageData, message.imageType);
@@ -669,6 +784,11 @@ class ClaudeChatProvider {
 				return;
 			case 'enableYoloMode':
 				this._enableYoloMode();
+				return;
+			case 'openMaxOutputTokensSettings':
+				// fork-issue-42: deep-link into the native Settings UI, filtered on our setting.
+				// No value is set automatically - the user picks the limit themselves.
+				vscode.commands.executeCommand('workbench.action.openSettings', 'claudeCodeChat.advanced.maxOutputTokens');
 				return;
 			case 'saveInputText':
 				this._saveInputText(message.text);
@@ -893,6 +1013,9 @@ class ClaudeChatProvider {
 
 		this._isProcessing = true;
 
+		// fork-issue-38 turn diff auto-open: fresh per-turn dedup set for this new turn.
+		this._autoOpenedDiffFilesThisTurn = new Set<string>();
+
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
 
@@ -979,6 +1102,7 @@ class ClaudeChatProvider {
 		const customExecutablePath = config.get<string>('executable.path', '');
 		const envsDisabled = config.get<boolean>('environment.disabled', false);
 		const customEnvVars = envsDisabled ? {} : config.get<Record<string, string>>('environment.variables', {});
+		const maxOutputTokens = config.get<number>('advanced.maxOutputTokens', 0);
 
 		// Check if using OpenCredits (base URL contains opencredits.ai)
 		const isOpenCredits = this._isOpenCredits();
@@ -999,7 +1123,10 @@ class ClaudeChatProvider {
 			FORCE_COLOR: '0',
 			NO_COLOR: '1',
 			...customEnvVars,  // Apply custom environment variables (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL, etc.)
-			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode'
+			CLAUDE_CODE_ENTRYPOINT: 'claude-vscode',
+			// fork-issue-42: raise the CLI's response size cap when configured, to work around
+			// "response exceeded the output token maximum" errors (upstream #150)
+			...(Math.floor(maxOutputTokens) > 0 ? { CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(Math.floor(maxOutputTokens)) } : {})
 		};
 
 		// OpenCredits: clear Anthropic-specific vars so Claude CLI uses env vars directly
@@ -1033,6 +1160,9 @@ class ClaudeChatProvider {
 				wslEnvOverrides['DISABLE_COST_WARNINGS'] = 'true';
 			}
 			wslEnvOverrides['CLAUDE_CODE_ENTRYPOINT'] = 'claude-vscode';
+			if (Math.floor(maxOutputTokens) > 0) {
+				wslEnvOverrides['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = String(Math.floor(maxOutputTokens));
+			}
 			const envExports = Object.entries(wslEnvOverrides)
 				.map(([k, v]) => `export ${k}="${v.replace(/"/g, '\\"')}"`)
 				.join(' && ');
@@ -1343,6 +1473,7 @@ class ClaudeChatProvider {
 					// Reset tokens since the conversation is now summarized
 					this._totalTokensInput = 0;
 					this._totalTokensOutput = 0;
+					this._currentContextTokens = 0;
 
 					this._sendAndSaveMessage({
 						type: 'compactBoundary',
@@ -1361,6 +1492,14 @@ class ClaudeChatProvider {
 						this._totalTokensInput += jsonData.message.usage.input_tokens || 0;
 						this._totalTokensOutput += jsonData.message.usage.output_tokens || 0;
 
+						// Non-cumulative context estimate for the current turn: input + cache
+						// read + cache creation tokens are what actually occupies the model's
+						// context window, unlike the cumulative counters above (fork-issue-27).
+						const ctx = (jsonData.message.usage.input_tokens || 0) +
+							(jsonData.message.usage.cache_read_input_tokens || 0) +
+							(jsonData.message.usage.cache_creation_input_tokens || 0);
+						this._currentContextTokens = ctx;
+
 						// Send real-time token update to webview
 						this._sendAndSaveMessage({
 							type: 'updateTokens',
@@ -1370,7 +1509,8 @@ class ClaudeChatProvider {
 								currentInputTokens: jsonData.message.usage.input_tokens || 0,
 								currentOutputTokens: jsonData.message.usage.output_tokens || 0,
 								cacheCreationTokens: jsonData.message.usage.cache_creation_input_tokens || 0,
-								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0
+								cacheReadTokens: jsonData.message.usage.cache_read_input_tokens || 0,
+								currentContextTokens: ctx
 							}
 						});
 					}
@@ -1492,7 +1632,8 @@ class ClaudeChatProvider {
 							const isError = content.is_error || false;
 
 							// Find the last tool use to get the tool name, input, and computed startLine
-							const lastToolUse = this._currentConversation[this._currentConversation.length - 1]
+							const toolUseMessageIndex = this._currentConversation.length - 1;
+							const lastToolUse = this._currentConversation[toolUseMessageIndex];
 
 							const toolName = lastToolUse?.data?.toolName;
 							const rawInput = lastToolUse?.data?.rawInput;
@@ -1540,6 +1681,23 @@ class ClaudeChatProvider {
 										startLines: startLines
 									}
 								});
+							}
+
+							// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write,
+							// once per file per turn (see _autoOpenedDiffFilesThisTurn reset in
+							// _sendMessageToClaude). Manual "Open Diff" clicks go through the same
+							// _openTurnDiff but aren't gated by the setting or this dedup set.
+							// trigger: 'auto' -- Claude sessions routinely edit
+							// files outside the workspace (scratchpad, ~/.claude memory, etc.), so
+							// _openTurnDiff failing here is the ordinary case, not something to
+							// interrupt the user with a toast/focus-stealing showTextDocument for.
+							if ((toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write') && !isError && rawInput?.file_path) {
+								const autoOpenDiff = vscode.workspace.getConfiguration('claudeCodeChat').get<boolean>('diff.autoOpen', true);
+								const dedupeKey = process.platform === 'win32' ? rawInput.file_path.toLowerCase() : rawInput.file_path;
+								if (autoOpenDiff && !this._autoOpenedDiffFilesThisTurn.has(dedupeKey)) {
+									this._autoOpenedDiffFilesThisTurn.add(dedupeKey);
+									void this._openTurnDiff(rawInput.file_path, toolUseMessageIndex, 'auto');
+								}
 							}
 						}
 					}
@@ -1612,12 +1770,34 @@ class ClaudeChatProvider {
 						}
 					});
 
+					// fork-issue-35/fork-issue-54: refresh session-usage / weekly-limit percentages alongside the
+					// existing totals update. The finished turn just consumed usage, so the
+					// 5-minute throttle would show stale percentages for exactly the update
+					// the user is watching — bypass it, with a 30s floor so rapid-fire turns
+					// don't hammer the undocumented endpoint.
+					if (Date.now() - this._usageLastFetchMs > 30000) {
+						this._usageLastFetchMs = 0;
+					}
+					void this._maybeSendUsageLimits();
+
 					// Refresh OpenCredits balance after each request if using OpenCredits
 					if (this._isOpenCredits() || this._getOpenCreditsKey()) {
 						this._sendOpenCreditsBalance();
 					}
 				}
 				break;
+
+			case 'rate_limit_event': {
+				// fork-issue-35: learn the five-hour window's reset time from the CLI's own
+				// rate-limit events, as a fallback for when the usage endpoint's
+				// response doesn't include one for that window.
+				const rateLimitType = jsonData.rate_limit_info?.rateLimitType;
+				if (!rateLimitType || rateLimitType === 'five_hour') {
+					this._lastRateLimitResetsAt = jsonData.rate_limit_info?.resetsAt;
+				}
+				void this._maybeSendUsageLimits();
+				break;
+			}
 		}
 	}
 
@@ -1646,6 +1826,7 @@ class ClaudeChatProvider {
 		this._totalCost = 0;
 		this._totalTokensInput = 0;
 		this._totalTokensOutput = 0;
+		this._currentContextTokens = 0;
 		this._requestCount = 0;
 
 		// Notify webview to clear all messages and reset session
@@ -1812,7 +1993,45 @@ class ClaudeChatProvider {
 
 	private async _restoreToCommit(commitSha: string): Promise<void> {
 		try {
-			const commit = this._commits.find(c => c.sha === commitSha);
+			// fork-issue-50: commitSha can arrive rehydrated from a loaded conversation's
+			// persisted JSON, not only from same-session git output -- validate
+			// before it can reach any git command below.
+			if (!isValidCommitSha(commitSha)) {
+				this._postMessage({
+					type: 'restoreError',
+					data: 'Commit not found'
+				});
+				return;
+			}
+
+			let commit = this._commits.find(c => c.sha === commitSha);
+
+			// fork-issue-50: a history load that switches conversations clears _commits but
+			// still replays this commit's showRestoreOption message, so its Restore
+			// button outlives this lookup. Confirm the sha against the shadow backup
+			// repo instead and rehydrate the display info from the replayed entry.
+			if (!commit && this._backupRepoPath) {
+				try {
+					// argv/no-shell (unlike the exec() calls below): commitSha can come
+					// from persisted JSON. `^{commit}` rejects a tree/blob sha that
+					// happens to pass the hex check -- still a single argv element.
+					await execFile('git', ['--git-dir', this._backupRepoPath, 'cat-file', '-e', `${commitSha}^{commit}`]);
+					commit = findRehydratedCommitInfo(this._currentConversation, commitSha);
+				} catch (error: any) {
+					// With the ^{commit} peel, git reports both "sha missing" and "sha
+					// not a commit" as exit 128 + "fatal: Not a valid object name" (not
+					// exit 1, which a plain, unpeeled `git cat-file -e <sha>` would report
+					// for a simply-missing object), so classify on stderr like
+					// _resolveTurnDiffBaseline does: that text is the silent, expected
+					// miss; anything else (ENOENT, broken backup repo) is real
+					// infrastructure failure worth a log line.
+					const stderrText = String(error?.stderr || '');
+					if (!/Not a valid object name/i.test(stderrText)) {
+						console.error('Failed to check commit existence in backup repo:', error.message);
+					}
+				}
+			}
+
 			if (!commit) {
 				this._postMessage({
 					type: 'restoreError',
@@ -3289,6 +3508,7 @@ class ClaudeChatProvider {
 			this._totalCost = conversationData.totalCost || 0;
 			this._totalTokensInput = conversationData.totalTokens?.input || 0;
 			this._totalTokensOutput = conversationData.totalTokens?.output || 0;
+			this._currentContextTokens = 0;
 
 			// Clear UI messages first, then send all messages to recreate the conversation
 			setTimeout(() => {
@@ -3398,8 +3618,17 @@ class ClaudeChatProvider {
 			'permissions.yoloMode': config.get<boolean>('permissions.yoloMode', false),
 			'router.enabled': config.get<boolean>('router.enabled', false),
 			'executable.path': config.get<string>('executable.path', ''),
+			// Correction to the fork-issue-44/fork-issue-42 commit message: this line only adds
+			// the key to the plain settingsData payload _sendCurrentSettings already sends --
+			// there is no claudeCodeChat.advanced entry in any onDidChangeConfiguration /
+			// affectsConfiguration listener (the only one, above in activate(), still filters
+			// on claudeCodeChat.wsl only).
+			'advanced.maxOutputTokens': config.get<number>('advanced.maxOutputTokens', 0),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'diff.autoOpen': config.get<boolean>('diff.autoOpen', true),
+			'ui.fontFamily': config.get<string>('ui.fontFamily', ''),
+			'ui.fontSize': config.get<number>('ui.fontSize', 0),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
@@ -3434,7 +3663,11 @@ class ClaudeChatProvider {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 
 		try {
-			for (const [key, value] of Object.entries(settings)) {
+			// fork-issue-56: each key gets its own try/catch (inside applySettingsBatch) so one
+			// rejected config.update() -- e.g. a setting not yet registered right after
+			// a version bump -- no longer silently drops every key that comes after it
+			// in the same batch.
+			const result = await applySettingsBatch(settings, async (key, value) => {
 				if (key === 'permissions.yoloMode') {
 					// YOLO mode: try workspace first, fall back to global
 					try {
@@ -3446,8 +3679,9 @@ class ClaudeChatProvider {
 					// Other settings are global (user-wide)
 					await config.update(key, value, vscode.ConfigurationTarget.Global);
 				}
-			}
+			});
 
+			// fork-issue-56: must run even when some keys above failed, not just on full success.
 			// Re-send settings so webview gets updated isOpenCredits flag, etc.
 			this._sendCurrentSettings();
 
@@ -3460,6 +3694,17 @@ class ClaudeChatProvider {
 					type: 'opencreditsBalance',
 					balance: null
 				});
+			}
+
+			if (result.failures.length > 0) {
+				// One error: name it with its own message. Several: list every failed
+				// key, but still show the first error's message -- the "why" (e.g. a
+				// VS Code "not a registered configuration" message) is the actionable
+				// part, not just which keys failed.
+				const failedKeys = result.failures.map(f => f.key).join(', ');
+				const summary = `${failedKeys}: ${result.failures[0].message}`;
+				console.error('Failed to update settings:', result.failures);
+				vscode.window.showErrorMessage(`Failed to update settings: ${summary}`);
 			}
 		} catch (error: any) {
 			console.error('Failed to update settings:', error?.message || error);
@@ -3607,6 +3852,155 @@ class ClaudeChatProvider {
 			type: 'openedExternalUrl',
 			url: url
 		});
+	}
+
+	// Reads the CLI's OAuth access token from ~/.claude/.credentials.json for the
+	// undocumented usage endpoint (fork-issue-35). Read-only: never touches refreshToken, never
+	// logs the token, never sends it to the webview. Any failure (file missing, parse
+	// error) yields null.
+	private async _readOAuthAccessToken(): Promise<string | null> {
+		try {
+			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+			const credentialsPath = path.join(homeDir, '.claude', '.credentials.json');
+			const content = await vscode.workspace.fs.readFile(vscode.Uri.file(credentialsPath));
+			const parsed = JSON.parse(new TextDecoder().decode(content));
+			return parsed?.claudeAiOauth?.accessToken ?? null;
+		} catch {
+			return null;
+		}
+	}
+
+	// Fetch session-usage / weekly-limit percentages from the undocumented oauth/usage
+	// endpoint (fork-issue-35). Best-effort: any failure (missing token, network error,
+	// unexpected response shape) yields null instead of throwing, so the caller can
+	// keep serving a stale cache.
+	private async _fetchUsageLimits(): Promise<typeof this._usageLimits | null> {
+		const token = await this._readOAuthAccessToken();
+		if (!token) {
+			return null;
+		}
+
+		try {
+			const response = await fetch(USAGE_URL, {
+				method: 'GET',
+				headers: {
+					'Authorization': 'Bearer ' + token,
+					'anthropic-beta': 'oauth-2025-04-20',
+					'User-Agent': USAGE_USER_AGENT
+				}
+			});
+
+			if (!response.ok) {
+				this._permLog(`usageLimits fetch status=${response.status} hasData=false`);
+				return null;
+			}
+
+			const data = await response.json() as any;
+
+			// Parses one usage window (five_hour / seven_day / seven_day_opus /
+			// seven_day_sonnet, or a limits[] entry, which uses `percent` instead of
+			// `utilization`/`used_percentage`). Drops the window entirely unless it
+			// has a valid numeric percentage; resets_at may be a unix-seconds number
+			// or an ISO string, anything else is left out.
+			const parseWindow = (win: any, isFiveHour: boolean): { pct: number; resetsAt?: number } | undefined => {
+				if (!win || typeof win !== 'object') {
+					return undefined;
+				}
+				const pct = win.utilization ?? win.used_percentage ?? win.percent;
+				if (typeof pct !== 'number' || !isFinite(pct)) {
+					return undefined;
+				}
+
+				let resetsAt: number | undefined;
+				const rawResetsAt = win.resets_at;
+				if (typeof rawResetsAt === 'number' && isFinite(rawResetsAt)) {
+					resetsAt = rawResetsAt;
+				} else if (typeof rawResetsAt === 'string') {
+					const parsedMs = Date.parse(rawResetsAt);
+					if (!isNaN(parsedMs)) {
+						resetsAt = parsedMs / 1000;
+					}
+				}
+				if (resetsAt === undefined && isFiveHour) {
+					resetsAt = this._lastRateLimitResetsAt;
+				}
+
+				return { pct, resetsAt };
+			};
+
+			const result: typeof this._usageLimits = {};
+			const fiveHour = parseWindow(data?.five_hour, true);
+			if (fiveHour) {
+				result.fiveHour = fiveHour;
+			}
+			const week = parseWindow(data?.seven_day, false);
+			if (week) {
+				result.week = week;
+			}
+			const sevenDayOpus = parseWindow(data?.seven_day_opus, false);
+			if (sevenDayOpus) {
+				result.sevenDayOpus = sevenDayOpus;
+			}
+			const sevenDaySonnet = parseWindow(data?.seven_day_sonnet, false);
+			if (sevenDaySonnet) {
+				result.sevenDaySonnet = sevenDaySonnet;
+			}
+
+			// fork-issue-35: newer accounts return the per-model weekly windows only as
+			// limits[] entries (kind "weekly_scoped" with a model scope) while the
+			// legacy seven_day_opus/seven_day_sonnet fields stay null. Top-level
+			// fields win when both are present.
+			if (Array.isArray(data?.limits)) {
+				// is_active entries first, so a stale scoped window cannot shadow
+				// the live one if several model-scoped entries are present.
+				const scoped = data.limits.filter((e: any) => e && e.kind === 'weekly_scoped');
+				scoped.sort((a: any, b: any) => (b?.is_active === true ? 1 : 0) - (a?.is_active === true ? 1 : 0));
+				for (const entry of scoped) {
+					const displayName = entry.scope?.model?.display_name;
+					if (typeof displayName !== 'string') { continue; }
+					const win = parseWindow(entry, false);
+					if (!win) { continue; }
+					if (/sonnet/i.test(displayName)) {
+						if (!result.sevenDaySonnet) { result.sevenDaySonnet = win; }
+					} else if (!result.sevenDayOpus) {
+						result.sevenDayOpus = win;
+					}
+				}
+			}
+
+			const hasData = !!(result.fiveHour || result.week || result.sevenDayOpus || result.sevenDaySonnet);
+			this._permLog(`usageLimits fetch status=${response.status} hasData=${hasData}`);
+
+			return hasData ? result : null;
+		} catch {
+			return null;
+		}
+	}
+
+	// Pushes a (possibly cached) usage-limits snapshot to the webview, throttled to at
+	// most one real fetch every 5 minutes (fork-issue-35). Gated on subscription type: API and
+	// OpenCredits users have no session/weekly limits to show.
+	private async _maybeSendUsageLimits(): Promise<void> {
+		if (!this._subscriptionType) {
+			return;
+		}
+
+		if (Date.now() - this._usageLastFetchMs < 300000) {
+			if (this._usageLimits) {
+				this._postMessage({ type: 'usageLimits', data: this._usageLimits });
+			}
+			return;
+		}
+
+		this._usageLastFetchMs = Date.now();
+		const u = await this._fetchUsageLimits();
+		if (u) {
+			this._usageLimits = u;
+		}
+
+		if (this._usageLimits) {
+			this._postMessage({ type: 'usageLimits', data: this._usageLimits });
+		}
 	}
 
 	// Update the model configuration for the local router
@@ -3877,106 +4271,194 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _openDiffByMessageIndex(messageIndex: number) {
+	// fork-issue-38 turn diff: walks _currentConversation backwards from messageIndex (inclusive)
+	// to the nearest showRestoreOption entry, which is the checkpoint commit made right
+	// before this turn's user message (_createBackupCommit runs before every turn). Works
+	// both live and after a history reload -- unlike _commits (fork-issue-50), _currentConversation
+	// is exactly what gets persisted/reloaded, so the index lines up either way.
+	private _findTurnBaselineSha(messageIndex: number): string | undefined {
+		const start = Math.min(messageIndex, this._currentConversation.length - 1);
+		for (let i = start; i >= 0; i--) {
+			const entry = this._currentConversation[i];
+			if (entry?.messageType === 'showRestoreOption' && entry.data?.sha) {
+				return entry.data.sha;
+			}
+		}
+		return undefined;
+	}
+
+	// Shared failure path for every way _openTurnDiff can come up short (no checkpoint,
+	// git error, file outside the workspace/not WSL-mappable, too large/binary baseline):
+	// never fail silently for a real user click -- tell them why there's no diff and
+	// open the real file instead so a click is never a dead end. `trigger`
+	// tells 'manual' (webview "Open Diff" button, a deliberate user
+	// action -- toast + focus is fine) apart from 'auto' (post tool_result auto-open,
+	// see the Edit/MultiEdit/Write handler above): Claude sessions routinely edit files
+	// outside the workspace (scratchpad, ~/.claude memory, etc.), so failing here is
+	// the ordinary case for auto-open, not something worth a toast/focus-stealing
+	// showTextDocument for -- it only gets a permLog line for field diagnostics.
+	private async _openTurnDiffFallback(filePath: string, trigger: 'manual' | 'auto', reason: string): Promise<void> {
+		if (trigger === 'auto') {
+			// First line only: git error messages can be multi-line and would break the
+			// one-line-per-entry perm-log format. Basename only -- the perm-log file is
+			// unrotated plaintext, so the full path isn't worth leaking for a diagnostic line.
+			// reason needs the same treatment: _resolveTurnDiffBaseline wraps raw execFile
+			// failures, whose message starts with the full command line (absolute
+			// backup-repo path, workspace-relative file path included) -- collapse any
+			// path-looking token down to its basename before it hits the log.
+			const redactedReason = reason.split('\n')[0].replace(/[^\s"']*[\\/][^\s"']*/g, (token) => path.basename(token));
+			this._permLog(`[turndiff] auto skip reason=${redactedReason} file=${path.basename(filePath)}`);
+			return;
+		}
+		vscode.window.showInformationMessage(`Claude Code Chat: ${reason}; showing the file instead.`);
 		try {
-			const message = this._currentConversation[messageIndex];
-			if (!message) {
-				console.error('Message not found at index:', messageIndex);
-				return;
-			}
-
-			const data = message.data;
-			const toolName = data.toolName;
-			const rawInput = data.rawInput;
-			let filePath = rawInput?.file_path || '';
-			let oldContent = '';
-			let newContent = '';
-
-			if (!filePath) {
-				console.error('No file path found for message at index:', messageIndex);
-				return;
-			}
-
-			// Read current file from disk - this is the "before" state since edit hasn't been applied yet
-			try {
-				const fileUri = vscode.Uri.file(filePath);
-				const fileData = await vscode.workspace.fs.readFile(fileUri);
-				oldContent = Buffer.from(fileData).toString('utf8');
-			} catch {
-				// File might not exist yet (for Write creating new file)
-				oldContent = '';
-			}
-
-			// Compute "after" state by applying the edit to current file
-			if (toolName === 'Edit' && rawInput?.old_string && rawInput?.new_string) {
-				newContent = oldContent.replace(rawInput.old_string, rawInput.new_string);
-			} else if (toolName === 'MultiEdit' && rawInput?.edits) {
-				newContent = oldContent;
-				for (const edit of rawInput.edits) {
-					if (edit.old_string && edit.new_string) {
-						newContent = newContent.replace(edit.old_string, edit.new_string);
-					}
-				}
-			} else if (toolName === 'Write' && rawInput?.content) {
-				newContent = rawInput.content;
-			}
-
-			if (oldContent !== newContent) {
-				await this._openDiffEditor(oldContent, newContent, filePath);
-			} else {
-				vscode.window.showInformationMessage('No changes to show - the edit may have already been applied.');
-			}
+			await vscode.window.showTextDocument(vscode.Uri.file(filePath));
 		} catch (error) {
-			console.error('Error opening diff by message index:', error);
+			console.error('Failed to open fallback file for turn diff:', error);
 		}
 	}
 
-	private async _openDiffEditor(oldContent: string, newContent: string, filePath: string) {
+	// Distinguishes a genuinely new file (nothing existed at the
+	// checkpoint yet) from a file that's simply gitignored in the shadow backup repo
+	// (_createBackupCommit's `add -A` silently skips ignored paths) -- both produce the
+	// identical `does not exist in <tree>` from `git show`, but only the first should
+	// get an empty "new file" baseline. --git-dir/--work-tree matches the existing
+	// checkpoint calls (_initializeBackupRepo/_createBackupCommit above). `check-ignore
+	// -q` exits 0 when the path IS ignored; per git's own docs it exits 1 (an execFile
+	// rejection, not a bug) when it's NOT ignored, which is the common case.
+	private async _isPathIgnoredInBackupRepo(backupRepoPath: string, workTreePath: string, relPath: string): Promise<boolean> {
 		try {
-			// oldContent and newContent are now full file contents passed from the webview
-			const baseName = path.basename(filePath);
-			const timestamp = Date.now();
-
-			// Create unique paths for the virtual documents
-			const oldPath = `/${timestamp}/old/${baseName}`;
-			const newPath = `/${timestamp}/new/${baseName}`;
-
-			// Store content in the global store for the content provider
-			diffContentStore.set(oldPath, oldContent);
-			diffContentStore.set(newPath, newContent);
-
-			// Create URIs with our custom scheme
-			const oldUri = vscode.Uri.parse(`claude-diff:${oldPath}`);
-			const newUri = vscode.Uri.parse(`claude-diff:${newPath}`);
-
-			// Ensure side-by-side diff mode is enabled
-			const diffConfig = vscode.workspace.getConfiguration('diffEditor');
-			const wasInlineMode = diffConfig.get('renderSideBySide') === false;
-			if (wasInlineMode) {
-				await diffConfig.update('renderSideBySide', true, vscode.ConfigurationTarget.Global);
+			// cwd pinned to the work tree: git resolves the relative path against the
+			// process cwd's prefix inside the work tree, so an unpinned cwd would make
+			// anchored .gitignore entries (like /out/) match or miss depending on where
+			// the extension host happens to run.
+			await execFile('git', ['--git-dir', backupRepoPath, '--work-tree', workTreePath, 'check-ignore', '-q', '--', relPath], { cwd: workTreePath });
+			return true;
+		} catch (error: any) {
+			if (error?.code === 1) {
+				return false;
 			}
+			// Anything else (git missing, fatal error, ...): can't confirm either way,
+			// so let the caller fail closed instead of risking a wrong empty baseline.
+			throw error;
+		}
+	}
 
-			// Open diff editor
-			await vscode.commands.executeCommand('vscode.diff', oldUri, newUri, `${baseName} (Changes)`);
+	// Reads the checkpointed blob for relPath at sha from the shadow backup repo and
+	// returns it as a UTF-8 string, or throws when there's nothing sane to show. Shared
+	// by _openTurnDiff (manual/auto "open diff", already knows workspaceFolder/sha from
+	// the live call) and resolveTurnDiffBaselineForProvider (a DiffContentProvider
+	// cache miss) so both go through the identical git-show +
+	// classification + guards, and BOM-stripping only has to happen in one place.
+	// Never returns a silently-wrong baseline -- callers each
+	// decide what "failure" means for their UI (fallback toast/permLog vs. a generic
+	// VS Code tab error).
+	private async _resolveTurnDiffBaseline(backupRepoPath: string, workTreePath: string, sha: string, relPath: string): Promise<string> {
+		let content: Buffer;
+		try {
+			const { stdout } = await execFile(
+				'git',
+				['--git-dir', backupRepoPath, 'show', `${sha}:${relPath}`],
+				{ encoding: 'buffer', maxBuffer: TURN_DIFF_MAX_EXEC_BYTES }
+			);
+			content = stdout;
+		} catch (error: any) {
+			const stderrText = Buffer.isBuffer(error?.stderr) ? error.stderr.toString('utf8') : String(error?.stderr || error?.message || '');
+			// `exists on disk, but not in <tree>` is deliberately NOT
+			// treated as "new file" below. Best effort only: whether git emits that
+			// message (vs. plain `does not exist in`) depends on the process cwd seeing
+			// the on-disk file, so e.g. a case-only mismatch (Src/ vs src/) is not
+			// reliably caught -- but when the message does appear, an empty baseline
+			// would silently lie, so it must go down the failure path.
+			if (/does not exist in/i.test(stderrText)) {
+				let ignored: boolean;
+				try {
+					ignored = await this._isPathIgnoredInBackupRepo(backupRepoPath, workTreePath, relPath);
+				} catch (ignoreError: any) {
+					throw new Error(`failed to read the checkpoint (${ignoreError.message})`);
+				}
+				if (ignored) {
+					throw new Error('file is not tracked by checkpoints (excluded via .gitignore)');
+				}
+				// Genuinely new file: nothing existed at the checkpoint, so the
+				// baseline is empty and the whole file shows as added.
+				content = Buffer.alloc(0);
+			} else {
+				throw new Error(`failed to read the checkpoint (${error.message})`);
+			}
+		}
 
-			// Clean up stored content when documents are closed
-			const closeListener = vscode.workspace.onDidCloseTextDocument((doc) => {
-				if (doc.uri.toString() === oldUri.toString()) {
-					diffContentStore.delete(oldPath);
-				}
-				if (doc.uri.toString() === newUri.toString()) {
-					diffContentStore.delete(newPath);
-				}
-				// Dispose listener when both are cleaned up
-				if (!diffContentStore.has(oldPath) && !diffContentStore.has(newPath)) {
-					closeListener.dispose();
-				}
-			});
+		if (content.length > TURN_DIFF_MAX_DISPLAY_BYTES || isBinaryContent(content)) {
+			throw new Error('file is too large or binary to diff');
+		}
 
-			this._disposables.push(closeListener);
-		} catch (error) {
-			vscode.window.showErrorMessage(`Failed to open diff editor: ${error}`);
-			console.error('Error opening diff editor:', error);
+		// VS Code strips the BOM from the real file's text model, keep both sides
+		// consistent.
+		return content.toString('utf8').replace(/^\uFEFF/, '');
+	}
+
+	// Public seam for DiffContentProvider's injected resolver (wired up in
+	// activate()) -- reuses the same backup-repo baseline lookup
+	// _openTurnDiff uses, keyed only by the (sha, relPath) already encoded in a
+	// claude-diff tab's own URI, so a tab restored via "Reopen Closed Editor" or a VS
+	// Code restart can resolve itself without any per-turn state. Errors are left for
+	// the caller (DiffContentProvider) to fold into its single generic tab error.
+	public async resolveTurnDiffBaselineForProvider(sha: string, relPath: string): Promise<string> {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder || !this._backupRepoPath) {
+			throw new Error('no workspace or checkpoint repository available');
+		}
+		return this._resolveTurnDiffBaseline(this._backupRepoPath, workspaceFolder.uri.fsPath, sha, relPath);
+	}
+
+	// fork-issue-38: opens a real VS Code diff -- the checkpoint from right before this turn
+	// (left, read-only virtual document served from the shadow backup repo via
+	// DiffContentProvider) against the actual file on disk (right, live/editable, so
+	// later edits in the same turn keep showing up in the same tab). Shared by the
+	// manual "Open Diff" button and the auto-open after a successful tool_result;
+	// `trigger` picks which of the two _openTurnDiffFallback behaves as.
+	private async _openTurnDiff(filePath: string, messageIndex: number, trigger: 'manual' | 'auto'): Promise<void> {
+		const resolvedPath = mapWslPathToWindows(filePath);
+
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder || !this._backupRepoPath) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'no workspace or checkpoint repository available');
+			return;
+		}
+
+		const sha = this._findTurnBaselineSha(messageIndex);
+		if (!sha) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'no checkpoint found for this turn');
+			return;
+		}
+
+		// toWorkspaceRelativePath also returns undefined when resolvedPath IS the
+		// workspace root itself -- a directory has no checkpointed
+		// blob to diff against, so it's handled the same as "outside the workspace".
+		const relPath = toWorkspaceRelativePath(resolvedPath, workspaceFolder.uri.fsPath);
+		if (relPath === undefined) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, 'file is outside the workspace');
+			return;
+		}
+
+		let content: string;
+		try {
+			content = await this._resolveTurnDiffBaseline(this._backupRepoPath, workspaceFolder.uri.fsPath, sha, relPath);
+		} catch (error: any) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, error.message);
+			return;
+		}
+
+		try {
+			const uriParts = buildTurnDiffUriParts(sha, relPath);
+			const baselineUri = vscode.Uri.from(uriParts);
+			cacheTurnDiffContent(turnDiffCacheKey(uriParts), content);
+
+			const rightUri = vscode.Uri.file(resolvedPath);
+			const title = `${path.basename(resolvedPath)} (Turn Diff)`;
+			await vscode.commands.executeCommand('vscode.diff', baselineUri, rightUri, title, { preserveFocus: true });
+		} catch (error: any) {
+			await this._openTurnDiffFallback(resolvedPath, trigger, `failed to open the diff view (${error.message})`);
 		}
 	}
 
