@@ -208,6 +208,18 @@
           "type": "boolean",
           "default": false,
           "description": "Enable the local router to convert OpenAI format to Anthropic format. Required for providers that use OpenAI-compatible APIs."
+        },
+        "claudeCodeChat.ui.collapseLongCodeBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Collapse code blocks longer than the line threshold by default. They stay foldable via their header either way."
+        },
+        "claudeCodeChat.ui.collapseCodeBlockLines": {
+          "type": "number",
+          "default": 20,
+          "minimum": 5,
+          "maximum": 500,
+          "description": "Number of lines a code block must exceed before it gets a collapsible header (5-500)."
         }
       }
     }
@@ -221,7 +233,13 @@
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
-    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
+    "test:collapse-rules": "npm run compile && mocha --ui tdd out/test/collapse-rules.test.js --reporter spec",
+    "test:html-escape": "npm run compile && mocha --ui tdd out/test/html-escape.test.js --reporter spec",
+    "test:webview-attr-escape": "npm run compile && mocha --ui tdd out/test/webview-attr-escape.test.js --reporter spec",
+    "test:markdown-restore": "npm run compile && mocha --ui tdd out/test/markdown-restore.test.js --reporter spec",
+    "test:user-message-rawtext": "npm run compile && mocha --ui tdd out/test/user-message-rawtext.test.js --reporter spec",
+    "test:settings-batch": "npm run compile && mocha --ui tdd out/test/settings-batch.test.js --reporter spec"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -233,6 +251,7 @@
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.5.0",
     "eslint": "^9.25.1",
+    "parse5": "^7.3.0",
     "typescript": "^5.8.3"
   }
 }
