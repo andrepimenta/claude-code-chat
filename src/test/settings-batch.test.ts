@@ -15,12 +15,12 @@ suite('settings-batch: applySettingsBatch (all keys succeed)', () => {
 	test('every key is applied in order, with an empty failures list', async () => {
 		const seen: Array<[string, any]> = [];
 		const result = await applySettingsBatch(
-			{ 'ui.compactMode': true, 'ui.fontSize': 14, 'wsl.distro': 'Ubuntu' },
+			{ 'advanced.maxOutputTokens': 5000, 'ui.fontSize': 14, 'wsl.distro': 'Ubuntu' },
 			async (key, value) => { seen.push([key, value]); }
 		);
-		assert.deepStrictEqual(result.applied, ['ui.compactMode', 'ui.fontSize', 'wsl.distro']);
+		assert.deepStrictEqual(result.applied, ['advanced.maxOutputTokens', 'ui.fontSize', 'wsl.distro']);
 		assert.deepStrictEqual(result.failures, []);
-		assert.deepStrictEqual(seen, [['ui.compactMode', true], ['ui.fontSize', 14], ['wsl.distro', 'Ubuntu']],
+		assert.deepStrictEqual(seen, [['advanced.maxOutputTokens', 5000], ['ui.fontSize', 14], ['wsl.distro', 'Ubuntu']],
 			'updateSetting must still be called with the original key/value pairs');
 	});
 });
