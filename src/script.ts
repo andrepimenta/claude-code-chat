@@ -79,20 +79,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let planModeEnabled = false;
 		let thinkingModeEnabled = false;
 		let isWindows = false;
-		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
-		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
 		let attachedImages = []; // Array of { filePath, previewUri }
 
-		// Open diff using stored data (no file read needed)
-		function openDiffEditor() {
-			if (lastPendingEditData) {
-				vscode.postMessage({
-					type: 'openDiff',
-					filePath: lastPendingEditData.filePath,
-					oldContent: lastPendingEditData.oldContent,
-					newContent: lastPendingEditData.newContent
-				});
-			}
+		// fork-issue-38: request a real VS Code diff (checkpoint-before-turn vs. the live file) for
+		// one Edit/MultiEdit/Write message. filePath/messageIndex come from the clicked
+		// button's own dataset (see generateUnifiedDiffHTML/formatMultiEditToolDiff), not
+		// a shared pending-edit slot, so the button keeps working after tool_result and
+		// after a history reload.
+		function requestTurnDiff(filePath, messageIndex) {
+			vscode.postMessage({
+				type: 'openTurnDiff',
+				filePath: filePath,
+				messageIndex: parseInt(messageIndex, 10)
+			});
 		}
 
 		function shouldAutoScroll(messagesDiv) {
@@ -244,50 +243,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Format raw input with expandable content for long values
 					// Use diff format for Edit, MultiEdit, and Write tools, regular format for others
 					if (data.toolName === 'Edit' || data.toolName === 'MultiEdit' || data.toolName === 'Write') {
-						// Only show Open Diff button if we have fileContentBefore (live session, not reload)
-						const showButton = data.fileContentBefore !== undefined && data.messageIndex >= 0;
-
-						// Hide any existing pending edit button before showing new one
-						if (showButton && lastPendingEditIndex >= 0) {
-							const prevContent = document.querySelector('[data-edit-message-index="' + lastPendingEditIndex + '"]');
-							if (prevContent) {
-								const btn = prevContent.querySelector('.diff-open-btn');
-								if (btn) btn.style.display = 'none';
-							}
-							lastPendingEditData = null;
-						}
-
-						if (showButton) {
-							lastPendingEditIndex = data.messageIndex;
-							contentDiv.setAttribute('data-edit-message-index', data.messageIndex);
-
-							// Compute and store diff data for when button is clicked
-							const oldContent = data.fileContentBefore || '';
-							let newContent = oldContent;
-							if (data.toolName === 'Edit' && data.rawInput.old_string && data.rawInput.new_string) {
-								newContent = oldContent.replace(data.rawInput.old_string, data.rawInput.new_string);
-							} else if (data.toolName === 'MultiEdit' && data.rawInput.edits) {
-								for (const edit of data.rawInput.edits) {
-									if (edit.old_string && edit.new_string) {
-										newContent = newContent.replace(edit.old_string, edit.new_string);
-									}
-								}
-							} else if (data.toolName === 'Write' && data.rawInput.content) {
-								newContent = data.rawInput.content;
-							}
-							lastPendingEditData = {
-								filePath: data.rawInput.file_path,
-								oldContent: oldContent,
-								newContent: newContent
-							};
-						}
+						// fork-issue-38: the Open Diff button stays visible after tool_result and after a
+						// history reload -- it only needs a valid messageIndex (used to look up
+						// the pre-turn checkpoint on the host side), not the live-only,
+						// optimistic fileContentBefore read.
+						const showButton = data.messageIndex >= 0;
 
 						if (data.toolName === 'Edit') {
-							contentDiv.innerHTML = formatEditToolDiff(data.rawInput, data.fileContentBefore, showButton, data.startLine);
+							contentDiv.innerHTML = formatEditToolDiff(data.rawInput, data.fileContentBefore, showButton, data.startLine, data.messageIndex);
 						} else if (data.toolName === 'MultiEdit') {
-							contentDiv.innerHTML = formatMultiEditToolDiff(data.rawInput, data.fileContentBefore, showButton, data.startLines);
+							contentDiv.innerHTML = formatMultiEditToolDiff(data.rawInput, data.fileContentBefore, showButton, data.startLines, data.messageIndex);
 						} else {
-							contentDiv.innerHTML = formatWriteToolDiff(data.rawInput, data.fileContentBefore, showButton);
+							contentDiv.innerHTML = formatWriteToolDiff(data.rawInput, data.fileContentBefore, showButton, data.messageIndex);
 						}
 					} else if (data.toolName === 'ExitPlanMode' && data.rawInput) {
 						contentDiv.innerHTML = formatPlanOutput(data.rawInput);
@@ -350,20 +317,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 
-			// When result comes in for Edit/MultiEdit/Write, hide the Open Diff button on the request
-			// since the edit has now been applied (no longer pending)
-			if (lastPendingEditIndex >= 0) {
-				// Find and hide the button on the corresponding toolUse
-				const toolUseContent = document.querySelector('[data-edit-message-index="' + lastPendingEditIndex + '"]');
-				if (toolUseContent) {
-					const btn = toolUseContent.querySelector('.diff-open-btn');
-					if (btn) {
-						btn.style.display = 'none';
-					}
-				}
-				lastPendingEditIndex = -1;
-				lastPendingEditData = null;
-			}
+			// fork-issue-38: the Open Diff button on the request no longer gets hidden when its
+			// result arrives -- it stays available (and auto-open, if enabled, has
+			// already opened/updated the same turn diff by the time this runs).
 
 			// For Read and TodoWrite tools, just hide loading state (no result message needed)
 			if ((data.toolName === 'Read' || data.toolName === 'TodoWrite') && !data.isError) {
@@ -606,7 +562,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		// Generate unified diff HTML with line numbers
 		// showButton controls whether to show the "Open Diff" button
-		function generateUnifiedDiffHTML(oldString, newString, filePath, startLine = 1, showButton = false) {
+		function generateUnifiedDiffHTML(oldString, newString, filePath, startLine = 1, showButton = false, messageIndex = -1) {
 			const oldLines = oldString.split('\\n');
 			const newLines = newString.split('\\n');
 			const diff = computeLineDiff(oldLines, newLines);
@@ -709,7 +665,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				html += '<div class="diff-summary-row">';
 				html += '<span class="diff-summary">Summary: ' + summary + '</span>';
 				if (showButton) {
-					html += '<button class="diff-open-btn" onclick="openDiffEditor()" title="Open side-by-side diff in VS Code">';
+					html += '<button class="diff-open-btn" data-file-path="' + escapeHtml(filePath) + '" data-message-index="' + messageIndex + '" onclick="requestTurnDiff(this.dataset.filePath, this.dataset.messageIndex)" title="Open side-by-side diff in VS Code">';
 					html += '<svg width="14" height="14" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="14" rx="1" fill="none" stroke="currentColor" stroke-opacity="0.5"/><rect x="9" y="1" width="6" height="14" rx="1" fill="none" stroke="currentColor" stroke-opacity="0.5"/><line x1="2.5" y1="4" x2="5.5" y2="4" stroke="#e8a0a0" stroke-width="1.5"/><line x1="2.5" y1="7" x2="5.5" y2="7" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="2.5" y1="10" x2="5.5" y2="10" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="10.5" y1="4" x2="13.5" y2="4" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="10.5" y1="7" x2="13.5" y2="7" stroke="#8fd48f" stroke-width="1.5"/><line x1="10.5" y1="10" x2="13.5" y2="10" stroke="#8fd48f" stroke-width="1.5"/></svg>';
 					html += 'Open Diff</button>';
 				}
@@ -719,7 +675,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return html;
 		}
 
-		function formatEditToolDiff(input, fileContentBefore, showButton = false, providedStartLine = null) {
+		function formatEditToolDiff(input, fileContentBefore, showButton = false, providedStartLine = null, messageIndex = -1) {
 			if (!input || typeof input !== 'object') {
 				return formatToolInputUI(input);
 			}
@@ -740,10 +696,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			return generateUnifiedDiffHTML(input.old_string, input.new_string, input.file_path, startLine, showButton);
+			return generateUnifiedDiffHTML(input.old_string, input.new_string, input.file_path, startLine, showButton, messageIndex);
 		}
 
-		function formatMultiEditToolDiff(input, fileContentBefore, showButton = false, providedStartLines = null) {
+		function formatMultiEditToolDiff(input, fileContentBefore, showButton = false, providedStartLines = null, messageIndex = -1) {
 			if (!input || typeof input !== 'object') {
 				return formatToolInputUI(input);
 			}
@@ -808,7 +764,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			html += '<div class="diff-summary-row">';
 			html += '<span class="diff-summary">Summary: ' + input.edits.length + ' edit' + (input.edits.length > 1 ? 's' : '') + '</span>';
 			if (showButton) {
-				html += '<button class="diff-open-btn" onclick="openDiffEditor()" title="Open side-by-side diff in VS Code">';
+				html += '<button class="diff-open-btn" data-file-path="' + escapeHtml(input.file_path) + '" data-message-index="' + messageIndex + '" onclick="requestTurnDiff(this.dataset.filePath, this.dataset.messageIndex)" title="Open side-by-side diff in VS Code">';
 				html += '<svg width="14" height="14" viewBox="0 0 16 16"><rect x="1" y="1" width="6" height="14" rx="1" fill="none" stroke="currentColor" stroke-opacity="0.5"/><rect x="9" y="1" width="6" height="14" rx="1" fill="none" stroke="currentColor" stroke-opacity="0.5"/><line x1="2.5" y1="4" x2="5.5" y2="4" stroke="#e8a0a0" stroke-width="1.5"/><line x1="2.5" y1="7" x2="5.5" y2="7" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="2.5" y1="10" x2="5.5" y2="10" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="10.5" y1="4" x2="13.5" y2="4" stroke="currentColor" stroke-opacity="0.4" stroke-width="1.5"/><line x1="10.5" y1="7" x2="13.5" y2="7" stroke="#8fd48f" stroke-width="1.5"/><line x1="10.5" y1="10" x2="13.5" y2="10" stroke="#8fd48f" stroke-width="1.5"/></svg>';
 				html += 'Open Diff</button>';
 			}
@@ -817,7 +773,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return html;
 		}
 
-		function formatWriteToolDiff(input, fileContentBefore, showButton = false) {
+		function formatWriteToolDiff(input, fileContentBefore, showButton = false, messageIndex = -1) {
 			if (!input || typeof input !== 'object') {
 				return formatToolInputUI(input);
 			}
@@ -831,7 +787,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const fullFileBefore = fileContentBefore || '';
 
 			// Show full content as added lines (new file or replacement)
-			return generateUnifiedDiffHTML(fullFileBefore, input.content, input.file_path, 1, showButton);
+			return generateUnifiedDiffHTML(fullFileBefore, input.content, input.file_path, 1, showButton, messageIndex);
 		}
 
 		function escapeHtml(text) {
@@ -1029,6 +985,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let totalCost = 0;
 		let totalTokensInput = 0;
 		let totalTokensOutput = 0;
+		let currentContextTokens = 0;
+		let latestUsage = null;
 		let requestCount = 0;
 		let isProcessing = false;
 		let requestStartTime = null;
@@ -1062,6 +1020,78 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			vscode.postMessage({ type: 'viewUsage', usageType: usageType });
 		}
 
+		// Approximate context-window size per model, used to turn currentContextTokens
+		// into a percentage for the status bar (fork-issue-27). Best-effort approximation, not the
+		// model's authoritative limit — router models use context_length from the
+		// recommended-models catalog. 'default' and unknown models fall back to a
+		// conservative 200K (underestimating only warns early).
+		function getContextWindow(model) {
+			const nativeWindows = { opus: 200000, sonnet: 200000, 'default': 200000 };
+			if (nativeWindows[model]) {
+				return nativeWindows[model];
+			}
+			const recommended = (window.__recommendedModels || []).find(function(m) { return m.id === model; });
+			return (recommended && recommended.context_length) || 200000;
+		}
+
+		// Builds the "Ctx 12,345 / ~200K (62%)" status-bar fragment, with a warning/
+		// critical class once usage crosses 80%/95% (fork-issue-27). Empty string when there's no
+		// context reading yet, so the status line looks exactly like before in that case.
+		function getContextIndicatorHtml() {
+			if (!currentContextTokens || currentContextTokens <= 0) {
+				return '';
+			}
+			const win = getContextWindow(currentModel);
+			const pct = win > 0 ? Math.round((currentContextTokens / win) * 100) : 0;
+			const ctxClass = pct >= 95 ? ' class="ctx-crit"' : pct >= 80 ? ' class="ctx-warn"' : '';
+			const winStr = win >= 1000000 ? \`\${Math.round(win / 1000000)}M\` : \`\${Math.round(win / 1000)}K\`;
+			return \` • <span\${ctxClass}>Ctx \${currentContextTokens.toLocaleString()} / ~\${winStr} (\${pct}%)</span>\`;
+		}
+
+		// Builds the "5h 42% · Week 18% · Opus 30%" status-bar fragment (fork-issue-35), same
+		// structure/escaping as the fork-issue-27 Ctx indicator above. Opus/Sonnet are the
+		// per-model weekly buckets (seven_day_opus/seven_day_sonnet); each renders
+		// only when the account's usage data actually includes it. Empty string when
+		// there's no usage data yet.
+		function getUsageIndicatorHtml() {
+			if (!latestUsage) return '';
+			const fiveHour = latestUsage.fiveHour;
+			const week = latestUsage.week;
+			const sevenDayOpus = latestUsage.sevenDayOpus;
+			const sevenDaySonnet = latestUsage.sevenDaySonnet;
+			if (!fiveHour && !week && !sevenDayOpus && !sevenDaySonnet) return '';
+
+			const fiveHourPct = fiveHour ? Math.round(fiveHour.pct) : undefined;
+			const weekPct = week ? Math.round(week.pct) : undefined;
+			const sevenDayOpusPct = sevenDayOpus ? Math.round(sevenDayOpus.pct) : undefined;
+			const sevenDaySonnetPct = sevenDaySonnet ? Math.round(sevenDaySonnet.pct) : undefined;
+			const maxPct = Math.max(fiveHourPct || 0, weekPct || 0, sevenDayOpusPct || 0, sevenDaySonnetPct || 0);
+			const usageClass = maxPct >= 95 ? ' class="ctx-crit"' : maxPct >= 80 ? ' class="ctx-warn"' : '';
+
+			const titleParts = [];
+			if (fiveHour && fiveHour.resetsAt) {
+				titleParts.push(\`5h resets \${new Date(fiveHour.resetsAt * 1000).toLocaleTimeString()}\`);
+			}
+			if (week && week.resetsAt) {
+				titleParts.push(\`Week resets \${new Date(week.resetsAt * 1000).toLocaleString()}\`);
+			}
+			if (sevenDayOpus && sevenDayOpus.resetsAt) {
+				titleParts.push(\`Opus resets \${new Date(sevenDayOpus.resetsAt * 1000).toLocaleString()}\`);
+			}
+			if (sevenDaySonnet && sevenDaySonnet.resetsAt) {
+				titleParts.push(\`Sonnet resets \${new Date(sevenDaySonnet.resetsAt * 1000).toLocaleString()}\`);
+			}
+			const titleAttr = titleParts.length ? \` title="\${titleParts.join(' · ')}"\` : '';
+
+			const fiveHourStr = fiveHour ? \`5h \${fiveHourPct}%\` : '';
+			const weekStr = week ? \`Week \${weekPct}%\` : '';
+			const sevenDayOpusStr = sevenDayOpus ? \`Opus \${sevenDayOpusPct}%\` : '';
+			const sevenDaySonnetStr = sevenDaySonnet ? \`Sonnet \${sevenDaySonnetPct}%\` : '';
+			const text = [fiveHourStr, weekStr, sevenDayOpusStr, sevenDaySonnetStr].filter(Boolean).join(' · ');
+
+			return \` • <span\${usageClass}\${titleAttr}>\${text}</span>\`;
+		}
+
 		function updateStatusWithTotals() {
 			if (isProcessing) {
 				// While processing, show elapsed time (and tokens for non-OpenCredits users)
@@ -1076,13 +1106,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// OpenCredits users: don't show tokens, just elapsed time
 					statusText = \`Processing\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				} else {
-					// Regular users: show tokens and elapsed time
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
-					statusText = \`Processing • \${tokensStr}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
+					// Regular users: show context usage and elapsed time (fork-issue-27 — the
+					// context indicator replaced the old cumulative token sum here)
+					statusText = \`Processing\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${elapsedStr ? \` • \${elapsedStr}\` : ''}\`;
 				}
-				updateStatus(statusText, 'processing');
+				updateStatusHtml(statusText, 'processing');
 			} else {
 				// When ready, show full info
 				let usageStr;
@@ -1113,12 +1141,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
 					statusText = \`Ready\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				} else {
-					// Regular users: show tokens, requests, and usage
-					const totalTokens = totalTokensInput + totalTokensOutput;
-					const tokensStr = totalTokens > 0 ?
-						\`\${totalTokens.toLocaleString()} tokens\` : '0 tokens';
+					// Regular users: show context usage, requests, and usage (fork-issue-27 — the
+					// context indicator replaced the old cumulative token sum here)
 					const requestStr = requestCount > 0 ? \`\${requestCount} requests\` : '';
-					statusText = \`Ready • \${tokensStr}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
+					statusText = \`Ready\${getContextIndicatorHtml()}\${getUsageIndicatorHtml()}\${requestStr ? \` • \${requestStr}\` : ''} • \${usageStr}\`;
 				}
 				updateStatusHtml(statusText, 'ready');
 			}
@@ -3685,7 +3711,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Update token totals in real-time
 					totalTokensInput = message.data.totalTokensInput || 0;
 					totalTokensOutput = message.data.totalTokensOutput || 0;
-					
+					currentContextTokens = message.data.currentContextTokens || currentContextTokens;
+
 					// Update status bar immediately
 					updateStatusWithTotals();
 					
@@ -3730,6 +3757,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					updateStatusWithTotals();
 					break;
 
+				case 'usageLimits':
+					// Store session-usage / weekly-limit snapshot (fork-issue-35) and refresh the status bar
+					latestUsage = message.data || null;
+					updateStatusWithTotals();
+					break;
+
 				case 'modelSwitching':
 					// Model is being switched (router restarting)
 					currentModel = message.model;
@@ -3757,6 +3790,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					totalCost = 0;
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					requestCount = 0;
 					updateStatusWithTotals();
 					break;
@@ -3771,6 +3805,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					// Reset token counts since conversation was compacted
 					totalTokensInput = 0;
 					totalTokensOutput = 0;
+					currentContextTokens = 0;
 					updateStatusWithTotals();
 
 					const preTokens = message.data.preTokens ? message.data.preTokens.toLocaleString() : 'unknown';
@@ -4863,6 +4898,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
+			const diffAutoOpen = document.getElementById('diff-auto-open').checked;
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +4939,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'diff.autoOpen': diffAutoOpen
 				}
 			});
 		}
@@ -5159,6 +5197,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
+				document.getElementById('diff-auto-open').checked = message.data['diff.autoOpen'] !== false;
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
