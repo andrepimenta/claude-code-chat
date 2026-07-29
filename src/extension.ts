@@ -404,7 +404,7 @@ class ClaudeChatProvider {
 		}
 		const envVars = config.get<Record<string, string>>('environment.variables', {});
 		const baseUrl = envVars['ANTHROPIC_BASE_URL'] || '';
-		return baseUrl.includes('opencredits.ai') || baseUrl.includes('localhost:8787');
+		return KNOWN_ENDPOINT_MARKERS.some(marker => baseUrl.includes(marker));
 	}
 
 	private async _setEnvsDisabled(disabled: boolean): Promise<void> {
@@ -2007,10 +2007,11 @@ class ClaudeChatProvider {
 				} catch (error: any) {
 					// With the ^{commit} peel, git reports both "sha missing" and "sha
 					// not a commit" as exit 128 + "fatal: Not a valid object name" (not
-					// exit 1 like _isPathIgnoredInBackupRepo's plain cat-file), so
-					// classify on stderr like _resolveTurnDiffBaseline does: that text
-					// is the silent, expected miss; anything else (ENOENT, broken
-					// backup repo) is real infrastructure failure worth a log line.
+					// exit 1, which a plain, unpeeled `git cat-file -e <sha>` would report
+					// for a simply-missing object), so classify on stderr like
+					// _resolveTurnDiffBaseline does: that text is the silent, expected
+					// miss; anything else (ENOENT, broken backup repo) is real
+					// infrastructure failure worth a log line.
 					const stderrText = String(error?.stderr || '');
 					if (!/Not a valid object name/i.test(stderrText)) {
 						console.error('Failed to check commit existence in backup repo:', error.message);
@@ -4264,7 +4265,12 @@ class ClaudeChatProvider {
 			// First line only: git error messages can be multi-line and would break the
 			// one-line-per-entry perm-log format. Basename only -- the perm-log file is
 			// unrotated plaintext, so the full path isn't worth leaking for a diagnostic line.
-			this._permLog(`[turndiff] auto skip reason=${reason.split('\n')[0]} file=${path.basename(filePath)}`);
+			// reason needs the same treatment: _resolveTurnDiffBaseline wraps raw execFile
+			// failures, whose message starts with the full command line (absolute
+			// backup-repo path, workspace-relative file path included) -- collapse any
+			// path-looking token down to its basename before it hits the log.
+			const redactedReason = reason.split('\n')[0].replace(/[^\s"']*[\\/][^\s"']*/g, (token) => path.basename(token));
+			this._permLog(`[turndiff] auto skip reason=${redactedReason} file=${path.basename(filePath)}`);
 			return;
 		}
 		vscode.window.showInformationMessage(`Claude Code Chat: ${reason}; showing the file instead.`);
