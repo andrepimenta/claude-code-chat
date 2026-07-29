@@ -1207,7 +1207,7 @@ const styles = `
 
     /* fork-issue-63: user messages render their prose as raw text nodes (no <p> wrapper), so pre-wrap is
        needed to keep newlines/multi-space visible; break-word stops long unbroken tokens (paths,
-       URLs) from overflowing. line-height: 1.6 matches .message p's (ui-styles.ts, ~line 4045),
+       URLs) from overflowing. line-height: 1.6 matches .message p's (ui-styles.ts, ~line 3855),
        which no longer applies here since the prose text isn't wrapped in <p> anymore -- without
        this, user messages would fall back to .messages' line-height: 1.4 and look tighter than
        before fork-issue-63 (a review finding). Code blocks inside a user message keep their own

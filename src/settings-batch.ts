@@ -13,8 +13,8 @@
 // pre-fork-issue-59 code's 'err=' + (error?.message || error) string-concatenation did (Error
 // instances and message-bearing objects use .message; anything else -- a thrown string,
 // undefined, a plain object -- coerces the same way String() / template-literal
-// interpolation would), so a caller like extension.ts's _permLog never has to guard
-// against a missing .message itself.
+// interpolation would), so a caller in extension.ts never has to guard against
+// a missing .message itself.
 export function toErrorMessage(error: unknown): string {
 	if (typeof error === 'object' && error !== null && 'message' in error) {
 		const message = (error as { message: unknown }).message;

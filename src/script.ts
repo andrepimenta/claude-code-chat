@@ -178,7 +178,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 				// fork-issue-48 (upstream #151): manual collapse of an entire message.
 				// Deliberately inserted AFTER the copy button, because .copy-btn's
-				// margin-left:auto pushes both to the right (ui-styles.ts:1152).
+				// margin-left:auto pushes both to the right (ui-styles.ts:1129).
 				const collapseBtn = document.createElement('button');
 				collapseBtn.className = 'message-collapse-btn';
 				collapseBtn.title = 'Collapse message';
@@ -4216,16 +4216,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// enableYoloMode function declarations in this scope; the later one
 		// silently won, so the argument-less inline chat button call hit
 		// getElementById('permissionMenu-undefined') and threw. With a
-		// permissionId (permission-menu item, ~4604) this keeps the old late-
+		// permissionId (permission-menu item, ~4060) this keeps the old late-
 		// variant behaviour: close that menu, notify the extension host,
 		// auto-approve. With no permissionId (inline "Enable Yolo Mode" chat
-		// button, ~254/~639) it mirrors that message round trip instead of the
+		// button, ~219/~476) it mirrors that message round trip instead of the
 		// old early variant's updateSettings() call: updateSettings() writes
 		// 22 settings keys to the GLOBAL (user) scope, not just yoloMode, so
 		// it could clobber workspace overrides / HTML-default values via the
 		// inline button. The extension host's _enableYoloMode() persists
 		// permissions.yoloMode and replies with settingsData, whose handler
-		// (~6147/~6150) sets the checkbox and calls updateYoloWarning().
+		// (~5360) sets the checkbox and calls updateYoloWarning() (~5392).
 		//
 		// fork-issue-59: the "enabled" chat message used to fire right here, unconditionally,
 		// the moment the button was clicked -- independent of whether
