@@ -4928,15 +4928,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const executablePath = document.getElementById('executable-path').value;
 			// fork-issue-42/fork-issue-44 settings modal follow-up: keep in sync with the manifest bounds
 			// (advanced.maxOutputTokens >= 0, ui.fontSize 0 or 6-72).
-			let maxOutputTokens = parseInt(document.getElementById('max-output-tokens').value, 10);
+			const maxOutputTokensEl = document.getElementById('max-output-tokens');
+			let maxOutputTokens = parseInt(maxOutputTokensEl.value, 10);
 			if (!Number.isFinite(maxOutputTokens) || maxOutputTokens < 0) {
 				maxOutputTokens = 0;
 			}
 			const useRouter = document.getElementById('use-router')?.checked || false;
 			// fork-issue-38: auto-open a turn diff after a successful Edit/MultiEdit/Write
 			const diffAutoOpen = document.getElementById('diff-auto-open').checked;
-			const chatFontFamily = document.getElementById('chat-font-family').value;
-			let chatFontSize = parseInt(document.getElementById('chat-font-size').value, 10);
+			const chatFontFamilyEl = document.getElementById('chat-font-family');
+			const chatFontFamily = chatFontFamilyEl.value;
+			const chatFontSizeEl = document.getElementById('chat-font-size');
+			let chatFontSize = parseInt(chatFontSizeEl.value, 10);
 			if (!Number.isFinite(chatFontSize) || chatFontSize < 0) {
 				chatFontSize = 0;
 			} else if (chatFontSize > 0 && chatFontSize < 6) {
@@ -4973,22 +4976,35 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				has_custom_envs: Object.keys(envVariables).length > 0,
 				has_custom_executable: !!executablePath
 			});
+			const settingsToSend = {
+				'wsl.enabled': wslEnabled,
+				'wsl.distro': wslDistro || 'Ubuntu',
+				'wsl.nodePath': wslNodePath,
+				'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude',
+				'permissions.yoloMode': yoloMode,
+				'executable.path': executablePath,
+				'environment.variables': envVariables,
+				'router.enabled': useRouter,
+				'diff.autoOpen': diffAutoOpen
+			};
+			// The settings modal's settingsData roundtrip is what fills these three fields in;
+			// callers that trigger updateSettings() without ever opening the modal (e.g.
+			// enableYoloMode() from the permission-error banner) find them at their untouched ''
+			// default, so only send them once they actually hold a value -- otherwise
+			// parseInt('') -> NaN gets clamped to 0 above and would silently zero out a real
+			// advanced.maxOutputTokens/ui.fontSize setting.
+			if (maxOutputTokensEl.value !== '') {
+				settingsToSend['advanced.maxOutputTokens'] = maxOutputTokens;
+			}
+			if (chatFontFamilyEl.value !== '') {
+				settingsToSend['ui.fontFamily'] = chatFontFamily;
+			}
+			if (chatFontSizeEl.value !== '') {
+				settingsToSend['ui.fontSize'] = chatFontSize;
+			}
 			vscode.postMessage({
 				type: 'updateSettings',
-				settings: {
-					'wsl.enabled': wslEnabled,
-					'wsl.distro': wslDistro || 'Ubuntu',
-					'wsl.nodePath': wslNodePath,
-					'wsl.claudePath': wslClaudePath || '/usr/local/bin/claude',
-					'permissions.yoloMode': yoloMode,
-					'executable.path': executablePath,
-					'advanced.maxOutputTokens': maxOutputTokens,
-					'environment.variables': envVariables,
-					'router.enabled': useRouter,
-					'diff.autoOpen': diffAutoOpen,
-					'ui.fontFamily': chatFontFamily,
-					'ui.fontSize': chatFontSize
-				}
+				settings: settingsToSend
 			});
 		}
 
