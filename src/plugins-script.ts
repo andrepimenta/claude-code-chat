@@ -53,7 +53,7 @@ const getPluginsScript = () => `
 					(desc ? '<div class="server-config" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(desc) + '</div>' : '') +
 					'</div>' +
 					'<div class="server-actions" style="flex-shrink:0;">' +
-					'<button class="btn outlined server-delete-btn" data-plugin="' + escapeHtml(installId) + '" onclick="removePlugin(this.dataset.plugin)">Remove</button>' +
+					'<button class="btn outlined server-delete-btn" data-plugin="' + escapeAttr(installId) + '" onclick="removePlugin(this.dataset.plugin)">Remove</button>' +
 					'</div>';
 				pluginsList.appendChild(item);
 			});
@@ -72,7 +72,9 @@ const getPluginsScript = () => `
 				var displayName = formatPluginName(name);
 				var desc = escapeHtml(plugin.description || 'No description');
 				var verified = plugin.verified;
-				var safeId = escapeHtml(plugin.installId || name).replace(/'/g, '&#39;');
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// " unescaped and able to break out of the data-plugin-id attribute below.
+				var safeId = escapeAttr(plugin.installId || name);
 
 				html += '<div class="marketplace-item" data-plugin-id="' + safeId + '" onclick="showPluginDetail(this.dataset.pluginId)">' +
 					'<div class="marketplace-item-header">' +
@@ -121,10 +123,10 @@ const getPluginsScript = () => `
 				'<div class="marketplace-detail-name">' + escapeHtml(displayName) + '</div>' +
 				'<div class="marketplace-detail-header-meta">' + verifiedHtml + '</div>' +
 				'</div>' +
-				'<button class="btn marketplace-install-btn" data-plugin="' + escapeHtml(installId) + '" onclick="installPlugin(this.dataset.plugin)">Enable</button>' +
+				'<button class="btn marketplace-install-btn" data-plugin="' + escapeAttr(installId) + '" onclick="installPlugin(this.dataset.plugin)">Enable</button>' +
 				'</div>' +
 				'<div class="marketplace-detail-desc">' + escapeHtml(desc) + '</div>' +
-				'<div class="marketplace-detail-row"><a href="https://github.com/anthropics/claude-plugins-official/tree/main/' + (plugin.type === 'official' ? 'plugins' : 'external_plugins') + '/' + escapeHtml(name) + '" target="_blank" class="marketplace-detail-link">View on GitHub</a></div>' +
+				'<div class="marketplace-detail-row"><a href="https://github.com/anthropics/claude-plugins-official/tree/main/' + (plugin.type === 'official' ? 'plugins' : 'external_plugins') + '/' + escapeAttr(name) + '" target="_blank" class="marketplace-detail-link">View on GitHub</a></div>' +
 				'<div style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:4px;">Adds <code style="font-size:10px;">' + escapeHtml(installId) + '</code> to .claude/settings.json</div>' +
 				'</div>';
 		}

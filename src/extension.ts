@@ -8,6 +8,9 @@ import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
 import { fetchAndResolveModels } from './model-updater';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
+import { updateWithWorkspaceThenGlobalFallback } from './settings-batch';
+import { quoteWinShellArgs } from './shell-utils';
+import { getMCPConfigPathForScope } from './mcp-config-path';
 
 // OpenCredits environment configuration
 let OPENCREDITS_API_URL = 'https://ccc.api.opencredits.ai';
@@ -653,6 +656,11 @@ class ClaudeChatProvider {
 				this._loadMCPServers();
 				return;
 			case 'saveMCPServer':
+				// fork-issue-67 (review): `|| 'project'` predates fork-issue-67 (upstream deca7de) and is kept
+				// as-is -- after fork-issue-67 Part A/B the webview can no longer send an empty scope, so
+				// this is unreachable today, but removing a working fallback here for no present
+				// benefit would just open a fresh failure mode later. See the comment in
+				// src/mcp-config-path.ts (fork-issue-69) for what this used to mean in practice.
 				this._saveMCPServer(message.name, message.config, message.scope || 'project');
 				return;
 			case 'deleteMCPServer':
@@ -1061,9 +1069,10 @@ class ClaudeChatProvider {
 			// path we skip shell wrapping to avoid cmd.exe mis-quoting paths with spaces
 			// (e.g. the default globalStorage location "...Application Support...").
 			const executable = customExecutablePath || 'claude';
-			claudeProcess = cp.spawn(executable, args, {
+			const useShell = process.platform === 'win32' && !customExecutablePath;
+			claudeProcess = cp.spawn(executable, quoteWinShellArgs(args, useShell), {
 				signal: this._abortController.signal,
-				shell: process.platform === 'win32' && !customExecutablePath,
+				shell: useShell,
 				detached: process.platform !== 'win32',
 				cwd: cwd,
 				stdio: ['pipe', 'pipe', 'pipe'],
@@ -2724,22 +2733,18 @@ class ClaudeChatProvider {
 	}
 
 	private _getExtensionMCPConfigPath(): string | undefined {
-		const storagePath = this._context.storageUri?.fsPath;
-		if (!storagePath) { return undefined; }
-		return path.join(storagePath, 'mcp', 'mcp-servers.json');
+		return this._getMCPConfigPathForScope('extension');
 	}
 
+	// fork-issue-69: the scope -> path decision itself now lives in mcp-config-path.ts (pure, no
+	// vscode import, unit-tested); this method just collects the environment values that
+	// module needs and delegates. Behaviour is unchanged from before the extraction.
 	private _getMCPConfigPathForScope(scope: string): string | undefined {
-		if (scope === 'global') {
-			const homeDir = process.env.HOME || process.env.USERPROFILE || '';
-			return homeDir ? path.join(homeDir, '.claude.json') : undefined;
-		}
-		if (scope === 'project') {
-			const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-			return workspaceFolder ? path.join(workspaceFolder, '.mcp.json') : undefined;
-		}
-		// 'extension' scope — the private config
-		return this._getExtensionMCPConfigPath();
+		return getMCPConfigPathForScope(scope, {
+			homeDir: process.env.HOME || process.env.USERPROFILE || '',
+			workspaceFolder: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+			extensionStoragePath: this._context.storageUri?.fsPath
+		});
 	}
 
 	private async _readMCPConfigFile(filePath: string): Promise<Record<string, any>> {
@@ -2786,6 +2791,42 @@ class ClaudeChatProvider {
 						servers[name] = { ...config as any, _scope: 'global' };
 					}
 				}
+			}
+
+			// Read CLI local-scope servers (~/.claude.json → projects[cwd].mcpServers).
+			// Display-only (fork-issue-39): local scope is owned and managed by the CLI
+			// itself, so we merge it in read-only here — see displayMCPServers, which
+			// must not render edit/delete for these: _getMCPConfigPathForScope resolves
+			// 'local' to undefined (fork-issue-69), so a write would fail rather than land anywhere.
+			// Any failure here (missing file, malformed JSON, no
+			// workspace) just means local scope doesn't show up; other scopes are
+			// unaffected.
+			try {
+				const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+				const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+				if (homeDir && cwd) {
+					const claudeJsonPath = path.join(homeDir, '.claude.json');
+					const content = await vscode.workspace.fs.readFile(vscode.Uri.file(claudeJsonPath));
+					const parsed = JSON.parse(new TextDecoder().decode(content));
+					// The CLI stores project keys with forward slashes and an
+					// inconsistent drive-letter case (both "c:/..." and "C:/..." occur),
+					// while uri.fsPath is "C:\...". Match on a normalized form and merge
+					// every matching key (there can be two casings for one path).
+					const norm = (p: string) => p.replace(/\\/g, '/').toLowerCase();
+					const cwdNorm = norm(cwd);
+					const projects = parsed?.projects || {};
+					for (const projKey of Object.keys(projects)) {
+						if (norm(projKey) !== cwdNorm) { continue; }
+						const localServers = projects[projKey]?.mcpServers || {};
+						for (const [name, config] of Object.entries(localServers)) {
+							if (!servers[name]) {
+								servers[name] = { ...config as any, _scope: 'local' };
+							}
+						}
+					}
+				}
+			} catch {
+				// No ~/.claude.json, no matching project entry, or malformed JSON.
 			}
 
 			this._postMessage({ type: 'mcpServers', data: servers });
@@ -3400,6 +3441,8 @@ class ClaudeChatProvider {
 			'executable.path': config.get<string>('executable.path', ''),
 			'environment.variables': config.get<Record<string, string>>('environment.variables', {}),
 			'environment.disabled': config.get<boolean>('environment.disabled', false),
+			'ui.collapseLongCodeBlocks': config.get<boolean>('ui.collapseLongCodeBlocks', true),
+			'ui.collapseCodeBlockLines': config.get<number>('ui.collapseCodeBlockLines', 20),
 			'isOpenCredits': this._isOpenCredits()
 		};
 
@@ -3409,21 +3452,52 @@ class ClaudeChatProvider {
 		});
 	}
 
+	// fork-issue-59: workspace-then-global fallback (same pattern _updateSettings already used for
+	// this key, via updateWithWorkspaceThenGlobalFallback). Before fork-issue-59 this only tried
+	// Workspace and swallowed the error into the console -- in a window with no
+	// workspace folder open that meant YOLO mode was never actually persisted, while the
+	// webview's "YOLO Mode enabled!" chat message (script.ts's enableYoloMode()) fired
+	// unconditionally client-side, independent of any response from here. That message
+	// is now gated on the 'yoloModeEnabled' reply below, sent only after a successful
+	// write; a double failure gets a 'yoloModeEnableFailed' reply plus a native error
+	// notification instead, and never a success confirmation.
+	//
+	// Follow-up: the outer try/catch below exists because this method is
+	// called fire-and-forget (extension.ts's message handler does
+	// `this._enableYoloMode();`, no `await`/`.catch`, see the switch above). Previously,
+	// only the two config.update() calls inside
+	// updateWithWorkspaceThenGlobalFallback could reject; now that this method's own
+	// logic (e.g. a settings-batch.ts that's out of sync with extension.ts after a
+	// partial deploy, so updateWithWorkspaceThenGlobalFallback itself is undefined) can
+	// also throw, an uncaught rejection here would silently swallow the click with none
+	// of fork-issue-59's reporting -- exactly the failure class fork-issue-59 exists to close.
 	private async _enableYoloMode(): Promise<void> {
 		try {
-			// Update VS Code configuration to enable YOLO mode
 			const config = vscode.workspace.getConfiguration('claudeCodeChat');
+			const result = await updateWithWorkspaceThenGlobalFallback(
+				async () => { await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace); },
+				async () => { await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Global); }
+			);
 
-			// Clear any global setting and set workspace setting
-			await config.update('permissions.yoloMode', true, vscode.ConfigurationTarget.Workspace);
-
-
-			// Send updated settings to UI
-			this._sendCurrentSettings();
-
-		} catch (error) {
-			console.error('Error enabling YOLO mode:', error);
+			if (result.succeeded) {
+				// Send updated settings to UI
+				this._sendCurrentSettings();
+				this._postMessage({ type: 'yoloModeEnabled' });
+			} else {
+				this._reportYoloModeEnableFailure(result.globalError || result.workspaceError || 'Unknown error');
+			}
+		} catch (error: any) {
+			this._reportYoloModeEnableFailure(error?.message || String(error));
 		}
+	}
+
+	// Shared by _enableYoloMode's double-failure path and its outer catch: same
+	// treatment either way -- a caller must never see a silent no-op where the chat
+	// already claimed success.
+	private _reportYoloModeEnableFailure(message: string): void {
+		console.error('Error enabling YOLO mode:', message);
+		vscode.window.showErrorMessage(`Failed to enable YOLO mode: ${message}`);
+		this._postMessage({ type: 'yoloModeEnableFailed', error: message });
 	}
 
 	private _saveInputText(text: string): void {
@@ -3432,38 +3506,50 @@ class ClaudeChatProvider {
 
 	private async _updateSettings(settings: { [key: string]: any }): Promise<void> {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		const failures: string[] = [];
 
-		try {
-			for (const [key, value] of Object.entries(settings)) {
+		// Each key gets its own try/catch so one failing key (e.g. a double
+		// workspace+global failure on permissions.yoloMode below) can never silently
+		// prevent the remaining keys in this settings batch from being applied.
+		for (const [key, value] of Object.entries(settings)) {
+			try {
 				if (key === 'permissions.yoloMode') {
-					// YOLO mode: try workspace first, fall back to global
-					try {
-						await config.update(key, value, vscode.ConfigurationTarget.Workspace);
-					} catch {
-						await config.update(key, value, vscode.ConfigurationTarget.Global);
+					// fork-issue-59: YOLO mode: try workspace first, fall back to global (same
+					// helper _enableYoloMode uses).
+					const yoloResult = await updateWithWorkspaceThenGlobalFallback(
+						async () => { await config.update(key, value, vscode.ConfigurationTarget.Workspace); },
+						async () => { await config.update(key, value, vscode.ConfigurationTarget.Global); }
+					);
+					if (!yoloResult.succeeded) {
+						throw new Error(yoloResult.globalError || yoloResult.workspaceError || 'Unknown error');
 					}
 				} else {
 					// Other settings are global (user-wide)
 					await config.update(key, value, vscode.ConfigurationTarget.Global);
 				}
+			} catch (error: any) {
+				console.error(`Failed to update setting "${key}":`, error?.message || error);
+				failures.push(`${key}: ${error?.message || error}`);
 			}
+		}
 
-			// Re-send settings so webview gets updated isOpenCredits flag, etc.
-			this._sendCurrentSettings();
+		if (failures.length > 0) {
+			vscode.window.showErrorMessage(`Failed to update settings: ${failures.join('; ')}`);
+		}
 
-			// Update balance display based on new env vars
-			if (this._isOpenCredits() || this._getOpenCreditsKey()) {
-				this._sendOpenCreditsBalance();
-			} else {
-				// Clear balance if no longer OpenCredits
-				this._postMessage({
-					type: 'opencreditsBalance',
-					balance: null
-				});
-			}
-		} catch (error: any) {
-			console.error('Failed to update settings:', error?.message || error);
-			vscode.window.showErrorMessage(`Failed to update settings: ${error?.message || 'Unknown error'}`);
+		// Re-send settings so webview gets updated isOpenCredits flag, etc. Runs even if
+		// some keys above failed, so the keys that did succeed are still reflected back.
+		this._sendCurrentSettings();
+
+		// Update balance display based on new env vars
+		if (this._isOpenCredits() || this._getOpenCreditsKey()) {
+			this._sendOpenCreditsBalance();
+		} else {
+			// Clear balance if no longer OpenCredits
+			this._postMessage({
+				type: 'opencreditsBalance',
+				balance: null
+			});
 		}
 	}
 

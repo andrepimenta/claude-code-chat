@@ -1,5 +1,8 @@
 import getSkillsScript from './skills-script';
 import getPluginsScript from './plugins-script';
+import getCollapseScript from './collapse-script';
+import { escapeAttr, safeHttpUrl } from './html-escape';
+import { restoreCodeBlockPlaceholders } from './markdown-restore';
 
 const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https://ccc.api.opencredits.ai', opencreditsWebUrl: string = 'https://ccc.opencredits.ai', opencreditsPublishableKey: string = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f') => `<script>
 		var OPENCREDITS_API_URL = '${opencreditsApiUrl}';
@@ -81,7 +84,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		let isWindows = false;
 		let lastPendingEditIndex = -1; // Track the last Edit/MultiEdit/Write toolUse without result
 		let lastPendingEditData = null; // Store diff data for the pending edit { filePath, oldContent, newContent }
+		// fork-issue-48 (upstream #151): claudeCodeChat.ui.collapseLongCodeBlocks / .collapseCodeBlockLines.
+		// Must sit up here (let isn't hoisted), even though the rest of the logic
+		// is spliced in further down via \${getCollapseScript()}.
+		let collapseLongCodeBlocks = true;
+		let collapseCodeBlockLines = 20;
 		let attachedImages = []; // Array of { filePath, previewUri }
+		// fork-issue-59: text for the next 'yoloModeEnabled' response's chat message, set by
+		// enableYoloMode() right before it posts 'enableYoloMode' to the extension host.
+		// The two call sites (inline permission-menu item vs. the standalone chat
+		// button) use different wording, so this can't be a hardcoded string in the
+		// 'yoloModeEnabled' case itself; only one enable request is ever in flight at a
+		// time, so a single module-level slot is enough (same pragmatic pattern as
+		// collapseLongCodeBlocks/collapseCodeBlockLines above).
+		let pendingYoloEnableMessage = null;
 
 		// Open diff using stored data (no file read needed)
 		function openDiffEditor() {
@@ -159,6 +175,18 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				headerDiv.appendChild(iconDiv);
 				headerDiv.appendChild(labelDiv);
 				headerDiv.appendChild(copyBtn);
+
+				// fork-issue-48 (upstream #151): manual collapse of an entire message.
+				// Deliberately inserted AFTER the copy button, because .copy-btn's
+				// margin-left:auto pushes both to the right (ui-styles.ts:1129).
+				const collapseBtn = document.createElement('button');
+				collapseBtn.className = 'message-collapse-btn';
+				collapseBtn.title = 'Collapse message';
+				collapseBtn.textContent = '▾';
+				collapseBtn.setAttribute('aria-expanded', 'true');
+				collapseBtn.onclick = () => toggleMessageCollapsed(messageDiv, collapseBtn);
+				headerDiv.appendChild(collapseBtn);
+
 				messageDiv.appendChild(headerDiv);
 			}
 			
@@ -166,6 +194,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const contentDiv = document.createElement('div');
 			contentDiv.className = 'message-content';
 			
+			// fork-issue-63: user messages are pre-rendered by renderUserMessageContent (raw text,
+			// only fenced code blocks turned into real markup) before reaching here, so
+			// they go through the same contentDiv.innerHTML path as Claude's/thinking's
+			// parseSimpleMarkdown output.
 			if(type == 'user' || type === 'claude' || type === 'thinking'){
 				contentDiv.innerHTML = content;
 			} else {
@@ -239,7 +271,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							todo.status === 'in_progress' ? '🔄' : '⏳';
 						todoHtml += '\\n' + status + ' ' + todo.content;
 					}
-					contentDiv.innerHTML = todoHtml;
+					// fork-issue-49: plain text, no markup -- .tool-input has white-space: pre-line
+					contentDiv.textContent = todoHtml;
 				} else {
 					// Format raw input with expandable content for long values
 					// Use diff format for Edit, MultiEdit, and Write tools, regular format for others
@@ -320,31 +353,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			scrollToBottomIfNeeded(messagesDiv, shouldScroll);
 		}
 
-		function createExpandableInput(toolInput, rawInput) {
-			try {
-				let html = toolInput.replace(/\\[expand\\]/g, '<span class="expand-btn" onclick="toggleExpand(this)">expand</span>');
-				
-				// Store raw input data for expansion
-				if (rawInput && typeof rawInput === 'object') {
-					let btnIndex = 0;
-					html = html.replace(/<span class="expand-btn"[^>]*>expand<\\/span>/g, (match) => {
-						const keys = Object.keys(rawInput);
-						const key = keys[btnIndex] || '';
-						const value = rawInput[key] || '';
-						const valueStr = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-						const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-						btnIndex++;
-						return \`<span class="expand-btn" data-key="\${key}" data-value="\${escapedValue}" onclick="toggleExpand(this)">expand</span>\`;
-					});
-				}
-				
-				return html;
-			} catch (error) {
-				console.error('Error creating expandable input:', error);
-				return toolInput;
-			}
-		}
-
+		// fork-issue-62: the dead expandable-input helper (the same "[expand]" placeholder +
+		// data-key/data-value expand-btn pattern) removed as dead code -- unreachable (grep
+		// across src/ + out/ found only its own declaration, no call site, no window[...]/
+		// onclick-string dynamic invocation anywhere) and superseded by formatToolInputUI's own
+		// escapeAttr()'d expand-btn rendering (the currently used path). Not spelling out the
+		// old identifier here on purpose, since this comment is itself part of the emitted
+		// <script> text.
 
 		function addToolResultMessage(data) {
 			const messagesDiv = document.getElementById('messages');
@@ -482,8 +497,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				html += '<div class="plan-actions-label">Suggested actions:</div>';
 				input.allowedPrompts.forEach(function(p) {
 					var label = p.prompt || (p.tool + ' command');
-					var escapedPrompt = escapeHtml(label).replace(/'/g, '&#39;');
-					html += '<button class="plan-action-btn" onclick="sendPlanAction(&#39;' + escapedPrompt + '&#39;)" title="' + escapeHtml(p.tool) + '">' + escapeHtml(label) + '</button>';
+					// fork-issue-57: value moved into data-prompt (escapeAttr) instead of an HTML-entity-
+					// escaped JS string literal inside onclick -- the old escapeHtml()+manual
+					// &#39; replace still left " unescaped, breaking out of the attribute.
+					html += '<button class="plan-action-btn" data-prompt="' + escapeAttr(label) + '" onclick="sendPlanAction(this.dataset.prompt)" title="' + escapeAttr(p.tool) + '">' + escapeHtml(label) + '</button>';
 				});
 				html += '</div>';
 			}
@@ -511,13 +528,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						   '<button class="diff-expand-btn" onclick="toggleResultExpansion(\\\'' + inputId + '\\\')">Show more</button>' +
 						   '</div>';
 				}
-				return str;
+				return escapeHtml(str);
 			}
 
 			// Special handling for Read tool with file_path
 			if (input.file_path && Object.keys(input).length === 1) {
 				const formattedPath = formatFilePath(input.file_path);
-				return '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+				// fork-issue-57: path moved into data-file-path (escapeAttr) + this.dataset.filePath --
+				// the old escapeHtml() + hand-escaped \' JS-string embed broke on both " (attribute
+				// breakout) and ' (premature end of the JS string argument).
+				return '<div class="diff-file-path" data-file-path="' + escapeAttr(input.file_path) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			}
 
 			let result = '';
@@ -531,13 +551,12 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				// Special formatting for file_path in Read tool context
 				if (key === 'file_path') {
 					const formattedPath = formatFilePath(valueStr);
-					result += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(valueStr) + '\\\')">' + formattedPath + '</div>';
+					result += '<div class="diff-file-path" data-file-path="' + escapeAttr(valueStr) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 				} else if (valueStr.length > 100) {
 					const truncated = valueStr.substring(0, 97) + '...';
-					const escapedValue = valueStr.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-					result += '<span class="expandable-item"><strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + escapedValue + '" onclick="toggleExpand(this)">expand</span></span>';
+					result += '<span class="expandable-item"><strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(truncated) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(valueStr) + '" onclick="toggleExpand(this)">expand</span></span>';
 				} else {
-					result += '<strong>' + key + ':</strong> ' + valueStr;
+					result += '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(valueStr);
 				}
 			}
 			return result;
@@ -619,7 +638,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			// Header with file path
 			html += '<div class="diff-file-header">';
-			html += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(filePath) + '\\\')">' + formattedPath + '</div>';
+			html += '<div class="diff-file-path" data-file-path="' + escapeAttr(filePath) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			html += '</div>\\n';
 
 			// Calculate line range
@@ -756,7 +775,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Show full diffs for each edit
 			const formattedPath = formatFilePath(input.file_path);
 			let html = '<div class="diff-file-header">';
-			html += '<div class="diff-file-path" onclick="openFileInEditor(\\\'' + escapeHtml(input.file_path) + '\\\')">' + formattedPath + '</div>';
+			html += '<div class="diff-file-path" data-file-path="' + escapeAttr(input.file_path) + '" onclick="openFileInEditor(this.dataset.filePath)">' + formattedPath + '</div>';
 			html += '</div>\\n';
 
 			input.edits.forEach((edit, index) => {
@@ -840,6 +859,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			return div.innerHTML;
 		}
 
+		// fork-issue-49: attribute escaping -- escapeHtml() leaves " and ' untouched. Build-time splice
+		// (same pattern as collapse-script) so npm run test:html-escape can
+		// exercise the function under Node. NOTE: this deliberately uses "\${", not "\\\${".
+		${escapeAttr.toString()}
+
+		// fork-issue-61: schema guard for href=/src= -- escapeAttr() alone lets javascript:-links
+		// through untouched. Same build-time splice as escapeAttr directly above.
+		${safeHttpUrl.toString()}
+
 		function openFileInEditor(filePath) {
 			vscode.postMessage({
 				type: 'openFile',
@@ -854,7 +882,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const parts = filePath.split('/');
 			const fileName = parts[parts.length - 1];
 			
-			return '<span class="file-path-truncated" title="' + escapeHtml(filePath) + '" data-file-path="' + escapeHtml(filePath) + '">' + 
+			return '<span class="file-path-truncated" title="' + escapeAttr(filePath) + '" data-file-path="' + escapeAttr(filePath) + '">' +
 				   '<span class="file-icon">📄</span>' + escapeHtml(fileName) + '</span>';
 		}
 
@@ -893,9 +921,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		function toggleExpand(button) {
-			const key = button.getAttribute('data-key');
-			const value = button.getAttribute('data-value');
-			
+			const key = button.getAttribute('data-key') || '';
+			// fork-issue-49: getAttribute() already returns decoded values -- the manual
+			// &quot;/&#39; unescaping that used to be here was a SECOND decode.
+			const value = button.getAttribute('data-value') || '';
+
 			// Find the container that holds just this key-value pair
 			let container = button.parentNode;
 			while (container && !container.classList.contains('expandable-item')) {
@@ -922,13 +952,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			
 			if (button.textContent === 'expand') {
 				// Show full content
-				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				container.innerHTML = '<strong>' + key + ':</strong> ' + decodedValue + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">collapse</span>';
+				container.innerHTML = '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(value) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(value) + '" onclick="toggleExpand(this)">collapse</span>';
 			} else {
 				// Show truncated content
-				const decodedValue = value.replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-				const truncated = decodedValue.substring(0, 97) + '...';
-				container.innerHTML = '<strong>' + key + ':</strong> ' + truncated + ' <span class="expand-btn" data-key="' + key + '" data-value="' + value + '" onclick="toggleExpand(this)">expand</span>';
+				const truncated = value.substring(0, 97) + '...';
+				container.innerHTML = '<strong>' + escapeHtml(key) + ':</strong> ' + escapeHtml(truncated) + ' <span class="expand-btn" data-key="' + escapeAttr(key) + '" data-value="' + escapeAttr(value) + '" onclick="toggleExpand(this)">expand</span>';
 			}
 		}
 
@@ -1407,25 +1435,6 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				content.toLowerCase().includes(pattern.toLowerCase())
 			);
 		}
-		
-		function enableYoloMode() {
-			sendStats('YOLO mode enabled');
-			
-			// Update the checkbox
-			const yoloModeCheckbox = document.getElementById('yolo-mode');
-			if (yoloModeCheckbox) {
-				yoloModeCheckbox.checked = true;
-				
-				// Trigger the settings update
-				updateSettings();
-				
-				// Show confirmation message
-				addMessage('✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
-				
-				// Update the warning banner
-				updateYoloWarning();
-			}
-		}
 
 		function hideMCPModal() {
 			document.getElementById('mcpModal').style.display = 'none';
@@ -1444,7 +1453,55 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			vscode.postMessage({ type: 'loadMCPServers' });
 		}
 
+		// fork-issue-67 (review follow-up): shared by showAddServerForm() and hideAddServerForm() --
+		// resets editingServerName plus every field editMCPServer() can have populated/locked
+		// back to a blank "Add manually" state. Both entry points need the exact same reset:
+		// showAddServerForm() is reached not just via Cancel/Save (hideAddServerForm()) but also
+		// directly from "+ Add manually" and installMarketplaceServer() while a previous edit was
+		// still in progress. A half reset here (originally: only editingServerName and
+		// #serverScope) left #serverName still disabled and pre-filled with the OLD server's
+		// name/command/args/env while #serverScope became pickable again -- letting the user save
+		// a "new" scope under the OLD name, silently duplicating that server into a second scope's
+		// config file (the exact cross-scope duplicate fork-issue-65 closed; the #serverScope-only lock
+		// closed the direct route, but not this one via #serverName staying stale). Two
+		// hand-maintained copies of this reset is exactly the failure mode that caused it, so
+		// there's only one now.
+		function resetAddServerFormFields() {
+			editingServerName = null;
+
+			// Reset form title and button
+			const formTitle = document.querySelector('#addServerForm h5');
+			if (formTitle) formTitle.remove();
+
+			const saveBtn = document.querySelector('#addServerForm .btn:not(.outlined)');
+			if (saveBtn) saveBtn.textContent = 'Add Server';
+
+			// Clear form
+			document.getElementById('serverName').value = '';
+			document.getElementById('serverName').disabled = false;
+			// fork-issue-65: undo editMCPServer's scope lock (see there) so a fresh "Add manually" gets a
+			// free choice again.
+			document.getElementById('serverScope').disabled = false;
+			document.getElementById('serverScope').title = '';
+			// fork-issue-67 (review): unlocking alone leaves the SELECTION as editMCPServer() set it --
+			// disabled on an <option> only blocks the user from picking it, not the field from
+			// still reading it back. For an 'extension'-scope server that selection is now a
+			// real, matching (if disabled) <option> (see ui.ts), so it silently survives the
+			// unlock unless reset here too -- a fresh "Add manually" would then default to
+			// "extension" and, since it's picked, is a value a user could easily leave standing.
+			// Reset to the same 'project' default #serverType gets a few lines down.
+			document.getElementById('serverScope').value = 'project';
+			document.getElementById('serverCommand').value = '';
+			document.getElementById('serverUrl').value = '';
+			document.getElementById('serverArgs').value = '';
+			document.getElementById('serverEnv').value = '';
+			document.getElementById('serverHeaders').value = '';
+			document.getElementById('serverType').value = 'http';
+			updateServerForm();
+		}
+
 		function showAddServerForm() {
+			resetAddServerFormFields();
 			document.getElementById('mcpServersList').style.display = 'none';
 			document.getElementById('popularServers').style.display = 'none';
 			document.getElementById('addServerForm').style.display = 'block';
@@ -1455,27 +1512,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			document.getElementById('popularServers').style.display = 'block';
 			document.getElementById('addServerForm').style.display = 'none';
 			loadMCPServers();
-			
-			// Reset editing state
-			editingServerName = null;
-			
-			// Reset form title and button
-			const formTitle = document.querySelector('#addServerForm h5');
-			if (formTitle) formTitle.remove();
-			
-			const saveBtn = document.querySelector('#addServerForm .btn:not(.outlined)');
-			if (saveBtn) saveBtn.textContent = 'Add Server';
-			
-			// Clear form
-			document.getElementById('serverName').value = '';
-			document.getElementById('serverName').disabled = false;
-			document.getElementById('serverCommand').value = '';
-			document.getElementById('serverUrl').value = '';
-			document.getElementById('serverArgs').value = '';
-			document.getElementById('serverEnv').value = '';
-			document.getElementById('serverHeaders').value = '';
-			document.getElementById('serverType').value = 'http';
-			updateServerForm();
+
+			resetAddServerFormFields();
 		}
 
 		function updateServerForm() {
@@ -1584,7 +1622,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			var scope = document.getElementById('serverScope') ? document.getElementById('serverScope').value : 'project';
+			// fork-issue-67: #serverScope is locked (disabled, display-only) while editing (fork-issue-65) and has no
+			// <option> for 'extension'-scope servers (see ui.ts), so its .value reads back as ''
+			// for them -- read the actual scope from the server's own config instead when editing.
+			// Only a fresh "Add manually" (editingServerName === null) still takes it from the select.
+			var scope = (editingServerName && mcpServerConfigsByName[editingServerName])
+				? (mcpServerConfigsByName[editingServerName]._scope || 'project')
+				: (document.getElementById('serverScope') ? document.getElementById('serverScope').value : 'project');
 			sendStats('MCP server added', { name: name });
 			vscode.postMessage({
 				type: 'saveMCPServer',
@@ -1610,14 +1654,45 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		let editingServerName = null;
+		// fork-issue-60: configs keyed by server name -- editMCPServer used to receive the whole config
+		// object JSON.stringify()'d straight into an onclick(...) attribute (a second,
+		// un-escapeAttr-able sink alongside the name itself). The object now stays in JS-land;
+		// only the (escapeAttr'd) name crosses into the attribute. Reset on every
+		// displayMCPServers() render.
+		// fork-issue-65: Object.create(null), not {} -- a {} lookup for a server named "toString" or
+		// "constructor" falls through to Object.prototype and returns a function (truthy),
+		// which slips past the "if (!config) return;" guard below and fills the edit form with
+		// nonsense instead of being rejected.
+		let mcpServerConfigsByName = Object.create(null);
 
-		function editMCPServer(name, config) {
+		function editMCPServer(name) {
+			const config = mcpServerConfigsByName[name];
+			if (!config) {
+				return;
+			}
+
+			// Data-leak fix: clear out whatever the previous add/edit left behind (e.g. a
+			// stdio server's args/env) before populating this server's own values below --
+			// otherwise fields this config doesn't set (the "if (config.args...)" etc. checks
+			// further down) keep the previous server's leftover values and "Update Server"
+			// silently writes them into this server's config.
+			resetAddServerFormFields();
 			editingServerName = name;
-			
-			// Hide add button and popular servers
-			document.getElementById('addServerBtn').style.display = 'none';
+
+			// Hide add button, popular servers and the server list itself
+			// fork-issue-65 (review): 'addServerBtn' has no matching id="..." anywhere in the emitted
+			// HTML (pre-existing, predates fork-issue-65 -- the "+ Add manually" buttons carry no id at all).
+			// Without this guard, the TypeError on the next line aborted editMCPServer() before it
+			// ever reached the scope lock further down, making Part A's fix a no-op in practice.
+			const addServerBtnEl = document.getElementById('addServerBtn');
+			if (addServerBtnEl) {
+				addServerBtnEl.style.display = 'none';
+			}
 			document.getElementById('popularServers').style.display = 'none';
-			
+			// showAddServerForm() hides this too -- editMCPServer() opens the same form and
+			// needs to hide it the same way, or the list stays visible behind the form.
+			document.getElementById('mcpServersList').style.display = 'none';
+
 			// Show form
 			document.getElementById('addServerForm').style.display = 'block';
 			
@@ -1638,7 +1713,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Populate form with existing values
 			document.getElementById('serverName').value = name;
 			document.getElementById('serverName').disabled = true; // Don't allow name changes when editing
-			
+
+			// fork-issue-65: the scope determines which config file gets written (project .mcp.json vs.
+			// global ~/.claude.json). Changing it while editing doesn't move the server -- it's
+			// nowhere implemented -- it just writes a second copy into the newly selected scope's
+			// file, leaving the original behind as a duplicate. Lock the field to the server's
+			// actual scope while editing, same as the name field above.
+			const formScope = document.getElementById('serverScope');
+			if (formScope) {
+				formScope.value = config._scope || 'project';
+				formScope.disabled = true;
+				formScope.title = 'Scope cannot be changed here. Delete the server and re-add it in the new scope instead.';
+			}
+
 			document.getElementById('serverType').value = config.type || 'stdio';
 			
 			if (config.command) {
@@ -1895,15 +1982,20 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			(servers || []).forEach(function(server) {
 				var name = server.name || 'Unknown';
 				var desc = escapeHtml(server.description || 'No description');
-				var icon = server.icon || '';
+				// fork-issue-61: no schema guard on the icon URL let a "javascript:" src (or similar)
+				// through unescaped-but-well-formed -- safeHttpUrl() restricts src= to
+				// http:/https:, falling back to the placeholder instead of a dead src=""
+				var safeIcon = safeHttpUrl(server.icon || '');
 				var stars = server.stars || 0;
 				var installType = server.installType || '';
-				var iconHtml = icon ? '<img src="' + escapeHtml(icon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+				var iconHtml = safeIcon ? '<img src="' + escapeAttr(safeIcon) + '" class="marketplace-item-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 				var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 				var typeHtml = installType ? '<span class="marketplace-item-type">' + escapeHtml(installType) + '</span>' : '';
 
-				var safeId = escapeHtml(server.id || name).replace(/'/g, '&#39;');
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// " unescaped and able to break out of the data-server attribute below.
+				var safeId = escapeAttr(server.id || name);
 				html += '<div class="marketplace-item" data-server="' + safeId + '" onclick="showMarketplaceDetail(this.dataset.server)">' +
 					'<div class="marketplace-item-header">' +
 					iconHtml +
@@ -1949,12 +2041,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			var name = server.name || 'Unknown';
 			var desc = server.description || 'No description available.';
-			var icon = server.icon || '';
+			// fork-issue-61: no schema guard on icon/url let "javascript:" through unescaped-but-
+			// well-formed -- safeHttpUrl() restricts src=/href= to http:/https:, falling
+			// back to the placeholder / omitting the link instead of a dead attribute.
+			var safeIcon = safeHttpUrl(server.icon || '');
 			var stars = server.stars || 0;
-			var url = server.url || '';
+			var safeUrl = safeHttpUrl(server.url || '');
 			var cfg = server.installConfig;
 
-			var iconHtml = icon ? '<img src="' + escapeHtml(icon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
+			var iconHtml = safeIcon ? '<img src="' + escapeAttr(safeIcon) + '" class="marketplace-detail-icon" onerror="this.style.display=&quot;none&quot;" />' : '<div class="marketplace-item-icon-placeholder" style="width:40px;height:40px;font-size:18px;">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>';
 
 			var starsHtml = stars > 0 ? '<span class="marketplace-item-stars">' + (stars >= 1000 ? (Math.round(stars / 100) / 10) + 'k' : stars) + ' &#9733;</span>' : '';
 
@@ -1979,7 +2074,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			var safeId = escapeHtml(serverId).replace(/'/g, '&#39;');
+			var safeId = escapeAttr(serverId);
 
 			var grid = document.getElementById('marketplaceGrid');
 			var loadMoreBtn = document.getElementById('marketplaceLoadMore');
@@ -1993,7 +2088,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				'<div class="marketplace-detail-name">' + escapeHtml(name) + '</div>' +
 				'<div class="marketplace-detail-header-meta">' +
 				starsHtml +
-				(url ? '<a href="' + escapeHtml(url) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
+				(safeUrl ? '<a href="' + escapeAttr(safeUrl) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' : '') +
 				'</div>' +
 				'</div>' +
 				(cfg ? '<div style="display:flex;align-items:center;gap:8px;margin-left:auto;"><select id="mcpInstallScope" style="padding:4px 6px;background:var(--vscode-input-background);color:var(--vscode-input-foreground);border:1px solid var(--vscode-input-border);border-radius:4px;font-size:11px;"><option value="project">Project (.mcp.json)</option><option value="global">Global (~/.claude.json)</option></select><button class="btn marketplace-install-btn" data-server="' + safeId + '" onclick="installMarketplaceServer(this.dataset.server)">Install</button></div>' : '') +
@@ -2016,12 +2111,17 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var scopeSelect = document.getElementById('mcpInstallScope');
 			var selectedScope = scopeSelect ? scopeSelect.value : 'project';
 
-			// Pre-fill the manual add form with the config
+			// Pre-fill the manual add form with the config. showAddServerForm() (fork-issue-67) already
+			// resets the whole form -- including #serverScope's lock and #serverName's
+			// value/disabled state, in case the user was mid-edit before picking a marketplace
+			// server to install as new -- so only the marketplace-specific values need setting
+			// here, after that reset.
 			showAddServerForm();
 			var formScope = document.getElementById('serverScope');
-			if (formScope) formScope.value = selectedScope;
+			if (formScope) {
+				formScope.value = selectedScope;
+			}
 			document.getElementById('serverName').value = displayName;
-			document.getElementById('serverName').disabled = false;
 
 			if (cfg.type === 'stdio') {
 				document.getElementById('serverType').value = 'stdio';
@@ -2051,6 +2151,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function displayMCPServers(servers) {
 			const serversList = document.getElementById('mcpServersList');
 			serversList.innerHTML = '';
+			// fork-issue-60: reset per render so editMCPServer can never resolve a stale/removed server's
+			// config through a name that no longer has a corresponding button.
+			// fork-issue-65: Object.create(null) -- see the declaration above for why.
+			mcpServerConfigsByName = Object.create(null);
 
 			if (Object.keys(servers).length === 0) {
 				serversList.innerHTML = '<div class="no-servers">' +
@@ -2076,27 +2180,40 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				let configDisplay = '';
 
 				if (serverType === 'stdio') {
-					configDisplay = \`Command: \${config.command || 'Not specified'}\`;
+					configDisplay = \`Command: \${escapeHtml(config.command || 'Not specified')}\`;
 					if (config.args && Array.isArray(config.args)) {
-						configDisplay += \`<br>Args: \${config.args.join(' ')}\`;
+						configDisplay += \`<br>Args: \${escapeHtml(config.args.join(' '))}\`;
 					}
 				} else if (serverType === 'http' || serverType === 'sse') {
-					configDisplay = \`URL: \${config.url || 'Not specified'}\`;
+					configDisplay = \`URL: \${escapeHtml(config.url || 'Not specified')}\`;
 				} else {
-					configDisplay = \`Type: \${serverType}\`;
+					configDisplay = \`Type: \${escapeHtml(serverType)}\`;
 				}
 
-				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : 'Extension';
+				const scopeLabel = serverScope === 'global' ? 'Global' : serverScope === 'project' ? 'Project' : serverScope === 'local' ? 'Local' : 'Extension';
+				// fork-issue-60: name/config moved out of the inline onclick -- a name containing a single
+				// quote used to break straight out of editMCPServer('...') into the attribute,
+				// and JSON.stringify(config) was a second, un-escapeAttr-able sink. The config
+				// now lives only in mcpServerConfigsByName; editMCPServer looks it up by name,
+				// which itself travels through data-server-name (escapeAttr) + this.dataset,
+				// same pattern as fork-issue-57/fork-issue-58.
+				// Local scope (fork-issue-39) is configured via the Claude CLI itself and has
+				// no _getMCPConfigPathForScope case — edit/delete would silently hit the
+				// extension's own config instead, so render it read-only with a badge.
+				mcpServerConfigsByName[name] = config;
+				const serverActionsHtml = serverScope === 'local'
+					? '<span class="cli-badge" data-tooltip="Configured via Claude CLI (local scope) — read-only here">via CLI</span>'
+					: \`<button class="btn outlined server-edit-btn" data-server-name="\${escapeAttr(name)}" onclick="editMCPServer(this.dataset.serverName)">Edit</button>
+						<button class="btn outlined server-delete-btn" data-server-name="\${escapeAttr(name)}" data-server-scope="\${escapeAttr(serverScope)}" onclick="deleteMCPServer(this.dataset.serverName, this.dataset.serverScope)">Delete</button>\`;
 
 				serverItem.innerHTML = \`
 					<div class="server-info">
-						<div class="server-name">\${name} <span style="font-size:10px;opacity:0.5;font-weight:normal;">\${scopeLabel}</span></div>
-						<div class="server-type">\${serverType.toUpperCase()}</div>
+						<div class="server-name">\${escapeHtml(name)} <span style="font-size:10px;opacity:0.5;font-weight:normal;">\${scopeLabel}</span></div>
+						<div class="server-type">\${escapeHtml(String(serverType).toUpperCase())}</div>
 						<div class="server-config">\${configDisplay}</div>
 					</div>
 					<div class="server-actions">
-						<button class="btn outlined server-edit-btn" onclick="editMCPServer('\${name}', \${JSON.stringify(config).replace(/"/g, '&quot;')})">Edit</button>
-						<button class="btn outlined server-delete-btn" onclick="deleteMCPServer('\${name}', '\${serverScope}')">Delete</button>
+						\${serverActionsHtml}
 					</div>
 				\`;
 				
@@ -2182,6 +2299,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (moreBtn) moreBtn.style.display = '';
 			if (modelDropdown) modelDropdown.style.display = 'none';
 
+			// fork-issue-61 follow-up: openCreditsModels is the same third-party-sourced
+			// data as renderOpenCreditsModelCards()'s model-card sink below -- this function is
+			// safe not because of the data source but because it never builds an HTML string:
+			// setAttribute()/textContent/a real function assigned to .onclick all treat their
+			// argument as inert data, never markup. If this ever gets rewritten to build an
+			// innerHTML string (the pattern used two functions down), re-add escapeAttr/
+			// escapeHtml at that point.
 			openCreditsModels.forEach(function(model) {
 				const btn = document.createElement('button');
 				btn.className = 'model-quick-btn' + (isModelMatch(currentModel, model.id) ? ' selected' : '');
@@ -2246,10 +2370,16 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					}
 				}
 
-				return '<div class="model-card' + (isSelected ? ' selected' : '') + (isPending ? ' pending' : '') + '" data-model-id="' + model.id + '" data-provider="' + model.provider + '">' +
+				// fork-issue-61 follow-up: openCreditsModels is overwritten wholesale by
+				// resolveLatestModels() (model-updater.ts) from fetch(apiBaseUrl + '/v1/models')
+				// -- the same third-party endpoint as renderDropdown/renderAllModels -- and
+				// renderOpenCreditsModelCards() runs unconditionally on that update, with no
+				// user interaction gating it. data-model-id/data-provider are attribute values
+				// (escapeAttr), name/provider text goes into innerHTML (escapeHtml).
+				return '<div class="model-card' + (isSelected ? ' selected' : '') + (isPending ? ' pending' : '') + '" data-model-id="' + escapeAttr(model.id) + '" data-provider="' + escapeAttr(model.provider) + '">' +
 					badgeHtml +
-					'<div class="model-card-provider">' + model.provider + '</div>' +
-					'<div class="model-card-name">' + model.name + '</div>' +
+					'<div class="model-card-provider">' + escapeHtml(model.provider) + '</div>' +
+					'<div class="model-card-name">' + escapeHtml(model.name) + '</div>' +
 				'</div>';
 			}).join('');
 
@@ -2502,16 +2632,19 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}) : models;
 
 				var html = filtered.slice(0, 50).map(function(m) {
-					return '<div class="model-combo-option" data-id="' + m.id + '">' +
-						'<div class="model-combo-option-name">' + (m.name || m.id) + '</div>' +
-						'<div class="model-combo-option-id">' + m.id + '</div>' +
+					// fork-issue-61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+					// third-party HTTP endpoint -- data-id is an attribute value (escapeAttr),
+					// the name/id text goes into innerHTML (escapeHtml).
+					return '<div class="model-combo-option" data-id="' + escapeAttr(m.id) + '">' +
+						'<div class="model-combo-option-name">' + escapeHtml(m.name || m.id) + '</div>' +
+						'<div class="model-combo-option-id">' + escapeHtml(m.id) + '</div>' +
 					'</div>';
 				}).join('');
 
 				if (q && filtered.length === 0) {
-					html = '<div class="model-combo-custom" data-id="' + q + '">Use "' + q + '" as custom model</div>';
+					html = '<div class="model-combo-custom" data-id="' + escapeAttr(q) + '">Use "' + escapeHtml(q) + '" as custom model</div>';
 				} else if (q && !filtered.find(function(m) { return m.id === q; })) {
-					html += '<div class="model-combo-custom" data-id="' + q + '">Use "' + q + '" as custom model</div>';
+					html += '<div class="model-combo-custom" data-id="' + escapeAttr(q) + '">Use "' + escapeHtml(q) + '" as custom model</div>';
 				}
 
 				dropdown.innerHTML = html;
@@ -2647,10 +2780,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				const isSelected = currentModel === model.id;
 				const contextLength = model.context_length ? Math.round(model.context_length / 1000) + 'K' : '';
 
-				return '<div class="all-models-item' + (isSelected ? ' selected' : '') + '" data-model-id="' + model.id + '">' +
+				// fork-issue-61: models come from fetch(OPENCREDITS_API_URL + '/v1/models'), a
+				// third-party HTTP endpoint -- data-model-id is an attribute value
+				// (escapeAttr), the name/id/owned_by text goes into innerHTML (escapeHtml).
+				return '<div class="all-models-item' + (isSelected ? ' selected' : '') + '" data-model-id="' + escapeAttr(model.id) + '">' +
 					'<div class="all-models-item-main">' +
-						'<div class="all-models-item-name">' + (model.name || model.id) + '</div>' +
-						'<div class="all-models-item-provider">' + (model.owned_by || '') + '</div>' +
+						'<div class="all-models-item-name">' + escapeHtml(model.name || model.id) + '</div>' +
+						'<div class="all-models-item-provider">' + escapeHtml(model.owned_by || '') + '</div>' +
 					'</div>' +
 					(contextLength ? '<div class="all-models-item-details"><span class="all-models-item-context">' + contextLength + '</span></div>' : '') +
 				'</div>';
@@ -3179,12 +3315,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				command: command
 			});
 
-			// Show user feedback - /compact runs in chat, others in terminal
-			if (command === 'compact') {
-				// No message needed - compact runs in chat and shows its own status
-			} else {
-				addMessage('user', \`Executing /\${command} command in terminal. Check the terminal output and return when ready.\`, 'assistant');
-			}
+			// fork-issue-66: this used to render a notice message here that duplicated the host's own
+			// terminalOpened response, handled further down in this file's message-handler
+			// switch -- that host message is tied to the terminal having actually been opened
+			// (and, like this removed client-side notice, is skipped for /compact, which
+			// extension.ts's _executeSlashCommand hands off to _sendMessageToClaude() as a plain
+			// chat message instead of spawning a terminal, so no terminalOpened message is sent).
+			// Do not re-add a message call here; the message-handler switch is the single source
+			// for this notice.
 		}
 
 		function handleCustomCommandKeydown(event) {
@@ -3293,11 +3431,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				snippetElement.innerHTML = \`
 					<div class="slash-command-icon">📝</div>
 					<div class="slash-command-content">
-						<div class="slash-command-title">/\${snippet.name}</div>
-						<div class="slash-command-description">\${snippet.prompt}</div>
+						<div class="slash-command-title">/\${escapeHtml(snippet.name)}</div>
+						<div class="slash-command-description">\${escapeHtml(snippet.prompt)}</div>
 					</div>
 					<div class="snippet-actions">
-						<button class="snippet-delete-btn" onclick="event.stopPropagation(); deleteCustomSnippet('\${snippet.id}')" title="Delete snippet">🗑️</button>
+						<button class="snippet-delete-btn" data-snippet-id="\${escapeAttr(snippet.id)}" onclick="event.stopPropagation(); deleteCustomSnippet(this.dataset.snippetId)" title="Delete snippet">🗑️</button>
 					</div>
 				\`;
 				
@@ -3519,11 +3657,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		function copyCodeBlock(codeId) {
 			const codeElement = document.getElementById(codeId);
 			if (codeElement) {
+				// fork-issue-62: getAttribute() already returns the entity-decoded value (the browser
+				// decodes data-raw-code's escapeAttr()-produced entities during HTML parsing --
+				// see the escapedCode assembly in parseSimpleMarkdown) -- there used to be a
+				// second, manual decode pass here that mangled code literally containing the
+				// entity text itself (e.g. "literal &quot; entity" became "literal " entity").
 				const rawCode = codeElement.getAttribute('data-raw-code');
 				if (rawCode) {
-					// Decode HTML entities
-					const decodedCode = rawCode.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-					navigator.clipboard.writeText(decodedCode).then(() => {
+					navigator.clipboard.writeText(rawCode).then(() => {
 						// Show temporary feedback
 						const copyBtn = codeElement.closest('.code-block-container').querySelector('.code-copy-btn');
 						if (copyBtn) {
@@ -3594,7 +3735,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					
 				case 'userInput':
 					if (message.data.trim()) {
-						addMessage(parseSimpleMarkdown(message.data), 'user');
+						// fork-issue-63: raw text except fenced code blocks -- see
+						// renderUserMessageContent (near parseSimpleMarkdown).
+						addMessage(renderUserMessageContent(message.data), 'user');
 					}
 					break;
 					
@@ -3644,6 +3787,32 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					updateStatusWithTotals();
 					break;
 					
+				case 'yoloModeEnabled':
+					// fork-issue-59: confirmation only arrives here after the extension host
+					// actually persisted permissions.yoloMode (workspace, or global as
+					// fallback) -- the chat message moved here (out of enableYoloMode())
+					// so it can no longer fire before/regardless of that write.
+					addMessage(pendingYoloEnableMessage || '✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.', 'system');
+					pendingYoloEnableMessage = null;
+					break;
+
+				case 'yoloModeEnableFailed':
+					// fork-issue-59: both the workspace and global config.update() attempts threw
+					// -- surface it in-chat too, not just via the extension host's native
+					// error notification, and never show the "enabled" message. The raw
+					// host error (message.error) deliberately does NOT go into this
+					// 'error'-typed content: a real-world double failure (e.g. settings.json
+					// not writable) throws "EACCES: permission denied, open '...'", which
+					// isPermissionError() would match, attaching a circular "Enable Yolo
+					// Mode" suggestion button to the very message reporting that enabling
+					// it just failed. The full text is still in the console (logged below)
+					// and in the native showErrorMessage notification the extension host
+					// already sent.
+					console.error('Failed to enable YOLO mode:', message.error);
+					addMessage('❌ Failed to enable YOLO mode. See the notification for details.', 'error');
+					pendingYoloEnableMessage = null;
+					break;
+
 				case 'toolUse':
 					if (typeof message.data === 'object') {
 						addToolUseMessage(message.data);
@@ -3948,15 +4117,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const status = data.status || 'pending';
 
 			// Create always allow button text with command styling for Bash
-			let alwaysAllowText = \`Always allow \${toolName}\`;
+			let alwaysAllowText = \`Always allow \${escapeHtml(toolName)}\`;
 			let alwaysAllowTooltip = '';
 			if (toolName === 'Bash' && data.pattern) {
 				const pattern = data.pattern;
 				// Remove the asterisk for display - show "npm i" instead of "npm i *"
 				const displayPattern = pattern.replace(' *', '');
 				const truncatedPattern = displayPattern.length > 30 ? displayPattern.substring(0, 30) + '...' : displayPattern;
-				alwaysAllowText = \`Always allow <code>\${truncatedPattern}</code>\`;
-				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${displayPattern}"\` : '';
+				alwaysAllowText = \`Always allow <code>\${escapeHtml(truncatedPattern)}</code>\`;
+				alwaysAllowTooltip = displayPattern.length > 30 ? \`title="\${escapeAttr(displayPattern)}"\` : '';
 			}
 
 			// Show different content based on status
@@ -3980,7 +4149,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						</div>
 					</div>
 					<div class="permission-content">
-						<p>\${data.tool === 'ExitPlanMode' ? 'Approve the plan above?' : 'Allow <strong>' + toolName + '</strong> to execute the tool call above?'}</p>
+						<p>\${data.tool === 'ExitPlanMode' ? 'Approve the plan above?' : 'Allow <strong>' + escapeHtml(toolName) + '</strong> to execute the tool call above?'}</p>
 						<div class="permission-buttons">
 							<button class="btn deny" onclick="respondToPermission('\${data.id}', false)">Deny</button>
 							\${data.tool === 'ExitPlanMode' ? '' : '<button class="btn always-allow" onclick="respondToPermission(\\'' + data.id + '\\', true, true)" ' + alwaysAllowTooltip + '>' + alwaysAllowText + '</button>'}
@@ -3995,7 +4164,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision allowed">✅ You allowed this</div>
 					</div>
 				\`;
@@ -4007,7 +4176,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision denied">❌ You denied this</div>
 					</div>
 				\`;
@@ -4019,7 +4188,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						<span>Permission Required</span>
 					</div>
 					<div class="permission-content">
-						<p>Allow <strong>\${toolName}</strong> to execute the tool call above?</p>
+						<p>Allow <strong>\${escapeHtml(toolName)}</strong> to execute the tool call above?</p>
 						<div class="permission-decision expired">⏱️ This request expired</div>
 					</div>
 				\`;
@@ -4124,22 +4293,59 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			menu.style.display = isVisible ? 'none' : 'block';
 		}
 
+		// fork-issue-52: consolidated enableYoloMode - there used to be two separate
+		// enableYoloMode function declarations in this scope; the later one
+		// silently won, so the argument-less inline chat button call hit
+		// getElementById('permissionMenu-undefined') and threw. With a
+		// permissionId (permission-menu item, ~4060) this keeps the old late-
+		// variant behaviour: close that menu, notify the extension host,
+		// auto-approve. With no permissionId (inline "Enable Yolo Mode" chat
+		// button, ~219/~476) it mirrors that message round trip instead of the
+		// old early variant's updateSettings() call: updateSettings() writes
+		// 22 settings keys to the GLOBAL (user) scope, not just yoloMode, so
+		// it could clobber workspace overrides / HTML-default values via the
+		// inline button. The extension host's _enableYoloMode() persists
+		// permissions.yoloMode and replies with settingsData, whose handler
+		// (~5360) sets the checkbox and calls updateYoloWarning() (~5392).
+		//
+		// fork-issue-59: the "enabled" chat message used to fire right here, unconditionally,
+		// the moment the button was clicked -- independent of whether
+		// _enableYoloMode() on the extension host actually managed to persist
+		// anything (it had no global fallback, so with no workspace folder open the
+		// setting silently never got saved while the chat still said "enabled").
+		// That confirmation now only happens in the 'yoloModeEnabled' case above,
+		// once the extension host reports success; pendingYoloEnableMessage carries
+		// the wording across that round trip. A 'yoloModeEnableFailed' reply shows
+		// an in-chat error instead and never the "enabled" text.
 		function enableYoloMode(permissionId) {
 			sendStats('YOLO mode enabled');
-			
-			// Hide the menu
-			document.getElementById(\`permissionMenu-\${permissionId}\`).style.display = 'none';
-			
-			// Send message to enable YOLO mode
+
+			if (permissionId) {
+				// Hide the menu
+				const menu = document.getElementById(\`permissionMenu-\${permissionId}\`);
+				if (menu) {
+					menu.style.display = 'none';
+				}
+
+				pendingYoloEnableMessage = '⚡ YOLO Mode enabled! All future permissions will be automatically allowed.';
+
+				// Send message to enable YOLO mode
+				vscode.postMessage({
+					type: 'enableYoloMode'
+				});
+
+				// Auto-approve this permission
+				respondToPermission(permissionId, true);
+				return;
+			}
+
+			pendingYoloEnableMessage = '✅ Yolo Mode enabled! All permission checks will be bypassed for future commands.';
+
+			// Send message to enable YOLO mode (settingsData round trip updates
+			// the checkbox + yolo warning banner, see comment above)
 			vscode.postMessage({
 				type: 'enableYoloMode'
 			});
-			
-			// Auto-approve this permission
-			respondToPermission(permissionId, true);
-			
-			// Show notification
-			addMessage('⚡ YOLO Mode enabled! All future permissions will be automatically allowed.', 'system');
 		}
 
 		// Close permission menus when clicking outside
@@ -4181,7 +4387,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						var optId = 'opt-' + data.id + '-' + idx + '-' + optIdx;
 						var disabled = isResolved ? ' disabled' : '';
 						optionsHtml += '<label class="question-option" for="' + optId + '">' +
-							'<input type="' + inputType + '" id="' + optId + '" name="' + inputName + '" value="' + escapeHtml(opt.label) + '"' + disabled + ' />' +
+							'<input type="' + inputType + '" id="' + optId + '" name="' + inputName + '" value="' + escapeAttr(opt.label) + '"' + disabled + ' />' +
 							'<div class="option-content">' +
 							'<span class="option-label">' + escapeHtml(opt.label) + '</span>' +
 							(opt.description ? '<span class="option-description">' + escapeHtml(opt.description) + '</span>' : '') +
@@ -4194,7 +4400,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'<input type="text" class="question-freetext-input" data-question-idx="' + idx + '" placeholder="Type your answer..."' + (isResolved ? ' disabled' : '') + ' />' +
 					'</div>';
 
-				questionsHtml += '<div class="question-block" data-question-idx="' + idx + '" data-question="' + escapeHtml(q.question) + '">' +
+				questionsHtml += '<div class="question-block" data-question-idx="' + idx + '" data-question="' + escapeAttr(q.question) + '">' +
 					header + questionText + optionsHtml + freeTextHtml + '</div>';
 			});
 
@@ -4408,41 +4614,90 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		}
 
 		updateStatus('Initializing...', 'disconnected');
-		
 
-		function parseSimpleMarkdown(markdown) {
-			// First, handle code blocks before line-by-line processing
-			let processedMarkdown = markdown;
-			
+		// fork-issue-55: restoreCodeBlockPlaceholders (the call site is further down in
+		// parseSimpleMarkdown) -- build-time splice (same pattern as collapse-script/
+		// html-escape) so npm run test:markdown-restore can exercise the function under
+		// Node. The next line splices the compiled function source via toString()
+		// into the webview script string.
+		${restoreCodeBlockPlaceholders.toString()}
+
+		// Extracts fenced triple-backtick code blocks from markdown text, replacing each with a
+		// __CODEBLOCK_N__ placeholder and returning the already-rendered code-block HTML
+		// (collapse wrapper, language label, copy button, data-raw-code) for each -- shared by
+		// parseSimpleMarkdown (Claude/thinking messages, full markdown) and
+		// renderUserMessageContent (fork-issue-63, revised: user messages stay raw text except fenced code
+		// blocks, which keep the fork-issue-48 collapse/copy-button/language-label treatment). Pure
+		// extraction out of parseSimpleMarkdown -- same regex, same per-block HTML as before, so
+		// fork-issue-62's getAttribute('data-raw-code')-via-escapeAttr guarantee still holds for both
+		// callers, each restoring its own __CODEBLOCK_N__ placeholders afterwards.
+		function extractCodeBlocks(markdown) {
 			// Store code blocks temporarily to protect them from further processing
 			const codeBlockPlaceholders = [];
-			
+
 			// Handle multi-line code blocks with triple backticks
 			// Using RegExp constructor to avoid backtick conflicts in template literal
 			const codeBlockRegex = new RegExp('\\\`\\\`\\\`(\\\\w*)\\n([\\\\s\\\\S]*?)\\\`\\\`\\\`', 'g');
-			processedMarkdown = processedMarkdown.replace(codeBlockRegex, function(match, lang, code) {
+			const text = markdown.replace(codeBlockRegex, function(match, lang, code) {
 				const language = lang || 'plaintext';
 				// Process code line by line to preserve formatting like diff implementation
 				const codeLines = code.split('\\n');
 				let codeHtml = '';
-				
+
 				for (const line of codeLines) {
 					const escapedLine = escapeHtml(line);
 					codeHtml += '<div class="code-line">' + escapedLine + '</div>';
 				}
-				
+
 				// Create unique ID for this code block
 				const codeId = 'code_' + Math.random().toString(36).substr(2, 9);
-				const escapedCode = escapeHtml(code);
-				
-				const codeBlockHtml = '<div class="code-block-container"><div class="code-block-header"><span class="code-block-language">' + language + '</span><button class="code-copy-btn" onclick="copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button></div><pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode.replace(/"/g, '&quot;') + '">' + codeHtml + '</code></pre></div>';
-				
+				// fork-issue-57: escapeAttr (was escapeHtml() + a manual "\"" -> "&quot;" patch that left
+				// "'" unescaped) for the data-raw-code attribute below.
+				const escapedCode = escapeAttr(code);
+
+				// fork-issue-48 (upstream #151): blocks over the threshold become <details>;
+				// shorter ones stay character-for-character as before.
+				const collapseInfo = evaluateCodeBlockCollapse(code, collapseCodeBlockLines);
+				const copyGuard = collapseInfo.collapse ? 'event.preventDefault();event.stopPropagation();' : '';
+				const copyBtnHtml = '<button class="code-copy-btn" onclick="' + copyGuard + 'copyCodeBlock(\\\'' + codeId + '\\\')" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg></button>';
+				const codeBodyHtml = '<pre class="code-block"><code class="language-' + language + '" id="' + codeId + '" data-raw-code="' + escapedCode + '">' + codeHtml + '</code></pre>';
+				let codeBlockHtml;
+				if (collapseInfo.collapse) {
+					codeBlockHtml = '<details class="code-block-container code-block-collapsible" data-lines="' + collapseInfo.lineCount + '"' + (collapseLongCodeBlocks ? '' : ' open') + '>' +
+						'<summary class="code-block-header" onclick="markCodeBlockToggled(this)">' +
+						'<span class="code-collapse-caret">▸</span>' +
+						'<span class="code-block-language">' + language + '</span>' +
+						'<span class="code-collapse-hint">' + collapseInfo.lineCount + ' lines</span>' +
+						copyBtnHtml + '</summary>' + codeBodyHtml + '</details>';
+				} else {
+					codeBlockHtml = '<div class="code-block-container"><div class="code-block-header">' +
+						'<span class="code-block-language">' + language + '</span>' + copyBtnHtml + '</div>' + codeBodyHtml + '</div>';
+				}
+
 				// Store the code block and return a placeholder
 				const placeholder = '__CODEBLOCK_' + codeBlockPlaceholders.length + '__';
 				codeBlockPlaceholders.push(codeBlockHtml);
 				return placeholder;
 			});
-			
+			return { text: text, placeholders: codeBlockPlaceholders };
+		}
+
+		function parseSimpleMarkdown(markdown) {
+			// First, handle code blocks before line-by-line processing
+			const codeBlockExtraction = extractCodeBlocks(markdown);
+			let processedMarkdown = codeBlockExtraction.text;
+			const codeBlockPlaceholders = codeBlockExtraction.placeholders;
+
+			// fork-issue-40 (upstream #63): escape raw HTML in the remaining prose before any
+			// further markdown processing. contentDiv.innerHTML = content (addMessage)
+			// renders this output as real DOM, so an unescaped tag like "<select>" in
+			// Claude's/the user's text gets parsed as HTML and an unbalanced tag can
+			// corrupt the whole message. Code blocks were already pulled out above into
+			// __CODEBLOCK_N__ placeholders (their contents are escaped individually),
+			// and those placeholders contain only [A-Za-z0-9_], so escapeHtml leaves
+			// them unchanged.
+			processedMarkdown = escapeHtml(processedMarkdown);
+
 			// Handle inline code with single backticks
 			const inlineCodeRegex = new RegExp('\\\`([^\\\`]+)\\\`', 'g');
 			processedMarkdown = processedMarkdown.replace(inlineCodeRegex, '<code>$1</code>');
@@ -4526,13 +4781,35 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (inUnorderedList) html += '</ul>';
 			if (inOrderedList) html += '</ol>';
 
-			// Restore code block placeholders
-			for (let i = 0; i < codeBlockPlaceholders.length; i++) {
-				const placeholder = '__CODEBLOCK_' + i + '__';
-				html = html.replace(placeholder, codeBlockPlaceholders[i]);
-			}
+			// Restore code block placeholders. fork-issue-55: restoreCodeBlockPlaceholders (spliced
+			// above) uses function-replacement, not html.replace(placeholder, str) --
+			// otherwise "$&"/"$\`"/"$'"/"$$" inside a code block would be interpreted as
+			// String.replace substitution patterns and tear the surrounding HTML apart.
+			html = restoreCodeBlockPlaceholders(html, codeBlockPlaceholders);
 
 			return html;
+		}
+
+		// fork-issue-63 (revised after further review): user messages stay raw text -- "**", "_", "#" lines,
+		// single backticks, paths like src/_test_.ts must show up exactly as typed -- EXCEPT
+		// fenced triple-backtick code blocks, which keep the fork-issue-48 collapse/copy-button/
+		// language-label treatment (the plain textContent-only approach also flattened those,
+		// which was intentionally excluded from this behavior). Reuses extractCodeBlocks() -- the exact same function
+		// parseSimpleMarkdown calls above -- so the code-block HTML (incl. fork-issue-62's
+		// data-raw-code via escapeAttr) is only ever built in one place. The remaining
+		// prose is only escapeHtml()'d, never markdown-parsed, so it's set via
+		// contentDiv.innerHTML same as Claude's messages, but nothing outside a fenced block can
+		// ever be interpreted as markup. Newlines are left untouched (escapeHtml doesn't touch
+		// them) -- CSS (.message.user .message-content, white-space: pre-wrap) renders them as
+		// line breaks.
+		// Placeholder restore reuses restoreCodeBlockPlaceholders() (fork-issue-55, spliced above), the
+		// same function-replacement parseSimpleMarkdown calls above -- a direct
+		// html.replace(placeholder, str) here would have the same "$&"/"$\`"/"$'"/"$$"
+		// tear-the-HTML-apart bug fork-issue-55 fixed, just newly duplicated in this function instead.
+		function renderUserMessageContent(text) {
+			const codeBlockExtraction = extractCodeBlocks(text);
+			const escapedProse = escapeHtml(codeBlockExtraction.text);
+			return restoreCodeBlockPlaceholders(escapedProse, codeBlockExtraction.placeholders);
 		}
 
 		// Conversation history functions
@@ -4620,8 +4897,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				fileItem.innerHTML = \`
 					<span class="file-icon">\${getFileIcon(file.name)}</span>
 					<div class="file-info">
-						<div class="file-name">\${file.name}</div>
-						<div class="file-path">\${file.path}</div>
+						<div class="file-name">\${escapeHtml(file.name)}</div>
+						<div class="file-path">\${escapeHtml(file.path)}</div>
 					</div>
 				\`;
 				
@@ -4757,9 +5034,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 
 				item.innerHTML = \`
-					<div class="conversation-title">\${conv.firstUserMessage.substring(0, 60)}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
+					<div class="conversation-title">\${escapeHtml(conv.firstUserMessage.substring(0, 60))}\${conv.firstUserMessage.length > 60 ? '...' : ''}</div>
 					<div class="conversation-meta">\${date} at \${time} • \${conv.messageCount} messages • \${usageStr}</div>
-					<div class="conversation-preview">Last: \${conv.lastUserMessage.substring(0, 80)}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
+					<div class="conversation-preview">Last: \${escapeHtml(conv.lastUserMessage.substring(0, 80))}\${conv.lastUserMessage.length > 80 ? '...' : ''}</div>
 				\`;
 
 				listDiv.appendChild(item);
@@ -4863,6 +5140,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const yoloMode = document.getElementById('yolo-mode').checked;
 			const executablePath = document.getElementById('executable-path').value;
 			const useRouter = document.getElementById('use-router')?.checked || false;
+			const collapseLongCode = document.getElementById('collapse-long-code').checked;
+			const collapseCodeLines = normalizeCollapseThreshold(parseInt(document.getElementById('collapse-code-lines').value, 10));
 
 			// Collect environment variables from key-value UI
 			const envVariables = getEnvVariablesFromUI();
@@ -4902,7 +5181,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					'permissions.yoloMode': yoloMode,
 					'executable.path': executablePath,
 					'environment.variables': envVariables,
-					'router.enabled': useRouter
+					'router.enabled': useRouter,
+					'ui.collapseLongCodeBlocks': collapseLongCode,
+					'ui.collapseCodeBlockLines': collapseCodeLines
 				}
 			});
 		}
@@ -4963,8 +5244,8 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			const container = document.getElementById('env-variables-list');
 			const row = document.createElement('div');
 			row.className = 'env-variable-row';
-			row.innerHTML = '<input type="text" class="env-key" placeholder="KEY" value="' + (key || '') + '" onchange="updateSettings()">' +
-				'<input type="text" class="env-value" placeholder="value" value="' + (value || '') + '" onchange="updateSettings()">' +
+			row.innerHTML = '<input type="text" class="env-key" placeholder="KEY" value="' + escapeAttr(key || '') + '" onchange="updateSettings()">' +
+				'<input type="text" class="env-value" placeholder="value" value="' + escapeAttr(value || '') + '" onchange="updateSettings()">' +
 				'<button class="env-variable-remove" onclick="removeEnvVariable(this)" title="Remove">✕</button>';
 			container.appendChild(row);
 		}
@@ -4995,10 +5276,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					html += \`
 						<div class="permission-item">
 							<div class="permission-info">
-								<span class="permission-tool">\${toolName}</span>
+								<span class="permission-tool">\${escapeHtml(toolName)}</span>
 								<span class="permission-desc">All</span>
 							</div>
-							<button class="permission-remove-btn" onclick="removePermission('\${toolName}', null)">Remove</button>
+							<button class="permission-remove-btn" data-tool="\${escapeAttr(toolName)}" onclick="removePermission(this.dataset.tool, null)">Remove</button>
 						</div>
 					\`;
 				} else if (Array.isArray(permission)) {
@@ -5008,10 +5289,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 						html += \`
 							<div class="permission-item">
 								<div class="permission-info">
-									<span class="permission-tool">\${toolName}</span>
-									<span class="permission-command"><code>\${displayCommand}</code></span>
+									<span class="permission-tool">\${escapeHtml(toolName)}</span>
+									<span class="permission-command"><code>\${escapeHtml(displayCommand)}</code></span>
 								</div>
-								<button class="permission-remove-btn" onclick="removePermission('\${toolName}', '\${escapeHtml(command)}')">Remove</button>
+								<button class="permission-remove-btn" data-tool="\${escapeAttr(toolName)}" data-command="\${escapeAttr(command)}" onclick="removePermission(this.dataset.tool, this.dataset.command)">Remove</button>
 							</div>
 						\`;
 					}
@@ -5159,6 +5440,15 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				});
 			} else if (message.type === 'settingsData') {
 				// Update UI with current settings
+				// fork-issue-48 (upstream #151): reconcile defaults. settingsData arrives AFTER the
+				// history replay (extension.ts _loadConversationHistory -> _sendReadyMessage),
+				// so the default is applied retroactively here to every block the user
+				// hasn't touched yet.
+				collapseLongCodeBlocks = message.data['ui.collapseLongCodeBlocks'] !== false;
+				collapseCodeBlockLines = normalizeCollapseThreshold(message.data['ui.collapseCodeBlockLines']);
+				document.getElementById('collapse-long-code').checked = collapseLongCodeBlocks;
+				document.getElementById('collapse-code-lines').value = collapseCodeBlockLines;
+				applyCodeBlockCollapseDefaults();
 				const thinkingIntensity = message.data['thinking.intensity'] || 'think';
 				const intensityValues = ['think', 'think-hard', 'think-harder', 'ultrathink'];
 				const sliderValue = intensityValues.indexOf(thinkingIntensity);
@@ -5352,6 +5642,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		});
 
+	${getCollapseScript()}
 	${getSkillsScript()}
 	${getPluginsScript()}
 	</script>`

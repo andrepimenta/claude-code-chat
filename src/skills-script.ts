@@ -22,11 +22,13 @@ const getSkillsScript = () => `
 				var installs = skill.installs || 0;
 				var source = skill.source || '';
 				var installsHtml = installs > 0 ? '<span class="marketplace-item-stars">' + (installs >= 1000 ? (Math.round(installs / 100) / 10) + 'k' : installs) + ' installs</span>' : '';
-				var safeId = escapeHtml(skill.id || name).replace(/'/g, '&#39;');
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// " unescaped and able to break out of the data-skill-id attribute below.
+				var safeId = escapeAttr(skill.id || name);
 
 				var rawUrl = skill.rawUrl || '';
 				var installsText = installs >= 1000 ? (Math.round(installs / 100) / 10) + 'k installs' : (installs > 0 ? installs + ' installs' : '');
-				html += '<div class="marketplace-item" data-skill-id="' + safeId + '" data-skill-source="' + escapeHtml(source) + '" data-skill-name="' + escapeHtml(name) + '" data-skill-rawurl="' + escapeHtml(rawUrl) + '" data-skill-installs="' + escapeHtml(installsText) + '" onclick="installSkillFromMarketplace(this)">' +
+				html += '<div class="marketplace-item" data-skill-id="' + safeId + '" data-skill-source="' + escapeAttr(source) + '" data-skill-name="' + escapeAttr(name) + '" data-skill-rawurl="' + escapeAttr(rawUrl) + '" data-skill-installs="' + escapeAttr(installsText) + '" onclick="installSkillFromMarketplace(this)">' +
 					'<div class="marketplace-item-header">' +
 					'<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>' +
 					'<div class="marketplace-item-info">' +
@@ -76,7 +78,7 @@ const getSkillsScript = () => `
 					'</div>' +
 					'<div class="server-actions" style="flex-shrink:0;">' +
 					'<button class="btn outlined" style="font-size:11px;padding:3px 8px;" onclick="toggleSkillDetail(\\'' + detailId + '\\')">Details</button>' +
-					'<button class="btn outlined server-delete-btn" data-skill="' + escapeHtml(skill.name) + '" data-scope="' + escapeHtml(skill.scope) + '" onclick="deleteSkill(this.dataset.skill, this.dataset.scope)">Delete</button>' +
+					'<button class="btn outlined server-delete-btn" data-skill="' + escapeAttr(skill.name) + '" data-scope="' + escapeAttr(skill.scope) + '" onclick="deleteSkill(this.dataset.skill, this.dataset.scope)">Delete</button>' +
 					'</div>' +
 					'</div>' +
 					'<div id="' + detailId + '" class="skill-detail-content" style="display:none;">' +
@@ -184,13 +186,15 @@ const getSkillsScript = () => `
 				var name = skill.name || skill.skillId || 'Unknown';
 				var installs = skill.installs || 0;
 				var source = skill.source || '';
-				var safeId = escapeHtml(skill.id || name).replace(/'/g, '&#39;');
+				// fork-issue-57: escapeAttr replaces escapeHtml()+manual "'"->"&#39;" replace, which left
+				// " unescaped and able to break out of the data-skill-id attribute below.
+				var safeId = escapeAttr(skill.id || name);
 
 				var installsHtml = installs > 0 ? '<span class="marketplace-item-stars">' + (installs >= 1000 ? (Math.round(installs / 100) / 10) + 'k' : installs) + ' installs</span>' : '';
 
 				var rawUrl = skill.rawUrl || '';
 				var installsText = installs >= 1000 ? (Math.round(installs / 100) / 10) + 'k installs' : (installs > 0 ? installs + ' installs' : '');
-				html += '<div class="marketplace-item" data-skill-id="' + safeId + '" data-skill-source="' + escapeHtml(source) + '" data-skill-name="' + escapeHtml(name) + '" data-skill-rawurl="' + escapeHtml(rawUrl) + '" data-skill-installs="' + escapeHtml(installsText) + '" onclick="installSkillFromMarketplace(this)">' +
+				html += '<div class="marketplace-item" data-skill-id="' + safeId + '" data-skill-source="' + escapeAttr(source) + '" data-skill-name="' + escapeAttr(name) + '" data-skill-rawurl="' + escapeAttr(rawUrl) + '" data-skill-installs="' + escapeAttr(installsText) + '" onclick="installSkillFromMarketplace(this)">' +
 					'<div class="marketplace-item-header">' +
 					'<div class="marketplace-item-icon-placeholder">' + escapeHtml(name.charAt(0).toUpperCase()) + '</div>' +
 					'<div class="marketplace-item-info">' +
@@ -228,7 +232,7 @@ const getSkillsScript = () => `
 				'<div class="marketplace-detail-name">' + escapeHtml(name) + '</div>' +
 				'<div class="marketplace-detail-header-meta">' +
 				installsHtml +
-				'<a href="' + escapeHtml(repoUrl) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' +
+				'<a href="' + escapeAttr(repoUrl) + '" target="_blank" class="marketplace-detail-link">GitHub</a>' +
 				'</div>' +
 				'</div>' +
 				'</div>' +
@@ -243,7 +247,7 @@ const getSkillsScript = () => `
 				'</div>' +
 				'</div>' +
 				'<div class="marketplace-detail-actions" style="margin-top:12px;">' +
-				'<button class="btn" data-source="' + escapeHtml(source) + '" data-name="' + escapeHtml(name) + '" onclick="confirmSkillInstall(this)">Install</button>' +
+				'<button class="btn" data-source="' + escapeAttr(source) + '" data-name="' + escapeAttr(name) + '" onclick="confirmSkillInstall(this)">Install</button>' +
 				'<div style="font-size:11px;color:var(--vscode-descriptionForeground);margin-top:6px;">Opens a terminal running <code style="font-size:10px;">npx skills add</code> via <a href="https://skills.sh" target="_blank" class="marketplace-detail-link">skills.sh</a></div>' +
 				'</div>' +
 				'</div>';

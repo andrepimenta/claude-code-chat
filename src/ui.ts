@@ -202,6 +202,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<select id="serverScope">
 						<option value="project">Project (.mcp.json)</option>
 						<option value="global">Global (~/.claude.json)</option>
+						<!-- fork-issue-67: not a real "Add manually" choice (disabled) -- exists only so an
+						     'extension'-scope server shows a readable value here instead of blank
+						     while editMCPServer() has this field locked (fork-issue-65). -->
+						<option value="extension" disabled>Extension (mcp/mcp-servers.json)</option>
 					</select>
 				</div>
 				<div class="form-group">
@@ -412,6 +416,21 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<p id="providerExclusionHint" style="display: none; font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 24px;">
 						When enabled, requests are routed only through US and EU-based infrastructure providers.
 					</p>
+				</div>
+
+				<h3 style="margin-top: 24px; margin-bottom: 16px; font-size: 14px; font-weight: 600;">Appearance</h3>
+				<div class="settings-group">
+					<div class="tool-item">
+						<input type="checkbox" id="collapse-long-code" onchange="updateSettings()">
+						<label for="collapse-long-code">Collapse long code blocks by default</label>
+					</div>
+					<div style="margin-top: 16px;">
+						<label style="display: block; margin-bottom: 4px; font-size: 12px; color: var(--vscode-descriptionForeground);">Collapse Threshold (lines)</label>
+						<input type="number" id="collapse-code-lines" class="file-search-input" style="width: 100px;" min="5" max="500" step="1" onchange="updateSettings()">
+						<p style="font-size: 11px; color: var(--vscode-descriptionForeground); margin: 4px 0 0 0;">
+							Number of lines a code block must exceed before it gets a collapsible header (5-500).
+						</p>
+					</div>
 				</div>
 
 			</div>
