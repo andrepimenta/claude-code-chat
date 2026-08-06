@@ -76,7 +76,7 @@ const getSkillsScript = () => `
 					'</div>' +
 					'<div class="server-actions" style="flex-shrink:0;">' +
 					'<button class="btn outlined" style="font-size:11px;padding:3px 8px;" onclick="toggleSkillDetail(\\'' + detailId + '\\')">Details</button>' +
-					'<button class="btn outlined server-delete-btn" data-skill="' + escapeHtml(skill.name) + '" data-scope="' + escapeHtml(skill.scope) + '" onclick="deleteSkill(this.dataset.skill, this.dataset.scope)">Delete</button>' +
+					(skill.scope === 'plugin' ? '' : '<button class="btn outlined server-delete-btn" data-skill="' + escapeHtml(skill.name) + '" data-scope="' + escapeHtml(skill.scope) + '" onclick="deleteSkill(this.dataset.skill, this.dataset.scope)">Delete</button>') +
 					'</div>' +
 					'</div>' +
 					'<div id="' + detailId + '" class="skill-detail-content" style="display:none;">' +
