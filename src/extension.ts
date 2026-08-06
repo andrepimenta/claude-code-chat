@@ -169,6 +169,10 @@ class ClaudeChatProvider {
 	private _accountInfoFetchedThisSession: boolean = false;  // Track if we fetched account info this session
 	private _pendingModelAfterPayment: string | null = null;
 	private _currentSessionId: string | undefined;
+	// Reported by the CLI's system/init message; covers plugins loaded via --plugin-dir
+	private _pluginSlashCommands: string[] | undefined;
+	private _pluginSkillIds: string[] | undefined;
+	private _loadedPlugins: Array<{ name: string; path: string }> | undefined;
 	private _backupRepoPath: string | undefined;
 	private _commits: Array<{ id: string, sha: string, message: string, timestamp: string }> = [];
 	private _conversationsPath: string | undefined;
@@ -1316,12 +1320,29 @@ class ClaudeChatProvider {
 					//this._sendAndSaveMessage({ type: 'init', data: { sessionId: jsonData.session_id; } })
 
 					// Show session info in UI
+					// Skills and commands contributed by loaded plugins (including --plugin-dir).
+					// Cached so the picker is populated before the first message of a session.
+					this._pluginSlashCommands = jsonData.slash_commands || [];
+					this._pluginSkillIds = jsonData.skills || [];
+					this._loadedPlugins = jsonData.plugins || [];
+					try {
+						this._context.globalState.update('claude.pluginCommands', {
+							slashCommands: this._pluginSlashCommands,
+							skills: this._pluginSkillIds,
+							plugins: this._loadedPlugins
+						});
+					} catch (error) {
+						console.error('Error caching plugin commands:', error);
+					}
+
 					this._sendAndSaveMessage({
 						type: 'sessionInfo',
 						data: {
 							sessionId: jsonData.session_id,
 							tools: jsonData.tools || [],
-							mcpServers: jsonData.mcp_servers || []
+							mcpServers: jsonData.mcp_servers || [],
+							slashCommands: this._pluginSlashCommands,
+							plugins: this._loadedPlugins
 						}
 					});
 				} else if (jsonData.subtype === 'status') {
@@ -2572,6 +2593,49 @@ class ClaudeChatProvider {
 			} catch { /* dir doesn't exist */ }
 		}
 
+		// Merge in skills contributed by loaded plugins. These live under the plugin's
+		// own directory, not ~/.claude/skills, so the scans above never see them.
+		try {
+			const cached = this._context.globalState.get<any>('claude.pluginCommands') || {};
+			const plugins = this._loadedPlugins || cached.plugins || [];
+			const skillIds = this._pluginSkillIds || cached.skills || [];
+			const pluginPath: { [name: string]: string } = {};
+			for (const plugin of plugins) {
+				if (plugin && plugin.name && plugin.path) {
+					pluginPath[plugin.name] = plugin.path;
+				}
+			}
+			for (const id of skillIds) {
+				const sep = typeof id === 'string' ? id.indexOf(':') : -1;
+				if (sep <= 0) {
+					continue; // built-in skill, not plugin-provided
+				}
+				if (skills.some((s: any) => s.name === id)) {
+					continue;
+				}
+				const base = pluginPath[id.slice(0, sep)];
+				if (!base) {
+					continue;
+				}
+				let description = '';
+				let body = '';
+				try {
+					const skillMd = path.join(base, 'skills', id.slice(sep + 1), 'SKILL.md');
+					const raw = await vscode.workspace.fs.readFile(vscode.Uri.file(skillMd));
+					const text = new TextDecoder().decode(raw);
+					const descMatch = text.match(/description:\s*(.+)/);
+					const bodyMatch = text.match(/^---[\s\S]*?---\s*([\s\S]*)$/);
+					description = descMatch ? descMatch[1].trim().replace(/^["']|["']$/g, '') : '';
+					body = bodyMatch ? bodyMatch[1].trim() : text;
+				} catch {
+					/* plugin lays its skills out differently; still list the skill */
+				}
+				skills.push({ name: id, scope: 'plugin', description, content: body });
+			}
+		} catch (error) {
+			console.error('Error merging plugin skills:', error);
+		}
+
 		this._postMessage({ type: 'skillsList', data: skills });
 	}
 
@@ -2881,6 +2945,14 @@ class ClaudeChatProvider {
 				type: 'customSnippetsData',
 				data: customSnippets
 			});
+
+			// Replay cached plugin commands: the webview asks for snippets on load,
+			// which is before any session has emitted system/init.
+			const cached = this._context.globalState.get<any>('claude.pluginCommands') || {};
+			const pluginCommands = this._pluginSlashCommands || cached.slashCommands || [];
+			if (pluginCommands.length) {
+				this._postMessage({ type: 'pluginCommands', data: pluginCommands });
+			}
 		} catch (error) {
 			console.error('Error loading custom snippets:', error);
 			this._postMessage({

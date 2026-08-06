@@ -3235,6 +3235,40 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		}
 
+		function usePluginCommand(name) {
+			hideSlashCommandsModal();
+			messageInput.value = '/' + name + ' ';
+			messageInput.focus();
+			autoResizeTextarea();
+		}
+
+		function renderPluginCommands(commands) {
+			var list = document.getElementById('promptSnippetsList');
+			if (!list) { return; }
+			var stale = list.querySelectorAll('.plugin-command-item');
+			for (var i = 0; i < stale.length; i++) { stale[i].remove(); }
+			if (!commands || !commands.length) { return; }
+			var names = [];
+			for (var j = 0; j < commands.length; j++) {
+				var c = commands[j];
+				if (typeof c === 'string' && c.indexOf(':') > 0) { names.push(c); }
+			}
+			names.sort();
+			for (var k = 0; k < names.length; k++) {
+				var name = names[k];
+				var el = document.createElement('div');
+				el.className = 'slash-command-item prompt-snippet-item plugin-command-item';
+				el.onclick = (function (n) { return function () { usePluginCommand(n); }; })(name);
+				el.innerHTML = '<div class="slash-command-icon">&#128268;</div>' +
+					'<div class="slash-command-content">' +
+					'<div class="slash-command-title">/' + escapeHtml(name) + '</div>' +
+					'<div class="slash-command-description">Plugin skill from ' +
+					escapeHtml(name.split(':')[0]) + '</div>' +
+					'</div>';
+				list.appendChild(el);
+			}
+		}
+
 		function showAddSnippetForm() {
 			document.getElementById('addSnippetForm').style.display = 'block';
 			document.getElementById('snippetName').focus();
@@ -3663,6 +3697,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 					break;
 					
 				case 'sessionInfo':
+					if (message.data.slashCommands) {
+						renderPluginCommands(message.data.slashCommands);
+					}
 					if (message.data.sessionId) {
 						showSessionInfo(message.data.sessionId);
 						// Show detailed session information
@@ -5142,6 +5179,10 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		window.addEventListener('message', event => {
 			const message = event.data;
 			
+			if (message.type === 'pluginCommands') {
+				renderPluginCommands(message.data || []);
+				return;
+			}
 			if (message.type === 'customSnippetsData') {
 				// Update global custom snippets data
 				customSnippetsData = message.data || {};
