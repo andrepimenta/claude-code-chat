@@ -1,67 +1,68 @@
 [
     {
-        "id": "openai/gpt-5.5",
-        "name": "GPT 5.5",
-        "description": "GPT‑5.5 understands what you’re trying to do faster and can carry more of the work itself. It excels at writing and debugging code, researching online, analyzing data, creating documents and spreadsheets, operating software, and moving across tools until a task is finished. Instead of carefully managing every step, you can give GPT‑5.5 a messy, multi-part task and trust it to plan, use tools, check its work, navigate through ambiguity, and keep going.",
-        "context_length": 400000,
+        "id": "openai/gpt-5.6-terra",
+        "name": "GPT 5.6 Sol",
+        "description": "GPT-5.6 Sol is the flagship of OpenAI's GPT-5.6 series, its most capable model for long-horizon agentic work across coding, biology, and cybersecurity.",
+        "context_length": 1050000,
         "max_output_tokens": 128000,
-        "credits_per_request": 4.921875,
+        "credits_per_request": 4.375,
         "provider": "OpenAI",
         "quickLabel": "GPT",
-        "tierModels": { "sonnet": "openai/gpt-5.5", "opus": "openai/gpt-5.5", "haiku": "openai/gpt-5.4-mini" }
+        "tierModels": { "sonnet": "openai/gpt-5.6-terra", "opus": "openai/gpt-5.6-sol", "haiku": "openai/gpt-5.6-luna", "fable": "openai/gpt-6-astra" }
     },
     {
-        "id": "google/gemini-3.1-pro-preview",
-        "name": "Gemini 3.1 Pro Preview",
-        "description": "This model improves upon Gemini 2.5 Pro and is catered towards challenging tasks, especially those involving complex reasoning or agentic workflows. Improvements highlighted include use cases for coding, multi-step function calling, planning, reasoning, deep knowledge tasks, and instruction following.",
-        "context_length": 1000000,
-        "max_output_tokens": 64000,
-        "credits_per_request": 4.375,
-        "provider": "Google",
-        "quickLabel": "Gemini",
-        "tierModels": { "sonnet": "google/gemini-3.1-pro-preview", "opus": "google/gemini-3.1-pro-preview", "haiku": "google/gemini-3.5-flash" }
+        "id": "deepseek/deepseek-v4.1-flash",
+        "name": "DeepSeek V4.1 Flash",
+        "description": "DeepSeek V4.1 Flash is an AI model from DeepSeek designed for fast, efficient multimodal interactions. It combines native multimodal capabilities with a new architecture focused on stronger performance, faster responses, and lower computational cost.",
+        "context_length": 1048576,
+        "max_output_tokens": 32768,
+        "credits_per_request": 0.46875,
+        "provider": "DeepSeek",
+        "quickLabel": "DeepSeek",
+        "tierModels": { "sonnet": "deepseek/deepseek-v4.1-flash", "opus": "deepseek/deepseek-v4.1-flash", "haiku": "deepseek/deepseek-v4.1-flash", "fable": "deepseek/deepseek-v4.1-flash" }
     },
     {
         "id": "minimax/minimax-m3",
         "name": "MiniMax M3",
         "description": "MiniMax-M3 is a frontier-class foundation model that unites the three capabilities defining today's frontier: a 1M-token context window, frontier coding and agentic performance, and native multimodality — the first open-weight model to deliver all three in a single system.",
-        "context_length": 204800,
-        "max_output_tokens": 131000,
+        "context_length": 512000,
+        "max_output_tokens": 512000,
         "credits_per_request": 0.46875,
         "provider": "MiniMax",
-        "quickLabel": "MiniMax"
+        "quickLabel": "MiniMax",
+        "tierModels": { "sonnet": "minimax/minimax-m3", "opus": "minimax/minimax-m3", "haiku": "minimax/minimax-m3", "fable": "minimax/minimax-m3" }
     },
     {
-        "id": "moonshotai/kimi-k2.7-code",
-        "name": "Kimi K2.7 Code",
-        "description": "Kimi-K2.7-Code is a coding model from Moonshot AI. It has improved coding & agent performance over K2.6, more reasoning efficiency with less overthinking, and improved instruction following for long-horizon coding.",
-        "context_length": 262114,
-        "max_output_tokens": 262114,
-        "credits_per_request": 1.125,
+        "id": "moonshotai/kimi-k3",
+        "name": "Kimi K3",
+        "description": "Kimi’s flagship model for long-horizon coding and end-to-end knowledge work, with a 1M-token context window.",
+        "context_length": 1000000,
+        "max_output_tokens": 131072,
+        "credits_per_request": 5.625,
         "provider": "Moonshot AI",
         "quickLabel": "Kimi",
-        "tierModels": { "sonnet": "moonshotai/kimi-k2.7-code", "opus": "moonshotai/kimi-k2.7-code", "haiku": "moonshotai/kimi-k2.7-code" }
+        "tierModels": { "sonnet": "moonshotai/kimi-k3", "opus": "moonshotai/kimi-k3", "haiku": "moonshotai/kimi-k2.7-code", "fable": "moonshotai/kimi-k3" }
     },
     {
-        "id": "zai/glm-5.2",
-        "name": "GLM 5.2",
-        "description": "GLM-5.2 delivers powerful coding capabilities, usable 1M-context support, and continued strengths in long-horizon tasks.",
-        "context_length": 202800,
-        "max_output_tokens": 131100,
-        "credits_per_request": 1.3125,
+        "id": "zai/glm-5.3",
+        "name": "GLM 5.3",
+        "description": "GLM 5.3 delivers comprehensive advancements in complex software engineering and agent capabilities. It uses the same base model as GLM-5.2, with all improvements driven by post-training.",
+        "context_length": 1000000,
+        "max_output_tokens": 1000000,
+        "credits_per_request": 1.8125,
         "provider": "Zhipu AI",
         "quickLabel": "GLM",
-        "tierModels": { "sonnet": "zai/glm-5.2", "opus": "zai/glm-5.2", "haiku": "zai/glm-4.7-flash" }
+        "tierModels": { "sonnet": "zai/glm-5.3", "opus": "zai/glm-5.3", "haiku": "zai/glm-5.3-flash", "fable": "zai/glm-5.3" }
     },
     {
-        "id": "deepseek/deepseek-v4-pro",
-        "name": "DeepSeek V4 Pro",
-        "description": "DeepSeek-V4 series incorporate several key upgrades in architecture and optimization: (1) a hybrid attention architecture that combines Compressed Sparse Attention (CSA)\nand Heavily Compressed Attention (HCA) to improve long-context efficiency; (2) ManifoldConstrained Hyper-Connections (mHC) that enhance conventional residual connections; (3)\nand the Muon optimizer for faster convergence and greater training stability",
-        "context_length": 128000,
-        "max_output_tokens": 64000,
-        "credits_per_request": 0.21875,
-        "provider": "DeepSeek",
-        "quickLabel": "DeepSeek",
-        "tierModels": { "sonnet": "deepseek/deepseek-v4-pro", "opus": "deepseek/deepseek-v4-pro", "haiku": "deepseek/deepseek-v4-flash" }
+        "id": "google/gemini-3.8-flash",
+        "name": "Gemini 3.8 Flash",
+        "description": "Gemini 3.8 Flash is the high-efficiency, cost-effective powerhouse of the Gemini 3 family. It delivers Pro-level agentic capabilities, major leaps in code generation and terminal execution. 3.8 Flash serves as the primary agentic workhorse in the Gemini 3 family, bridging the gap between deep-reasoning Pro models and high-throughput Flash-Lite models while delivering high token efficiency and multi-step multimodal processing.",
+        "context_length": 1000000,
+        "max_output_tokens": 65536,
+        "credits_per_request": 1.40625,
+        "provider": "Google",
+        "quickLabel": "Gemini",
+        "tierModels": { "sonnet": "google/gemini-3.8-flash", "opus": "google/gemini-3.8-flash", "haiku": "google/gemini-3.8-flash", "fable": "google/gemini-3.8-flash" }
     }
 ]

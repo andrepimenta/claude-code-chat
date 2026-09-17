@@ -5,7 +5,8 @@ import * as path from 'path';
 import * as os from 'os';
 import getHtml from './ui';
 import { startRouter, stopRouter, setModelConfig, setBaseUrl } from './router';
-import { fetchAndResolveModels } from './model-updater';
+import { fetchAndResolveModels, TierModels, TIER_ENV_KEYS } from './model-updater';
+import { isAuthFailureAssistantEvent, isAuthFailureResult } from './auth-detect';
 import recommendedModels from './recommended-models.json';
 import { downloadClaude, detectPlatform, DownloaderError } from './claudeDownloader';
 
@@ -199,6 +200,11 @@ class ClaudeChatProvider {
 	private _selectedModel: string = 'default'; // Default model
 	private _isProcessing: boolean | undefined;
 	private _draftMessage: string = '';
+	// A failed turn emits the auth error as BOTH an assistant message and an
+	// error result (confirmed via captured stream-json), and each would call
+	// _handleLoginRequired(). This flag keeps the login prompt to one per turn;
+	// reset when the next message is sent.
+	private _loginPromptShown: boolean = false;
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -329,10 +335,16 @@ class ClaudeChatProvider {
 			this._pendingModelAfterPayment = null;
 
 			try {
-				this._updateLocalRouterModel(pendingModel);
+				// The checkout round-trip only carries a bare model id (see
+				// _pendingModelAfterPayment), so the tier map the webview held is gone
+				// by the time we get here. Without this lookup every tier collapses
+				// onto the main model and Claude Code's background haiku calls bill at
+				// flagship rates — up to 10x — for a user who has just paid.
+				const tierModels = this._tierModelsFor(pendingModel);
+				this._updateLocalRouterModel(pendingModel, tierModels);
 				this._selectedModel = pendingModel;
 				this._context.workspaceState.update('claude.selectedModel', pendingModel);
-				await this._setModelEnvVars(pendingModel);
+				await this._setModelEnvVars(pendingModel, tierModels);
 
 				const balance = await this._fetchOpenCreditsBalance();
 
@@ -740,7 +752,23 @@ class ClaudeChatProvider {
 
 	private static readonly FEATURES_CACHE_KEY = 'claude.featureFlags';
 	private static readonly FEATURES_CACHE_TTL = 0; // Always re-fetch for now
-	private static readonly MODEL_CACHE_KEY = 'claude.recommendedModelsCache.v1';
+	private static readonly MODEL_CACHE_KEY = 'claude.recommendedModelsCache';
+	// Bump ONLY for a pure resolver-logic change that leaves the bundled catalogue
+	// untouched. Any edit to recommended-models.json invalidates the cache on its
+	// own via the content signature below.
+	private static readonly MODEL_CACHE_LOGIC_VERSION = 'v3';
+
+	// The cache lives in globalState and survives extension upgrades, so a stale
+	// entry from a previous release would otherwise be served for up to
+	// MODEL_CACHE_TTL with the new resolver never being called. Rather than relying
+	// on remembering to bump a key, the cache carries a signature of what produced
+	// it; anything that changes the bundled catalogue invalidates it automatically.
+	private static get MODEL_CACHE_SIGNATURE(): string {
+		let h = 5381;
+		const src = JSON.stringify(recommendedModels);
+		for (let i = 0; i < src.length; i++) { h = (((h << 5) + h) ^ src.charCodeAt(i)) >>> 0; }
+		return `${ClaudeChatProvider.MODEL_CACHE_LOGIC_VERSION}.${h.toString(36)}`;
+	}
 	private static readonly MODEL_CACHE_TTL = 24 * 60 * 60 * 1000; // 1 day
 
 	private async _checkFeatureFlags(): Promise<boolean> {
@@ -782,8 +810,9 @@ class ClaudeChatProvider {
 
 	private async _autoUpdateRecommendedModels() {
 		// Check cache first
-		const cached = this._context.globalState.get<{ timestamp: number; models: any[]; creditsPricing?: any }>(ClaudeChatProvider.MODEL_CACHE_KEY);
-		if (cached && Date.now() - cached.timestamp < ClaudeChatProvider.MODEL_CACHE_TTL) {
+		const cached = this._context.globalState.get<{ timestamp: number; models: any[]; creditsPricing?: any; signature?: string }>(ClaudeChatProvider.MODEL_CACHE_KEY);
+		if (cached && cached.signature === ClaudeChatProvider.MODEL_CACHE_SIGNATURE &&
+			Date.now() - cached.timestamp < ClaudeChatProvider.MODEL_CACHE_TTL) {
 			this._postMessage({
 				type: 'updateRecommendedModels',
 				models: cached.models,
@@ -838,6 +867,7 @@ class ClaudeChatProvider {
 
 			this._context.globalState.update(ClaudeChatProvider.MODEL_CACHE_KEY, {
 				timestamp: Date.now(),
+				signature: ClaudeChatProvider.MODEL_CACHE_SIGNATURE,
 				models: updated,
 				creditsPricing
 			});
@@ -892,6 +922,7 @@ class ClaudeChatProvider {
 		}
 
 		this._isProcessing = true;
+		this._loginPromptShown = false;
 
 		// Clear draft message since we're sending it
 		this._draftMessage = '';
@@ -959,9 +990,9 @@ class ClaudeChatProvider {
 			args.push('--permission-mode', 'plan');
 		}
 
-		// Add model selection for Claude models only (opus, sonnet)
+		// Add model selection for Claude models only (fable, opus, sonnet)
 		// OpenCredits models are handled via env vars or router mapping
-		const claudeModels = ['opus', 'sonnet'];
+		const claudeModels = ['fable', 'opus', 'sonnet'];
 		if (this._selectedModel && claudeModels.includes(this._selectedModel)) {
 			args.push('--model', this._selectedModel);
 		}
@@ -1378,22 +1409,11 @@ class ClaudeChatProvider {
 					// Process each content item in the assistant message
 					for (const content of jsonData.message.content) {
 						if (content.type === 'text' && content.text.trim()) {
-							const text = content.text.trim();
-
 							// Show text content and save to conversation
 							this._sendAndSaveMessage({
 								type: 'output',
-								data: text
+								data: content.text.trim()
 							});
-
-							// Authentication failures surface as assistant text
-							// (e.g. "Failed to authenticate. API Error: 401 Invalid
-							// authentication credentials"). Prompt the user to log
-							// in when we see one.
-							if (this._isLoginError(text)) {
-								this._handleLoginRequired();
-								return;
-							}
 						} else if (content.type === 'thinking' && content.thinking.trim()) {
 							// Show thinking content and save to conversation
 							this._sendAndSaveMessage({
@@ -1475,6 +1495,16 @@ class ClaudeChatProvider {
 						}
 					}
 				}
+
+				// Auth-failure detection, checked after the content has rendered so
+				// the error text reaches the user before the prompt. This is the
+				// event that actually reports a logged-out CLI, and it arrives
+				// first. A failure against a custom third-party endpoint is the
+				// user's own key/URL — our login flow can't fix it, so the error
+				// text is left to stand on its own.
+				if (isAuthFailureAssistantEvent(jsonData) && !this._isCustomApiEndpoint()) {
+					this._handleLoginRequired();
+				}
 				break;
 
 			case 'user':
@@ -1547,13 +1577,19 @@ class ClaudeChatProvider {
 				break;
 
 			case 'result':
-				if (jsonData.subtype === 'success') {
-					// Check for login errors
-					if (jsonData.is_error && this._isLoginErrorResult(jsonData.result)) {
+				// Backstop for endpoints that return a real HTTP 401. A logged-out
+				// CLI is already caught on the assistant event above (it reports
+				// api_error_status: null), and _handleLoginRequired dedupes, so a
+				// double hit is harmless. Checked on any subtype: a real failure
+				// still arrives as subtype 'success' with is_error true.
+				if (isAuthFailureResult(jsonData)) {
+					if (!this._isCustomApiEndpoint()) {
 						this._handleLoginRequired();
 						return;
 					}
+				}
 
+				if (jsonData.subtype === 'success') {
 					this._isProcessing = false;
 
 					// Capture session ID from final result
@@ -1584,17 +1620,33 @@ class ClaudeChatProvider {
 						this._totalCost += jsonData.total_cost_usd;
 					}
 
-					// Lifetime success counter — survives reloads, scoped to the
-					// extension globalState. Used for milestone analytics (1, 50, 100, 200, …).
-					try {
-						const prev = this._context.globalState.get<number>('lifetimeMessageSuccessCount', 0) || 0;
-						const next = prev + 1;
-						this._context.globalState.update('lifetimeMessageSuccessCount', next);
-						if (next === 1 || next === 50 || (next > 50 && next % 100 === 0)) {
-							this._postMessage({ type: 'messageMilestone', count: next });
+					if (jsonData.is_error) {
+						// Failed turn (e.g. a non-401 API error): surface the error
+						// text and don't count it toward the success milestone below.
+						// text and don't count it toward the success milestone below.
+						// Note: a failed turn whose assistant event carried the same string
+						// will show it twice (once as output, once as an error). Known and
+						// accepted — suppressing by text risks hiding a real error that
+						// happens to match assistant output.
+						if (typeof jsonData.result === 'string' && jsonData.result.trim()) {
+							this._sendAndSaveMessage({
+								type: 'error',
+								data: jsonData.result.trim()
+							});
 						}
-					} catch {
-						// best-effort — analytics shouldn't break the response path
+					} else {
+						// Lifetime success counter — survives reloads, scoped to the
+						// extension globalState. Used for milestone analytics (1, 50, 100, 200, …).
+						try {
+							const prev = this._context.globalState.get<number>('lifetimeMessageSuccessCount', 0) || 0;
+							const next = prev + 1;
+							this._context.globalState.update('lifetimeMessageSuccessCount', next);
+							if (next === 1 || next === 50 || (next > 50 && next % 100 === 0)) {
+								this._postMessage({ type: 'messageMilestone', count: next });
+							}
+						} catch {
+							// best-effort — analytics shouldn't break the response path
+						}
 					}
 
 
@@ -1671,29 +1723,26 @@ class ClaudeChatProvider {
 		});
 	}
 
-	// The CLI prints this exact line when the active credentials are rejected.
-	// Matching the full string keeps it from firing on any other text, so it's
-	// safe to check even on free-form assistant output.
-	private _isLoginError(text: unknown): boolean {
-		if (typeof text !== 'string' || !text) { return false; }
-		return text.includes('Failed to authenticate. API Error: 401 Invalid authentication credentials');
-	}
-
-	// Broader login-required signals — only trusted when they arrive on an
-	// error result, since these phrases can appear in benign explanations.
-	private _isLoginErrorResult(text: unknown): boolean {
-		if (typeof text !== 'string' || !text) { return false; }
-		if (this._isLoginError(text)) { return true; }
-		const patterns = [
-			'Invalid API key',
-			'Not logged in',
-			'/login',
-			'not authenticated'
-		];
-		return patterns.some(pattern => text.includes(pattern));
+	// A custom third-party ANTHROPIC_BASE_URL (anything that isn't OpenCredits)
+	// means auth failures stem from the user's own env-var key/endpoint — our
+	// claude.ai / OpenCredits login flow can't fix those, so callers use this to
+	// suppress the login prompt and let the error text stand.
+	private _isCustomApiEndpoint(): boolean {
+		const config = vscode.workspace.getConfiguration('claudeCodeChat');
+		if (config.get<boolean>('environment.disabled', false)) {
+			return false;
+		}
+		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		const baseUrl = envVars['ANTHROPIC_BASE_URL'] || '';
+		return !!baseUrl && !this._isOpenCredits();
 	}
 
 	private async _handleLoginRequired() {
+
+		// The assistant message and the error result of the same failed turn
+		// both land here — only prompt once.
+		if (this._loginPromptShown) { return; }
+		this._loginPromptShown = true;
 
 		this._isProcessing = false;
 
@@ -3479,9 +3528,9 @@ class ClaudeChatProvider {
 		}
 	}
 
-	private async _setSelectedModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
+	private async _setSelectedModel(model: string, tierModels?: TierModels): Promise<void> {
 		// Valid Claude models
-		const validClaudeModels = ['opus', 'sonnet', 'default'];
+		const validClaudeModels = ['fable', 'opus', 'sonnet', 'default'];
 
 		if (validClaudeModels.includes(model)) {
 			this._selectedModel = model;
@@ -3530,13 +3579,45 @@ class ClaudeChatProvider {
 		}
 	}
 
+	/**
+	 * Tier map for a model id, from the resolved catalogue the extension already
+	 * caches. Used by paths that only have a bare id — notably the post-checkout
+	 * activation, which cannot reach the webview's copy. Prefers the live resolved
+	 * cache (only when its signature matches this build) and falls back to the
+	 * bundled catalogue. Matches the card id first, then any tier id, so a
+	 * selection saved as a tier value still finds its family. Returns undefined
+	 * when the model is unknown (a genuine custom model), leaving callers on their
+	 * existing single-model behaviour.
+	 */
+	private _tierModelsFor(modelId: string): TierModels | undefined {
+		if (!modelId) { return undefined; }
+		const sources: any[][] = [];
+		const cached = this._context.globalState.get<{ models?: any[]; signature?: string }>(
+			ClaudeChatProvider.MODEL_CACHE_KEY);
+		if (cached && cached.signature === ClaudeChatProvider.MODEL_CACHE_SIGNATURE &&
+			Array.isArray(cached.models)) {
+			sources.push(cached.models);
+		}
+		sources.push(recommendedModels as any[]);
+		for (const list of sources) {
+			const hit = list.find(m => m && m.tierModels &&
+				(m.id === modelId ||
+					Object.values(m.tierModels as Record<string, string>).includes(modelId)));
+			if (hit) { return hit.tierModels as TierModels; }
+		}
+		return undefined;
+	}
+
 	// Set model env vars for non-Claude models
-	private async _setModelEnvVars(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): Promise<void> {
+	private async _setModelEnvVars(model: string, tierModels?: TierModels): Promise<void> {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const envVars = config.get<Record<string, string>>('environment.variables', {});
+		// Every tier goes through `?.tier || model`: the webview message is untyped
+		// and a three-key block from an older cached release is a real input.
 		envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'] = tierModels?.sonnet || model;
 		envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'] = tierModels?.opus || model;
 		envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = tierModels?.haiku || model;
+		envVars['ANTHROPIC_DEFAULT_FABLE_MODEL'] = tierModels?.fable || model;
 		await config.update('environment.variables', envVars, vscode.ConfigurationTarget.Global);
 	}
 
@@ -3545,10 +3626,11 @@ class ClaudeChatProvider {
 		const config = vscode.workspace.getConfiguration('claudeCodeChat');
 		const envVars = config.get<Record<string, string>>('environment.variables', {});
 		const filtered: Record<string, string> = {};
+		// Derived from TIER_NAMES rather than hardcoded, so the set and remove
+		// paths can never drift: a stale tier var left behind here would outlive
+		// the selection and still be spread into every CLI spawn.
 		for (const [key, value] of Object.entries(envVars)) {
-			if (key !== 'ANTHROPIC_DEFAULT_SONNET_MODEL' &&
-				key !== 'ANTHROPIC_DEFAULT_OPUS_MODEL' &&
-				key !== 'ANTHROPIC_DEFAULT_HAIKU_MODEL') {
+			if (!TIER_ENV_KEYS.includes(key)) {
 				filtered[key] = value;
 			}
 		}
@@ -3610,11 +3692,12 @@ class ClaudeChatProvider {
 	}
 
 	// Update the model configuration for the local router
-	private _updateLocalRouterModel(model: string, tierModels?: { sonnet: string; opus: string; haiku: string }): void {
+	private _updateLocalRouterModel(model: string, tierModels?: TierModels): void {
 		setModelConfig({
 			haikuModel: tierModels?.haiku || model,
 			sonnetModel: tierModels?.sonnet || model,
-			opusModel: tierModels?.opus || model
+			opusModel: tierModels?.opus || model,
+			fableModel: tierModels?.fable || model
 		});
 	}
 
@@ -3796,8 +3879,16 @@ class ClaudeChatProvider {
 			const sonnet = envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'];
 			const opus = envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'];
 			const haiku = envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'];
-			const tierModels = (sonnet || opus || haiku)
-				? { sonnet: sonnet || this._selectedModel, opus: opus || this._selectedModel, haiku: haiku || this._selectedModel }
+			const fable = envVars['ANTHROPIC_DEFAULT_FABLE_MODEL'];
+			// `|| this._selectedModel` is what keeps a settings blob written by an
+			// older release (no fable key) safe to restore.
+			const tierModels: TierModels | undefined = (sonnet || opus || haiku || fable)
+				? {
+					sonnet: sonnet || this._selectedModel,
+					opus: opus || this._selectedModel,
+					haiku: haiku || this._selectedModel,
+					fable: fable || this._selectedModel
+				}
 				: undefined;
 			this._updateLocalRouterModel(this._selectedModel, tierModels);
 		}

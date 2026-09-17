@@ -3094,8 +3094,17 @@ const styles = `
     /* Claude Code model cards */
     .claude-cards-container {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        /* Four tiers: 2x2 when narrow, one row when there is room. Deliberately
+           not auto-fill — with exactly four cards it can settle on three columns
+           and strand the fourth on a row of its own. */
+        grid-template-columns: repeat(2, 1fr);
         gap: 10px;
+    }
+
+    @media (min-width: 600px) {
+        .claude-cards-container {
+            grid-template-columns: repeat(4, 1fr);
+        }
     }
 
     .claude-card {

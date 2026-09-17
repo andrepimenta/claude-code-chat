@@ -103,6 +103,7 @@ interface ModelConfig {
   haikuModel: string;
   sonnetModel: string;
   opusModel: string;
+  fableModel: string;
 }
 
 let modelConfig: ModelConfig | null = null;
@@ -135,6 +136,12 @@ export function mapModel(anthropicModel: string): string {
   } else if (anthropicModel.includes('opus') && modelConfig.opusModel) {
     console.log(`[Router] Mapping opus -> ${modelConfig.opusModel}`);
     return modelConfig.opusModel;
+  } else if (anthropicModel.includes('fable') && modelConfig.fableModel) {
+    // Without this branch a fable-class request matches none of the tier
+    // substrings and falls through to the raw passthrough below, sending an
+    // Anthropic model name to a gateway that cannot serve it.
+    console.log(`[Router] Mapping fable -> ${modelConfig.fableModel}`);
+    return modelConfig.fableModel;
   }
 
   console.log(`[Router] No mapping found for model: ${anthropicModel}, passing through`);

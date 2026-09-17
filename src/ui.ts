@@ -432,17 +432,21 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 					<span class="model-section-title">CLAUDE CODE STANDARD MODELS</span>
 				</div>
 				<div class="claude-cards-container" id="claudeModelCards">
+					<div class="claude-card" data-model="fable" onclick="selectModel('fable')">
+						<div class="claude-card-name">Fable</div>
+						<div class="claude-card-desc">Most capable model</div>
+					</div>
 					<div class="claude-card" data-model="opus" onclick="selectModel('opus')">
 						<div class="claude-card-name">Opus</div>
-						<div class="claude-card-desc">Most powerful, best for complex tasks</div>
+						<div class="claude-card-desc">Powerful, for complex work</div>
 					</div>
 					<div class="claude-card" data-model="sonnet" onclick="selectModel('sonnet')">
 						<div class="claude-card-name">Sonnet</div>
-						<div class="claude-card-desc">Balanced performance and speed</div>
+						<div class="claude-card-desc">Balanced speed and quality</div>
 					</div>
 					<div class="claude-card" data-model="default" onclick="selectModel('default')">
 						<div class="claude-card-name">Default</div>
-						<div class="claude-card-desc">Let Claude Code choose the best model</div>
+						<div class="claude-card-desc">Uses your Claude Code setting</div>
 					</div>
 				</div>
 			</div>
@@ -492,7 +496,7 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 			</div>
 			<div style="padding: 16px;">
 				<p style="font-size: 12px; color: var(--vscode-descriptionForeground); margin-bottom: 16px;">
-					Override the default models used when you select Opus, Sonnet, or Haiku.
+					Override the default models used when you select Fable, Opus, Sonnet, or Haiku.
 				</p>
 				<div class="custom-provider-field">
 					<label>Sonnet Model</label>
@@ -511,6 +515,13 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 				<div class="custom-provider-field">
 					<label>Haiku Model</label>
 					<div class="model-combo" id="comboHaiku">
+						<input type="text" class="model-combo-input" placeholder="Default — click to search models" autocomplete="off">
+						<div class="model-combo-dropdown"></div>
+					</div>
+				</div>
+				<div class="custom-provider-field">
+					<label>Fable Model</label>
+					<div class="model-combo" id="comboFable">
 						<input type="text" class="model-combo-input" placeholder="Default — click to search models" autocomplete="off">
 						<div class="model-combo-dropdown"></div>
 					</div>
@@ -550,6 +561,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 				<div class="custom-provider-field">
 					<label>Haiku Model <span style="opacity:0.5">(optional)</span></label>
 					<input type="text" id="customProviderHaiku" placeholder="claude-haiku-4-20250514">
+				</div>
+				<div class="custom-provider-field">
+					<label>Fable Model <span style="opacity:0.5">(optional)</span></label>
+					<input type="text" id="customProviderFable" placeholder="claude-fable-5-1">
 				</div>
 				<button class="install-btn" style="width: 100%; margin-top: 16px;" onclick="saveCustomProvider()">Save & Connect</button>
 			</div>

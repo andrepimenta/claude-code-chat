@@ -221,6 +221,8 @@
     "test": "vscode-test",
     "test:downloader": "npm run compile && mocha --ui tdd \"out/test/downloader*.test.js\" --reporter spec --timeout 360000",
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
+    "check:models": "npm run compile && node build/check-models.js",
+    "test:auth": "npm run compile && mocha --ui tdd out/test/auth-detect.test.js --reporter spec",
     "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
   },
   "devDependencies": {

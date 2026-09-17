@@ -2137,7 +2137,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 		// Check if a model is a OpenCredits model (any model that's not a Claude model)
 		function isOpenCreditsModel(modelId) {
-			const claudeModels = ['opus', 'sonnet', 'default'];
+			const claudeModels = ['fable', 'opus', 'sonnet', 'default'];
 			return !claudeModels.includes(modelId);
 		}
 
@@ -2147,7 +2147,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			// Check tier models
 			var m = openCreditsModels.find(function(om) { return om.id === candidate; });
 			if (m && m.tierModels) {
-				var match = m.tierModels.sonnet === modelId || m.tierModels.opus === modelId || m.tierModels.haiku === modelId;
+				var match = m.tierModels.sonnet === modelId || m.tierModels.opus === modelId || m.tierModels.haiku === modelId || m.tierModels.fable === modelId;
 				return match;
 			}
 			return false;
@@ -2466,6 +2466,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var sonnetModel = document.getElementById('customProviderSonnet').value.trim();
 			var opusModel = document.getElementById('customProviderOpus').value.trim();
 			var haikuModel = document.getElementById('customProviderHaiku').value.trim();
+			var fableModel = document.getElementById('customProviderFable').value.trim();
 
 			if (!baseUrl || !authToken) {
 				return;
@@ -2478,6 +2479,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			if (sonnetModel) envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'] = sonnetModel;
 			if (opusModel) envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'] = opusModel;
 			if (haikuModel) envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = haikuModel;
+			if (fableModel) envVars['ANTHROPIC_DEFAULT_FABLE_MODEL'] = fableModel;
 
 			vscode.postMessage({
 				type: 'saveCustomProvider',
@@ -2552,7 +2554,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			combo.getValue = function() { return input.value.trim(); };
 		}
 
-		var comboSonnet, comboOpus, comboHaiku;
+		var comboSonnet, comboOpus, comboHaiku, comboFable;
 
 		async function showAdvancedModal() {
 			hideModelModal();
@@ -2572,9 +2574,11 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				initModelCombo('comboSonnet');
 				initModelCombo('comboOpus');
 				initModelCombo('comboHaiku');
+				initModelCombo('comboFable');
 				comboSonnet = document.getElementById('comboSonnet');
 				comboOpus = document.getElementById('comboOpus');
 				comboHaiku = document.getElementById('comboHaiku');
+				comboFable = document.getElementById('comboFable');
 			}
 
 			// Request current env vars to populate
@@ -2589,11 +2593,13 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			var sonnetModel = comboSonnet ? comboSonnet.getValue() : '';
 			var opusModel = comboOpus ? comboOpus.getValue() : '';
 			var haikuModel = comboHaiku ? comboHaiku.getValue() : '';
+			var fableModel = comboFable ? comboFable.getValue() : '';
 
 			var envVars = {};
 			envVars['ANTHROPIC_DEFAULT_SONNET_MODEL'] = sonnetModel;
 			envVars['ANTHROPIC_DEFAULT_OPUS_MODEL'] = opusModel;
 			envVars['ANTHROPIC_DEFAULT_HAIKU_MODEL'] = haikuModel;
+			envVars['ANTHROPIC_DEFAULT_FABLE_MODEL'] = fableModel;
 
 			vscode.postMessage({
 				type: 'saveCustomProvider',
@@ -2691,6 +2697,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 		// Helper function to get display name for a model
 		function getModelDisplayName(modelId) {
 			const claudeModels = {
+				'fable': 'Claude Fable',
 				'opus': 'Claude Opus',
 				'sonnet': 'Claude Sonnet',
 				'default': 'Claude'
@@ -2738,7 +2745,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 			// Update inline model dropdown
 			if (modelDropdown) {
-				if (currentModel === 'opus') {
+				if (currentModel === 'fable') {
+					modelDropdown.textContent = 'Fable';
+				} else if (currentModel === 'opus') {
 					modelDropdown.textContent = 'Opus';
 				} else if (currentModel === 'sonnet') {
 					modelDropdown.textContent = 'Sonnet';
@@ -2751,9 +2760,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				}
 			}
 
-			if (currentModel === 'opus' || currentModel === 'sonnet') {
+			if (currentModel === 'fable' || currentModel === 'opus' || currentModel === 'sonnet') {
 				// Claude model selected - show model name, hide badge
-				const modelName = currentModel === 'opus' ? 'Claude Opus' : 'Claude Sonnet';
+				const modelName = getModelDisplayName(currentModel);
 				selectorText.textContent = modelName;
 				selectorBadge.style.display = 'none';
 			} else if (currentModel === 'default' || predefinedModels.includes(currentModel)) {
@@ -3379,7 +3388,7 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 
 			// Check if this is a OpenCredits model (not a standard Claude model)
-			const claudeModels = ['opus', 'sonnet', 'default'];
+			const claudeModels = ['fable', 'opus', 'sonnet', 'default'];
 			const isOpenCreditsModel = !claudeModels.includes(model);
 
 			// If selecting a OpenCredits model and envs are disabled, re-enable them
@@ -5270,6 +5279,9 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				if (comboSonnet && comboSonnet.setValue) comboSonnet.setValue(d['ANTHROPIC_DEFAULT_SONNET_MODEL'] || '');
 				if (comboOpus && comboOpus.setValue) comboOpus.setValue(d['ANTHROPIC_DEFAULT_OPUS_MODEL'] || '');
 				if (comboHaiku && comboHaiku.setValue) comboHaiku.setValue(d['ANTHROPIC_DEFAULT_HAIKU_MODEL'] || '');
+				// Without this readback the fable combo renders blank while a value is
+				// set, and the next Save writes that blank back over it.
+				if (comboFable && comboFable.setValue) comboFable.setValue(d['ANTHROPIC_DEFAULT_FABLE_MODEL'] || '');
 			}
 
 			if (message.type === 'opencreditsBalance') {
