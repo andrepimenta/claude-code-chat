@@ -51,7 +51,7 @@ const JSON_OUT = argv.includes('--json');
 // they are speed, size or modality spins of a line we already track. Excluding
 // them keeps the "newer available" signal to things that could be a renamed
 // flagship — the failure mode that actually hides a stale pin.
-const VARIANT = /-(fast|highspeed|lightning|turbo|lite|mini|nano|flash|image|live|preview|thinking|transcribe|embedding|codex|vision[\w-]*|exp|\d{4})(-[\w.]+)?$/i;
+const VARIANT = /-(fast|highspeed|lightning|turbo|lite|mini|nano|flash[a-z]*|image|live|preview|thinking|transcribe|embedding|codex|vision[\w-]*|exp|\d{4})(-[\w.]+)?$/i;
 
 const DAY = 86400;
 const ageDays = (rel, now) => (rel ? Math.round((now - rel) / DAY) : null);

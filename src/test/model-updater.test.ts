@@ -443,6 +443,52 @@ suite('model-updater: resolveLatestModels', () => {
 		}
 	});
 
+	test('the $ anchors are load-bearing: a HIGHER-versioned variant never wins', () => {
+		// Falsifiability guard. Earlier anchor tests used same-version siblings
+		// (gpt-5.6-terra vs gpt-5.6-terra-fast), so the shorter-id tie-break picked
+		// the right one even with the anchors stripped — the assertions could not
+		// fail. These variants carry a HIGHER version, so without `$` each one wins
+		// outright and the corresponding assertion breaks.
+		const api = [
+			apiModel('openai/gpt-5.6-terra'), apiModel('openai/gpt-9-terra-fast'),
+			apiModel('openai/gpt-5.6-sol'), apiModel('openai/gpt-9-sol-fast'),
+			apiModel('openai/gpt-5.6-luna'), apiModel('openai/gpt-9-luna-fast'),
+			apiModel('openai/gpt-6-astra'), apiModel('openai/gpt-9-astra-fast'),
+			apiModel('moonshotai/kimi-k3'), apiModel('moonshotai/kimi-k9-fast'),
+			apiModel('moonshotai/kimi-k2.7-code'), apiModel('moonshotai/kimi-k9-code-highspeed'),
+			apiModel('zai/glm-5.3'), apiModel('zai/glm-9-turbo'),
+			apiModel('zai/glm-5.3-flash'), apiModel('zai/GLM-9-Flash-preview'),
+			apiModel('google/gemini-4-pro'), apiModel('google/gemini-9-pro-image'),
+			apiModel('google/gemini-3.8-flash'), apiModel('google/gemini-9-flash-lite'),
+			apiModel('deepseek/deepseek-v4-pro'), apiModel('deepseek/deepseek-v9-pro-0813'),
+			apiModel('deepseek/deepseek-v4.1-flash'), apiModel('deepseek/deepseek-v9-flash-vision-exp'),
+			apiModel('minimax/minimax-m3'), apiModel('minimax/minimax-m9-highspeed'),
+		];
+		const out = resolveLatestModels(api, recommendedModels as any[]) as any[];
+		const t = (label: string) => byLabel(out, label).tierModels;
+
+		assert.strictEqual(t('GPT').sonnet, 'openai/gpt-5.6-terra');
+		assert.strictEqual(t('GPT').opus, 'openai/gpt-5.6-sol');
+		assert.strictEqual(t('GPT').haiku, 'openai/gpt-5.6-luna');
+		assert.strictEqual(t('GPT').fable, 'openai/gpt-6-astra');
+		assert.strictEqual(t('Kimi').sonnet, 'moonshotai/kimi-k3');
+		assert.strictEqual(t('Kimi').haiku, 'moonshotai/kimi-k2.7-code');
+		assert.strictEqual(t('GLM').sonnet, 'zai/glm-5.3');
+		assert.strictEqual(t('GLM').haiku, 'zai/glm-5.3-flash');
+		assert.strictEqual(t('Gemini').sonnet, 'google/gemini-4-pro');
+		assert.strictEqual(t('Gemini').haiku, 'google/gemini-3.8-flash');
+		assert.strictEqual(t('DeepSeek').sonnet, 'deepseek/deepseek-v4-pro');
+		assert.strictEqual(t('DeepSeek').haiku, 'deepseek/deepseek-v4.1-flash');
+		assert.strictEqual(t('MiniMax').sonnet, 'minimax/minimax-m3');
+
+		// Nothing resolved anywhere may be a version-9 decoy.
+		for (const m of out) {
+			for (const id of Object.values(m.tierModels as Record<string, string>)) {
+				assert.ok(!/-9|v9|k9|m9|GLM-9/i.test(id), m.quickLabel + ' selected a decoy: ' + id);
+			}
+		}
+	});
+
 	test('an unmatched/empty catalogue leaves bundled models untouched', () => {
 		const out = resolveLatestModels([], recommendedModels as any[]);
 		for (let i = 0; i < recommendedModels.length; i++) {

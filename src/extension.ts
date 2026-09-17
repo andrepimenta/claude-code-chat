@@ -1615,9 +1615,15 @@ class ClaudeChatProvider {
 					});
 
 					// Update cumulative tracking
-					this._requestCount++;
-					if (jsonData.total_cost_usd) {
-						this._totalCost += jsonData.total_cost_usd;
+					if (!jsonData.is_error) {
+						// Only successful turns count as requests. A logged-out user sending
+						// three messages would otherwise see "Ready • 3 requests", and the
+						// counter would disagree with the milestone counter below, which is
+						// already gated on success.
+						this._requestCount++;
+						if (jsonData.total_cost_usd) {
+							this._totalCost += jsonData.total_cost_usd;
+						}
 					}
 
 					if (jsonData.is_error) {
@@ -1667,6 +1673,24 @@ class ClaudeChatProvider {
 					// Refresh OpenCredits balance after each request if using OpenCredits
 					if (this._isOpenCredits() || this._getOpenCreditsKey()) {
 						this._sendOpenCreditsBalance();
+					}
+				} else {
+					// Any other result subtype — error_during_execution, error_max_turns.
+					// Nothing else handles these, so without this the turn ends with no
+					// message at all and the spinner never clears: _isProcessing stays
+					// true, the composer stays disabled, and the only other thing that
+					// resets it is the process-close handler, which does not fire while
+					// the CLI is still alive. The user has to reload the window.
+					this._isProcessing = false;
+					this._postMessage({
+						type: 'setProcessing',
+						data: { isProcessing: false }
+					});
+					if (typeof jsonData.result === 'string' && jsonData.result.trim()) {
+						this._sendAndSaveMessage({
+							type: 'error',
+							data: jsonData.result.trim()
+						});
 					}
 				}
 				break;
@@ -3599,10 +3623,15 @@ class ClaudeChatProvider {
 			sources.push(cached.models);
 		}
 		sources.push(recommendedModels as any[]);
+		// Match the CARD id only — never a tier value. Matching tier values too
+		// meant that explicitly picking a model which happens to be another card's
+		// tier (openai/gpt-5.6-sol is GPT's opus entry) returned that card's whole
+		// map, so sonnet became gpt-5.6-terra and the user ran Terra after paying
+		// for Sol. This mirrors the webview path (script.ts), which also matches on
+		// id alone; anything else is a custom model with no tiers, and returning
+		// undefined correctly leaves every tier pointing at the chosen model.
 		for (const list of sources) {
-			const hit = list.find(m => m && m.tierModels &&
-				(m.id === modelId ||
-					Object.values(m.tierModels as Record<string, string>).includes(modelId)));
+			const hit = list.find(m => m && m.tierModels && m.id === modelId);
 			if (hit) { return hit.tierModels as TierModels; }
 		}
 		return undefined;

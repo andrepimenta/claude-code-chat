@@ -103,7 +103,11 @@ function findHighestMatch(apiModels: ApiModel[], regex: RegExp): ApiModel | null
  */
 export const providerResolvers: Record<string, ProviderResolver> = {
 	'zai/glm-': {
-		main: /^zai\/glm-(\d+(?:\.\d+)?)$/,
+		// Both patterns are case-insensitive: the gateway has served this namespace
+		// capitalised (zai/GLM-4.7-Flash) and lowercase. With only the haiku pattern
+		// carrying /i, a capitalised main id matched NOTHING while haiku kept
+		// resolving — freezing sonnet/opus/fable on their bundled values.
+		main: /^zai\/glm-(\d+(?:\.\d+)?)$/i,
 		haiku: /^zai\/GLM-([\d.]+)-(?:Air|Flash)$/i
 	},
 	'openai/gpt-': {
