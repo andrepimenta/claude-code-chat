@@ -4,6 +4,35 @@ All notable changes to the "claude-code-chat" extension will be documented in th
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [2.3.0] - 2026-09-18
+
+### 🚀 Features Added
+- **New "Fable" tier**: A fourth capability tier above Opus, wired end to end — a native Claude **Fable** card, a fable model for every bundled provider, the `ANTHROPIC_DEFAULT_FABLE_MODEL` environment variable and its removal path, and local-router mapping. Capability order is now Fable → Opus → Sonnet → Haiku.
+- **Refreshed model catalogue**: GPT moves to named tiers (Terra / Sol / Luna / Astra), plus Kimi K3 with `kimi-k2.7-code` as its fast tier, GLM 5.3, DeepSeek V4.1 Flash, and a full tier block for MiniMax. Credit costs were corrected against the live pricing endpoint — GLM and DeepSeek were previously understated.
+- **Model staleness policy**: When a provider's flagship falls 100+ days behind that same provider's own fast line, the fast model is promoted. Age is only ever compared between tiers of the same provider, so an older provider is never penalised against a newer one.
+
+### 🔒 Security
+- **Command injection through the chat box**: Checkpoint commits were built as a shell command string with your message interpolated into it, so a message containing `$(...)` or backticks executed on your machine **before Claude ever saw it** — for example asking what a command does. All git calls now pass arguments directly, with no shell involved.
+- **Global Claude config could be replaced with a stub**: Saving an MCP server at global scope treated *every* read failure as "the file does not exist" and then wrote over it. Because the Claude Code CLI rewrites `~/.claude.json` continuously, a single partial read could have destroyed the whole file. Only a genuinely missing file now starts fresh; anything else aborts without writing and tells you.
+- **Skill names could escape the skills folder**: Saving or deleting a skill joined an unvalidated name onto the skills directory and deleted recursively, so a name containing path separators could reach outside it. Names are now bounded to their own directory, rejecting separators on every platform rather than only the host's.
+
+### 🐛 Bug Fixes
+- **Spinner stuck after a truncated turn**: When the CLI ended a turn with `error_during_execution` or `error_max_turns`, nothing handled it — no error appeared, the spinner kept running and the composer stayed disabled until you reloaded the window.
+- **Paying for one model and running another**: Selecting a model whose id also appears as another card's tier entry (e.g. GPT 5.6 Sol) could apply the wrong card's tier map, so you were billed for Sol and served Terra. Selection now matches on the card id only.
+- **Checkpoints silently stopped for messages containing a double quote**: The same quoting flaw as the injection above also produced a malformed command, which was caught and logged but never surfaced — so restore points quietly stopped being created.
+- **Chat panel could come up inert**: Messages sent before the webview had attached its listeners were dropped, leaving the model selector and quick buttons unrendered. The webview now announces readiness and the extension replays the initial state.
+- **Failed turns counted as requests**: Three logged-out sends reported "3 requests". Only a successful turn is counted now.
+- **Capitalised GLM ids did not resolve**: The gateway has served this namespace capitalised (`zai/GLM-4.7-Flash`); only the fast-tier pattern was case-insensitive, so a capitalised flagship matched nothing.
+
+### ⚠️ Known Issues
+- **Gemini 3.8 Flash currently fails through the OpenCredits gateway** with `API Error: 400 'system messages are only supported at the beginning of the conversation'`. This is a request-translation issue upstream, not in the extension — the model itself answers normally on direct calls. Gemini has been moved to the end of the recommended list until it is resolved; the other five recommended models were each verified working.
+
+### 🔧 Technical Improvements
+- **Structural auth-failure detection**: Login detection no longer matches on error text. The previous patterns were dead on both real failure modes while false-positiving on file paths such as `src/login/index.ts`; detection is now based on the event structure and pinned to two real captured failures.
+- **Test suite grew from 78 to 108 tests**, including 18 end-to-end tests that drive a real VS Code instance — covering the webview, panels, composer, model selector, and proof that an MCP server added through the UI is genuinely spawned and callable and that a project skill actually reaches Claude — plus 22 tests replaying `stream-json` fixtures through every branch of the stream parser. Each security fix has a regression test verified by mutation: revert the fix and the test fails.
+- **Model cache keyed on a content signature**, so it invalidates itself when the bundled catalogue changes.
+- **`build/check-models.js`**: reports dead model ids, stale tiers and newer available releases against the live catalogue.
+
 ## [2.2.0] - 2026-06-22
 
 ### 🚀 Features Added
