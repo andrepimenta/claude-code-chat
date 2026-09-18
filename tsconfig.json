@@ -16,9 +16,15 @@
 		// "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
 		// "noUnusedParameters": true,  /* Report errors on unused parameters. */
 	},
+	/* The extension build owns src/ only. The e2e harness lives outside it and is
+	   transpiled by wdio's own ts-node, so including it here would break
+	   `npm run compile` on rootDir. */
 	"exclude": [
 		"mcp-permissions.js",
 		"claude-code-chat-permissions-mcp",
-		"backup-files"
+		"backup-files",
+		"e2e",
+		"wdio.conf.ts",
+		".vscode-test"
 	]
 }

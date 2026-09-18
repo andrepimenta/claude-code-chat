@@ -223,7 +223,11 @@
     "test:downloader:unit": "npm run compile && mocha --ui tdd out/test/downloader.test.js --reporter spec",
     "check:models": "npm run compile && node build/check-models.js",
     "test:auth": "npm run compile && mocha --ui tdd out/test/auth-detect.test.js --reporter spec",
-    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec"
+    "test:models": "npm run compile && mocha --ui tdd out/test/model-updater.test.js --reporter spec",
+    "test:e2e": "npm run compile && ./scripts/test-workspace.sh >/dev/null && wdio run ./wdio.conf.ts"
+  },
+  "overrides": {
+    "@vscode/test-electron": "^3.1.0"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -231,10 +235,16 @@
     "@types/vscode": "^1.94.0",
     "@typescript-eslint/eslint-plugin": "^8.31.1",
     "@typescript-eslint/parser": "^8.31.1",
-    "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.5.2",
+    "@vscode/test-cli": "^0.0.15",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.5.0",
+    "@wdio/cli": "^9.31.9",
+    "@wdio/local-runner": "^9.31.9",
+    "@wdio/mocha-framework": "^9.31.9",
+    "@wdio/spec-reporter": "^9.31.2",
     "eslint": "^9.25.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "wdio-vscode-service": "^8.0.0",
+    "webdriverio": "^9.31.9"
   }
 }

@@ -6,3 +6,15 @@ node_modules
 backup
 backup-files
 .claude/settings.local.json
+
+# e2e harness artifacts: downloaded VS Code builds (~900MB) and the
+# transpiled wdio config. Neither belongs in the repo.
+.wdio-vscode-service/
+wdio.conf.js
+wdio.conf.js.map
+
+# e2e specs are compiled on the fly by wdio (ts-node); the emitted JS is noise.
+# Scoped to *.e2e.js deliberately: a blanket e2e/**/*.js also swallows
+# e2e/fixtures/*.js, which are hand-written source the suite needs.
+e2e/**/*.e2e.js
+e2e/**/*.e2e.js.map

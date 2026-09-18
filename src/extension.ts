@@ -16,6 +16,23 @@ let OPENCREDITS_WEB_URL = 'https://ccc.opencredits.ai';
 let OPENCREDITS_PUBLISHABLE_KEY = 'oc_pk_c43da4f9a9484ae484ad29bc97cc354f';
 
 const exec = util.promisify(cp.exec);
+const execFileAsync = util.promisify(cp.execFile);
+
+/**
+ * Run git with an argv array — never a shell command string.
+ *
+ * The previous form interpolated values straight into a template literal handed
+ * to cp.exec, i.e. /bin/sh. The commit message is the first 50 characters of
+ * whatever the user typed, so a message containing $(...) or backticks executed
+ * before Claude ever saw it. Paths went through the same path, so a workspace
+ * folder containing shell metacharacters broke it too.
+ *
+ * execFile takes argv directly: no shell, so metacharacters are just bytes.
+ */
+function git(args: string[]): Promise<{ stdout: string; stderr: string }> {
+	// git status on a large tree can exceed execFile's 1 MB default.
+	return execFileAsync('git', args, { maxBuffer: 32 * 1024 * 1024 }) as Promise<{ stdout: string; stderr: string }>;
+}
 
 // Storage for diff content (used by DiffContentProvider)
 const diffContentStore = new Map<string, string>();
@@ -100,6 +117,11 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	context.subscriptions.push(disposable, loadConversationDisposable, configChangeDisposable, statusBarItem, uriHandler);
+
+	// Public activation result. VS Code hands this back from `extension.activate()`,
+	// which is how the integration suite reaches the provider to drive its webview
+	// message handlers directly. Exposing it changes no runtime behaviour.
+	return { provider };
 }
 
 export function deactivate() {
@@ -364,6 +386,20 @@ class ClaudeChatProvider {
 		this._sendCurrentSettings();
 	}
 
+	/**
+	 * State the webview needs at startup but cannot ask for again. Sent on the
+	 * webview's `webviewReady` signal so it cannot be lost to a race with the
+	 * page's own boot: previously these were fired once from _initializeWebview
+	 * and silently discarded if the listeners were not attached yet.
+	 */
+	private _sendInitStateToWebview(): void {
+		this._checkFeatureFlags().then(enabled => {
+			if (enabled) {
+				this._autoUpdateRecommendedModels().catch(() => { });
+			}
+		}).catch(() => { });
+	}
+
 	private _postMessage(message: any) {
 		if (this._panel && this._panel.webview) {
 			this._panel.webview.postMessage(message);
@@ -460,6 +496,12 @@ class ClaudeChatProvider {
 				return;
 			case 'stopRequest':
 				this._stopClaudeProcess();
+				return;
+			case 'webviewReady':
+				// The webview has attached its message listeners. Anything sent before
+				// now may have been dropped (_postMessage has no queue), so re-send the
+				// init state that the UI cannot recover on its own.
+				this._sendInitStateToWebview();
 				return;
 			case 'getSettings':
 				this._sendCurrentSettings();
@@ -1810,11 +1852,12 @@ class ClaudeChatProvider {
 				await vscode.workspace.fs.createDirectory(vscode.Uri.file(this._backupRepoPath));
 
 				const workspacePath = workspaceFolder.uri.fsPath;
+				const gitDir = this._backupRepoPath;
 
 				// Initialize git repo with workspace as work-tree
-				await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" init`);
-				await exec(`git --git-dir="${this._backupRepoPath}" config user.name "Claude Code Chat"`);
-				await exec(`git --git-dir="${this._backupRepoPath}" config user.email "claude@anthropic.com"`);
+				await git(['--git-dir', gitDir, '--work-tree', workspacePath, 'init']);
+				await git(['--git-dir', gitDir, 'config', 'user.name', 'Claude Code Chat']);
+				await git(['--git-dir', gitDir, 'config', 'user.email', 'claude@anthropic.com']);
 
 			}
 		} catch (error: any) {
@@ -1828,24 +1871,25 @@ class ClaudeChatProvider {
 			if (!workspaceFolder || !this._backupRepoPath) { return; }
 
 			const workspacePath = workspaceFolder.uri.fsPath;
+			const gitDir = this._backupRepoPath;
 			const now = new Date();
 			const timestamp = now.toISOString().replace(/[:.]/g, '-');
 			const displayTimestamp = now.toISOString();
 			const commitMessage = `Before: ${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : ''}`;
 
 			// Add all files using git-dir and work-tree (excludes .git automatically)
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" add -A`);
+			await git(['--git-dir', gitDir, '--work-tree', workspacePath, 'add', '-A']);
 
 			// Check if this is the first commit (no HEAD exists yet)
 			let isFirstCommit = false;
 			try {
-				await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+				await git(['--git-dir', gitDir, 'rev-parse', 'HEAD']);
 			} catch {
 				isFirstCommit = true;
 			}
 
 			// Check if there are changes to commit
-			const { stdout: status } = await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" status --porcelain`);
+			const { stdout: status } = await git(['--git-dir', gitDir, '--work-tree', workspacePath, 'status', '--porcelain']);
 
 			// Always create a checkpoint, even if no files changed
 			let actualMessage;
@@ -1858,8 +1902,8 @@ class ClaudeChatProvider {
 			}
 
 			// Create commit with --allow-empty to ensure checkpoint is always created
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" commit --allow-empty -m "${actualMessage}"`);
-			const { stdout: sha } = await exec(`git --git-dir="${this._backupRepoPath}" rev-parse HEAD`);
+			await git(['--git-dir', gitDir, '--work-tree', workspacePath, 'commit', '--allow-empty', '-m', actualMessage]);
+			const { stdout: sha } = await git(['--git-dir', gitDir, 'rev-parse', 'HEAD']);
 
 			// Store commit info
 			const commitInfo = {
@@ -1908,7 +1952,8 @@ class ClaudeChatProvider {
 			});
 
 			// Restore files directly to workspace using git checkout
-			await exec(`git --git-dir="${this._backupRepoPath}" --work-tree="${workspacePath}" checkout ${commitSha} -- .`);
+			await git(['--git-dir', this._backupRepoPath, '--work-tree', workspacePath,
+				'checkout', commitSha, '--', '.']);
 
 			vscode.window.showInformationMessage(`Restored to commit: ${commit.message}`);
 
@@ -2660,7 +2705,7 @@ class ClaudeChatProvider {
 				baseDir = path.join(homeDir, '.claude', 'skills');
 			}
 
-			const skillDir = path.join(baseDir, name);
+			const skillDir = ClaudeChatProvider._resolveSkillDir(baseDir, name);
 			await vscode.workspace.fs.createDirectory(vscode.Uri.file(skillDir));
 			const skillPath = path.join(skillDir, 'SKILL.md');
 			await vscode.workspace.fs.writeFile(vscode.Uri.file(skillPath), new TextEncoder().encode(content));
@@ -2670,6 +2715,33 @@ class ClaudeChatProvider {
 		} catch (err: any) {
 			vscode.window.showErrorMessage(`Failed to create skill: ${err.message}`);
 		}
+	}
+
+	/**
+	 * Resolve <baseDir>/<name>, refusing anything that escapes baseDir.
+	 *
+	 * `name` arrives unvalidated from the webview and both callers act on the
+	 * result with filesystem writes and a RECURSIVE delete. At scope 'personal'
+	 * baseDir is the user's real ~/.claude/skills, so a name like '../../Documents'
+	 * resolved cleanly outside the base and took the directory with it.
+	 */
+	private static _resolveSkillDir(baseDir: string, name: string): string {
+		const clean = (name || '').trim();
+		// Reject BOTH separators on every platform, not just the host's. path is
+		// platform-aware, so on macOS 'a\\b' is one legal filename — but the same
+		// skill directory syncs to Windows, where that backslash is a path
+		// separator. A name is one path component everywhere or it is not valid.
+		if (!clean || clean === '.' || clean === '..'
+			|| clean.includes('/') || clean.includes('\\')
+			|| clean !== path.basename(clean)) {
+			throw new Error(`Invalid skill name: "${name}"`);
+		}
+		const base = path.resolve(baseDir);
+		const dir = path.resolve(base, clean);
+		if (dir !== path.join(base, clean) || !dir.startsWith(base + path.sep)) {
+			throw new Error(`Invalid skill name: "${name}"`);
+		}
+		return dir;
 	}
 
 	private async _deleteSkill(name: string, scope: string): Promise<void> {
@@ -2684,7 +2756,7 @@ class ClaudeChatProvider {
 				baseDir = path.join(homeDir, '.claude', 'skills');
 			}
 
-			const skillDir = path.join(baseDir, name);
+			const skillDir = ClaudeChatProvider._resolveSkillDir(baseDir, name);
 			await vscode.workspace.fs.delete(vscode.Uri.file(skillDir), { recursive: true });
 
 			this._postMessage({ type: 'skillDeleted', data: { name } });
@@ -2894,8 +2966,25 @@ class ClaudeChatProvider {
 			try {
 				const content = await vscode.workspace.fs.readFile(configUri);
 				fileConfig = JSON.parse(new TextDecoder().decode(content));
-			} catch {
-				// File doesn't exist
+			} catch (err: any) {
+				// ONLY a genuinely absent file means "start from scratch".
+				//
+				// This used to swallow every failure, including a JSON parse error.
+				// At scope 'global' the target is ~/.claude.json — the ~176 KB file
+				// Claude Code itself writes, continuously. A partial read during one
+				// of those writes left fileConfig as {} and the write below replaced
+				// the whole thing with a ~200 byte stub. Unrecoverable, silent.
+				const missing = err instanceof vscode.FileSystemError
+					? err.code === 'FileNotFound'
+					: err?.code === 'ENOENT';
+				if (!missing) {
+					console.error('Refusing to write MCP config we could not read:', configPath, err);
+					this._postMessage({
+						type: 'mcpServerError',
+						data: { error: `Could not read ${configPath}. Nothing was written, so your existing configuration is intact. Fix or move the file and try again.` }
+					});
+					return;
+				}
 			}
 
 			if (!fileConfig.mcpServers) {

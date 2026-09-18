@@ -5366,6 +5366,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 
 	${getSkillsScript()}
 	${getPluginsScript()}
+
+		// Announce readiness LAST, once every message listener above is attached.
+		// Until this point anything the extension posts is dropped on the floor:
+		// _postMessage has no queue, so an init message that arrives before the
+		// listeners exist is lost permanently and never re-sent. That is how
+		// opencreditsEnabled could stay false forever, hiding the model quick
+		// buttons and falling back to the plain dropdown.
+		vscode.postMessage({ type: 'webviewReady' });
 	</script>`
 
 export default getScript;
