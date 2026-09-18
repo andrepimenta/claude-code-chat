@@ -89,6 +89,113 @@ suite('security: backup commit does not reach a shell', () => {
 
 suite('backup: commit and restore round-trip', () => {
 
+	test('the extension initialises its OWN backup repo end to end', async () => {
+		// _initializeBackupRepo catches every error and only console.errors it, so a
+		// broken git invocation here is completely silent at runtime: checkpoints
+		// just never appear. The other backup tests build the repo themselves with
+		// execFile, which means they would still pass if these three calls were
+		// wrong. This one drives the extension's own path.
+		const provider = await getProvider();
+		const storagePath = provider._context.storageUri?.fsPath;
+		assert.ok(storagePath, 'no workspace storage — test host has no workspace folder');
+
+		const repoPath = path.join(storagePath, 'backups', '.git');
+		fs.rmSync(path.join(storagePath, 'backups'), { recursive: true, force: true });
+
+		const prevCommits = provider._commits;
+		provider._commits = [];
+		captureMessages(provider);
+		const ws = vscode.workspace.workspaceFolders![0].uri.fsPath;
+		const probe = path.join(ws, 'backup-chain-probe.txt');
+		try {
+			await provider._initializeBackupRepo();
+
+			assert.strictEqual(provider._backupRepoPath, repoPath);
+			assert.ok(fs.existsSync(path.join(repoPath, 'HEAD')),
+				'git init did not actually create a repository at ' + repoPath);
+
+			const { stdout: name } = await execFile('git', ['--git-dir', repoPath, 'config', 'user.name']);
+			const { stdout: email } = await execFile('git', ['--git-dir', repoPath, 'config', 'user.email']);
+			assert.strictEqual(name.trim(), 'Claude Code Chat', 'user.name was never configured');
+			assert.strictEqual(email.trim(), 'claude@anthropic.com', 'user.email was never configured');
+
+			// Now the full chain on the repo the EXTENSION made.
+			fs.writeFileSync(probe, 'original');
+			await provider._createBackupCommit('checkpoint "one" $(touch /tmp/ccc-chain-probe)');
+
+			assert.strictEqual(fs.existsSync('/tmp/ccc-chain-probe'), false,
+				'the commit message reached a shell');
+			const commit = provider._commits[provider._commits.length - 1];
+			assert.ok(commit?.sha, 'no checkpoint was recorded by the extension');
+
+			const { stdout: subject } = await execFile('git', ['--git-dir', repoPath, 'log', '-1', '--format=%s']);
+			assert.ok(subject.includes('"one"'), `commit subject lost the quotes: ${subject.trim()}`);
+
+			fs.writeFileSync(probe, 'CLOBBERED');
+			await provider._restoreToCommit(commit.sha);
+			assert.strictEqual(fs.readFileSync(probe, 'utf8'), 'original',
+				'restore did not bring the file back');
+		} finally {
+			provider._commits = prevCommits;
+			fs.rmSync(probe, { force: true });
+			fs.rmSync('/tmp/ccc-chain-probe', { force: true });
+			fs.rmSync(path.join(storagePath, 'backups'), { recursive: true, force: true });
+		}
+	});
+
+	test('restore reverts edits and deletions, but NOT files the AI created', async () => {
+		// Documents what restore actually does. `git checkout <sha> -- .` restores
+		// paths present in the commit, so an edit is undone and a deletion is undone,
+		// but a file created after the checkpoint is not in that commit and survives.
+		// Leaving it is the safer failure mode — `git clean` would also delete
+		// untracked files the USER made — but it means "Restore checkpoint" does not
+		// return the tree to exactly how it looked.
+		const provider = await getProvider();
+		const ws = vscode.workspace.workspaceFolders![0].uri.fsPath;
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ccc-rewind-'));
+		const gitDir = path.join(tmp, 'backup.git');
+		fs.mkdirSync(gitDir, { recursive: true });
+		await execFile('git', ['--git-dir', gitDir, '--work-tree', ws, 'init']);
+		await execFile('git', ['--git-dir', gitDir, 'config', 'user.name', 'test']);
+		await execFile('git', ['--git-dir', gitDir, 'config', 'user.email', 'test@test']);
+
+		const edited = path.join(ws, 'rewind-edited.txt');
+		const removed = path.join(ws, 'rewind-removed.txt');
+		const created = path.join(ws, 'rewind-created.txt');
+
+		const prevRepo = provider._backupRepoPath;
+		const prevCommits = provider._commits;
+		provider._backupRepoPath = gitDir;
+		provider._commits = [];
+		captureMessages(provider);
+		try {
+			fs.writeFileSync(edited, 'original');
+			fs.writeFileSync(removed, 'present at checkpoint');
+			await provider._createBackupCommit('checkpoint before the AI runs');
+			const commit = provider._commits[provider._commits.length - 1];
+			assert.ok(commit?.sha, 'no checkpoint recorded');
+
+			// What an AI turn typically does to a workspace.
+			fs.writeFileSync(edited, 'MODIFIED BY AI');
+			fs.rmSync(removed);
+			fs.writeFileSync(created, 'NEW FILE FROM AI');
+
+			await provider._restoreToCommit(commit.sha);
+
+			assert.strictEqual(fs.readFileSync(edited, 'utf8'), 'original',
+				'an edited file was not reverted');
+			assert.ok(fs.existsSync(removed), 'a deleted file was not restored');
+			assert.strictEqual(fs.existsSync(created), true,
+				'a file created after the checkpoint was removed — restore semantics ' +
+				'changed; if that is now intended, update this test and tell users');
+		} finally {
+			provider._backupRepoPath = prevRepo;
+			provider._commits = prevCommits;
+			for (const f of [edited, removed, created]) { fs.rmSync(f, { force: true }); }
+			fs.rmSync(tmp, { recursive: true, force: true });
+		}
+	});
+
 	test('restoring a checkpoint puts the working tree back', async () => {
 		// _restoreToCommit runs `git checkout <sha> -- .` against the LIVE workspace.
 		// It was converted to argv alongside the rest, and it is the one git call
