@@ -1,5 +1,19 @@
 .vscode/**
 .vscode-test/**
+
+# e2e harness: .wdio-vscode-service holds a downloaded VS Code build (~900MB).
+# Without this the packaged .vsix is over a gigabyte and secretlint fails
+# scanning it. The specs themselves are .ts (already covered by **/*.ts) but
+# e2e/fixtures holds hand-written .js that would otherwise ship.
+.wdio-vscode-service/**
+e2e/**
+scripts/**
+wdio.conf.ts
+
+# Repo/dev files with no place in an installed extension.
+.github/**
+TEST_SETTINGS.md
+backup.sh
 src/**
 .gitignore
 .yarnrc
