@@ -38,7 +38,10 @@ const getHtml = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'https
 	<div id="conversationHistory" class="conversation-history" style="display: none;">
 		<div class="conversation-header">
 			<h3>Conversation History</h3>
-			<button class="btn" onclick="toggleConversationHistory()">✕ Close</button>
+			<div style="display: flex; gap: 8px;">
+				<button class="btn outlined conversation-clear-all-btn" onclick="clearAllConversations()">Clear All</button>
+				<button class="btn" onclick="toggleConversationHistory()">✕ Close</button>
+			</div>
 		</div>
 		<div id="conversationList" class="conversation-list">
 			<!-- Conversations will be loaded here -->
