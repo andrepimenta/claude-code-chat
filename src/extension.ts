@@ -1299,15 +1299,15 @@ class ClaudeChatProvider {
 
 		claudeProcess.on('close', (code) => {
 
+			// Cancel any pending permission requests (process is gone)
+			this._cancelPendingPermissionRequests();
+
 			if (!this._currentClaudeProcess) {
 				return;
 			}
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			// Clear loading indicator and set processing to false
 			this._postMessage({
@@ -1343,15 +1343,15 @@ class ClaudeChatProvider {
 		claudeProcess.on('error', (error) => {
 			console.error('Claude process error:', error.message);
 
+			// Cancel any pending permission requests (process is gone)
+			this._cancelPendingPermissionRequests();
+
 			if (!this._currentClaudeProcess) {
 				return;
 			}
 
 			// Clear process reference
 			this._currentClaudeProcess = undefined;
-
-			// Cancel any pending permission requests (process is gone)
-			this._cancelPendingPermissionRequests();
 
 			this._postMessage({
 				type: 'clearLoading'
