@@ -270,7 +270,8 @@ class ClaudeChatProvider {
 			{
 				enableScripts: true,
 				retainContextWhenHidden: true,
-				localResourceRoots: [this._extensionUri]
+				localResourceRoots: [this._extensionUri],
+				enableFindWidget: true
 			}
 		);
 
