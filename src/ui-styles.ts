@@ -3746,6 +3746,27 @@ const styles = `
         border-color: var(--vscode-terminal-ansiGreen);
     }
 
+    #pendingQuestionsBadge {
+        background-color: rgba(252, 188, 0, 0.15);
+        border-color: rgba(252, 188, 0, 0.4);
+        color: var(--vscode-foreground);
+        font-weight: 600;
+    }
+
+    #pendingQuestionsBadge:hover {
+        background-color: rgba(252, 188, 0, 0.25);
+        border-color: rgba(252, 188, 0, 0.6);
+    }
+
+    .question-highlight {
+        animation: questionHighlightPulse 0.6s ease-in-out 2;
+    }
+
+    @keyframes questionHighlightPulse {
+        0%, 100% { box-shadow: 0 0 0 2px rgba(252, 188, 0, 0.6); }
+        50% { box-shadow: 0 0 0 4px rgba(252, 188, 0, 0.3); }
+    }
+
     /* Markdown content styles */
     .message h1, .message h2, .message h3, .message h4 {
         margin: 0.8em 0 0.4em 0;
