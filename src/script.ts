@@ -115,7 +115,26 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 			}
 		}
 
-		function addMessage(content, type = 'claude') {
+		// Formats an ISO timestamp for the small per-message clock. Returns
+		// null when missing/unparsable so callers can skip rendering it instead of
+		// showing "Invalid Date" — keeps old saved histories without this field
+		// working unchanged.
+		function formatMessageTimestamp(isoString) {
+			if (!isoString) { return null; }
+			const date = new Date(isoString);
+			if (isNaN(date.getTime())) { return null; }
+			const hours = String(date.getHours()).padStart(2, '0');
+			const minutes = String(date.getMinutes()).padStart(2, '0');
+			return {
+				short: \`\${hours}:\${minutes}\`,
+				full: date.toLocaleString(undefined, {
+					year: 'numeric', month: 'short', day: 'numeric',
+					hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+				})
+			};
+		}
+
+		function addMessage(content, type = 'claude', timestamp) {
 			const messagesDiv = document.getElementById('messages');
 			const shouldScroll = shouldAutoScroll(messagesDiv);
 			
@@ -155,9 +174,23 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 				copyBtn.title = 'Copy message';
 				copyBtn.onclick = () => copyMessageContent(messageDiv);
 				copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
-				
+
 				headerDiv.appendChild(iconDiv);
 				headerDiv.appendChild(labelDiv);
+
+				// Small per-message clock — only for user/Claude turns; silently
+				// skipped when there is no (valid) timestamp, e.g. old saved histories.
+				if (type === 'user' || type === 'claude') {
+					const formattedTimestamp = formatMessageTimestamp(timestamp);
+					if (formattedTimestamp) {
+						const timestampSpan = document.createElement('span');
+						timestampSpan.className = 'message-timestamp';
+						timestampSpan.textContent = formattedTimestamp.short;
+						timestampSpan.title = formattedTimestamp.full;
+						headerDiv.appendChild(timestampSpan);
+					}
+				}
+
 				headerDiv.appendChild(copyBtn);
 				messageDiv.appendChild(headerDiv);
 			}
@@ -3596,14 +3629,14 @@ const getScript = (isTelemetryEnabled: boolean, opencreditsApiUrl: string = 'htt
 							displayData = displayData.replace(usageLimitMatch[0], \`Claude AI usage limit reached: \${readableDate}\`);
 						}
 						
-						addMessage(parseSimpleMarkdown(displayData), 'claude');
+						addMessage(parseSimpleMarkdown(displayData), 'claude', message.timestamp);
 					}
 					updateStatusWithTotals();
 					break;
-					
+
 				case 'userInput':
 					if (message.data.trim()) {
-						addMessage(parseSimpleMarkdown(message.data), 'user');
+						addMessage(parseSimpleMarkdown(message.data), 'user', message.timestamp);
 					}
 					break;
 					

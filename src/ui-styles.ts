@@ -1179,6 +1179,14 @@ const styles = `
         letter-spacing: 0.5px;
     }
 
+    /* Per-message clock — subtle, no signal color so it stays neutral. */
+    .message-timestamp {
+        font-size: 11px;
+        color: var(--vscode-descriptionForeground);
+        opacity: 0.6;
+        flex-shrink: 0;
+    }
+
     .message-content {
         padding-left: 6px;
     }
