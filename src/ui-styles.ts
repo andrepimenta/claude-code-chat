@@ -1652,6 +1652,12 @@ const styles = `
         position: relative;
     }
 
+    .input-container.drag-over {
+        outline: 2px dashed var(--vscode-focusBorder);
+        outline-offset: -2px;
+        background-color: rgba(139, 92, 246, 0.08);
+    }
+
     .model-selector-row {
         display: flex;
         align-items: center;
