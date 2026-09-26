@@ -3330,41 +3330,52 @@ class ClaudeChatProvider {
 		const processToKill = this._currentClaudeProcess;
 		const pid = processToKill?.pid;
 
-		// 1. Abort via controller (clean API)
-		this._abortController?.abort();
-		this._abortController = undefined;
+		// Ordering invariant: clear the reference FIRST (before any await and
+		// before abort), tree-kill SECOND while the process is still alive, and call
+		// abort() LAST. Previously abort() ran first — on Windows that synchronously
+		// kills the tracked root (the cmd.exe shell from shell:true) and sets
+		// `killed`, so the taskkill /t that followed hit an already-dead root,
+		// couldn't enumerate the tree, and failed silently (try/catch) — the real
+		// claude worker and its children orphaned and kept running. Clearing the
+		// reference before the kill sequence also means a close/error firing
+		// mid-kill hits the handlers' "no current process" guards and no-ops
+		// (no false error box).
 
-		// 2. Clear reference immediately
+		// 1. Clear reference immediately so late close/error handlers no-op.
 		this._currentClaudeProcess = undefined;
 
-		if (!pid) {
-			return;
-		}
+		if (pid) {
+			// 2. Kill process group (handles children) while the tree is still alive.
+			await this._killProcessGroup(pid, 'SIGTERM');
 
+			// 3. Wait for process to exit, with timeout. `exitCode !== null` also
+			// covers a death Node observed during the await above (taskkill kills
+			// externally and never sets `killed`, which only child.kill() would).
+			const exitPromise = new Promise<void>((resolve) => {
+				if (!processToKill || processToKill.killed || processToKill.exitCode !== null) {
+					resolve();
+					return;
+				}
+				processToKill.once('exit', () => resolve());
+			});
 
-		// 3. Kill process group (handles children)
-		await this._killProcessGroup(pid, 'SIGTERM');
+			const timeoutPromise = new Promise<void>((resolve) => {
+				setTimeout(() => resolve(), 2000);
+			});
 
-		// 4. Wait for process to exit, with timeout
-		const exitPromise = new Promise<void>((resolve) => {
-			if (processToKill?.killed) {
-				resolve();
-				return;
+			await Promise.race([exitPromise, timeoutPromise]);
+
+			// 4. Force kill if still running
+			if (processToKill && !processToKill.killed && processToKill.exitCode === null) {
+				await this._killProcessGroup(pid, 'SIGKILL');
 			}
-			processToKill?.once('exit', () => resolve());
-		});
-
-		const timeoutPromise = new Promise<void>((resolve) => {
-			setTimeout(() => resolve(), 2000);
-		});
-
-		await Promise.race([exitPromise, timeoutPromise]);
-
-		// 5. Force kill if still running
-		if (processToKill && !processToKill.killed) {
-			await this._killProcessGroup(pid, 'SIGKILL');
 		}
 
+		// 5. Abort via controller LAST. The tree is already dead, and because the
+		// _currentClaudeProcess reference is cleared, the error handler's guard
+		// drops any late AbortError — no red "operation was aborted" box.
+		this._abortController?.abort();
+		this._abortController = undefined;
 	}
 
 	private async _stopClaudeProcess(): Promise<void> {
